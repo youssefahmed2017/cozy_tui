@@ -6,6 +6,10 @@ from cozy_tui.widgets.label import Label
 from cozy_tui.widgets.input import Input
 from cozy_tui.widgets.button import Button
 from cozy_tui.widgets.checkbox import Checkbox
+from cozy_tui.widgets.layout import Layout
+from cozy_tui.widgets.vbox import VBox
+from cozy_tui.widgets.hbox import HBox
+from cozy_tui.widgets.grid import Grid
 
 __all__ = [
     "App",
@@ -15,4 +19,8 @@ __all__ = [
     "Input",
     "Button",
     "Checkbox",
+    "Layout",
+    "VBox",
+    "HBox",
+    "Grid",
 ]

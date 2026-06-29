@@ -73,6 +73,10 @@ class Input(Widget):
                 return self.abs_x + ccol, self.abs_y - scroll_y
             return None
 
+    def natural_height(self, scale):
+        w = self._clip_width or self.width
+        return self._row_count(w)
+
     def _row_count(self, w: int) -> int:
         """Total display rows needed for current value at display width w."""
         if self.multiline:

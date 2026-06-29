@@ -50,6 +50,9 @@ class Widget:
     def natural_width(self, scale):
         return 0
 
+    def natural_height(self, scale):
+        return 1
+
     def contains(self, col: int, row: int) -> bool:
         return False
 
