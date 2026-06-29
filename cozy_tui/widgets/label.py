@@ -2,7 +2,7 @@ from cozy_tui.widget import Widget
 
 
 class Label(Widget):
-    def __init__(self, text, x, y, style=None):
+    def __init__(self, x, y, text, style=None):
         super().__init__(x, y, style)
         self.text = text
 
