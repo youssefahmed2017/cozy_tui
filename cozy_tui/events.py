@@ -50,6 +50,9 @@ class Key:
     CTRL_RIGHT        = "CTRL_RIGHT"
     CTRL_SHIFT_LEFT   = "CTRL_SHIFT_LEFT"
     CTRL_SHIFT_RIGHT  = "CTRL_SHIFT_RIGHT"
+    CTRL_Z            = "\x1a"
+    CTRL_Y            = "\x19"
+    CTRL_SHIFT_Z      = "CTRL_SHIFT_Z"
 # fmt: on
 
 # Internal read buffer.  os.read() reads the VT-processed byte stream while
@@ -107,6 +110,10 @@ _CSI_MAP = {
     "1;5D": Key.CTRL_LEFT,
     "1;6C": Key.CTRL_SHIFT_RIGHT,
     "1;6D": Key.CTRL_SHIFT_LEFT,
+    # Ctrl+Shift+Z via XTerm modifyOtherKeys level 1 (\033[>4;1m):
+    # Z=90 or z=122, Ctrl+Shift modifier=6
+    "90;6u":  Key.CTRL_SHIFT_Z,
+    "122;6u": Key.CTRL_SHIFT_Z,
     "13;2u": Key.SHIFT_ENTER,  # XTerm / Windows Terminal Shift+Enter
 }
 

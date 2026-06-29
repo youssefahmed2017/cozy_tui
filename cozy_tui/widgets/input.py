@@ -54,6 +54,9 @@ class Input(Widget):
         self.masked = masked
         self.masked_symbol = masked_symbol
         self._sel_anchor: int | None = None  # None = no selection
+        self._undo_stack: list = []
+        self._redo_stack: list = []
+        self._last_action: str | None = None
 
     def natural_width(self, scale):
         return self.width
@@ -94,6 +97,38 @@ class Input(Widget):
 
     def _sel_style(self) -> Style:
         return Style(fg="white", bg="blue")
+
+    # ── undo / redo history ──────────────────────────────────────────────────
+
+    _COALESCE = {"type", "backspace", "delete"}
+    _MAX_HISTORY = 200
+
+    def _save_history(self, action: str) -> None:
+        """Push (value, cursor_pos) onto the undo stack before an edit.
+        Consecutive actions of the same coalescing type share one undo point."""
+        if action in self._COALESCE and action == self._last_action:
+            return
+        self._undo_stack.append((self.value, self.cursor_pos))
+        if len(self._undo_stack) > self._MAX_HISTORY:
+            self._undo_stack.pop(0)
+        self._redo_stack.clear()
+        self._last_action = action
+
+    def _do_undo(self) -> None:
+        if not self._undo_stack:
+            return
+        self._redo_stack.append((self.value, self.cursor_pos))
+        self.value, self.cursor_pos = self._undo_stack.pop()
+        self._sel_anchor = None
+        self._last_action = None
+
+    def _do_redo(self) -> None:
+        if not self._redo_stack:
+            return
+        self._undo_stack.append((self.value, self.cursor_pos))
+        self.value, self.cursor_pos = self._redo_stack.pop()
+        self._sel_anchor = None
+        self._last_action = None
 
     # ── word-boundary helpers ────────────────────────────────────────────────
 
@@ -249,7 +284,20 @@ class Input(Widget):
 
     # ── key handling ─────────────────────────────────────────────────────────
 
+    # Keys that should break typing coalescing even if cursor doesn't move.
+    _NAV_KEYS = {
+        Key.LEFT, Key.RIGHT, Key.UP, Key.DOWN,
+        Key.HOME, Key.END,
+        Key.SHIFT_LEFT, Key.SHIFT_RIGHT, Key.SHIFT_UP, Key.SHIFT_DOWN,
+        Key.SHIFT_HOME, Key.SHIFT_END,
+        Key.CTRL_LEFT, Key.CTRL_RIGHT,
+        Key.CTRL_SHIFT_LEFT, Key.CTRL_SHIFT_RIGHT,
+        Key.CTRL_A,
+    }
+
     def on_key(self, key):
+        _prev_value = self.value
+
         if key == Key.LEFT:
             r = self._sel_range()
             if r is not None:
@@ -356,27 +404,26 @@ class Input(Widget):
 
         elif key == Key.BACKSPACE:
             if self._sel_anchor is not None:
+                self._save_history("edit")
                 self._delete_sel()
             elif self.cursor_pos > 0:
-                self.value = (
-                    self.value[: self.cursor_pos - 1] + self.value[self.cursor_pos :]
-                )
+                self._save_history("backspace")
+                self.value = self.value[: self.cursor_pos - 1] + self.value[self.cursor_pos :]
                 self.cursor_pos -= 1
 
         elif key == Key.DELETE:
             if self._sel_anchor is not None:
+                self._save_history("edit")
                 self._delete_sel()
             elif self.cursor_pos < len(self.value):
-                self.value = (
-                    self.value[: self.cursor_pos] + self.value[self.cursor_pos + 1 :]
-                )
+                self._save_history("delete")
+                self.value = self.value[: self.cursor_pos] + self.value[self.cursor_pos + 1 :]
 
         elif key in (Key.ENTER, Key.SHIFT_ENTER) and self.multiline:
+            self._save_history("edit")
             if self._sel_anchor is not None:
                 self._delete_sel()
-            self.value = (
-                self.value[: self.cursor_pos] + "\n" + self.value[self.cursor_pos :]
-            )
+            self.value = self.value[: self.cursor_pos] + "\n" + self.value[self.cursor_pos :]
             self.cursor_pos += 1
 
         # ── clipboard / select-all ────────────────────────────────────────────
@@ -394,34 +441,46 @@ class Input(Widget):
         elif key == Key.CTRL_X:
             text = self._sel_text()
             if text:
+                self._save_history("edit")
                 _clipboard_set(text)
                 self._delete_sel()
 
         elif key == Key.CTRL_V:
             pasted = _clipboard_get()
             if pasted:
+                self._save_history("edit")
                 if self._sel_anchor is not None:
                     self._delete_sel()
                 if not self.multiline:
                     pasted = pasted.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
                 else:
                     pasted = pasted.replace("\r\n", "\n").replace("\r", "\n")
-                self.value = (
-                    self.value[: self.cursor_pos] + pasted + self.value[self.cursor_pos :]
-                )
+                self.value = self.value[: self.cursor_pos] + pasted + self.value[self.cursor_pos :]
                 self.cursor_pos += len(pasted)
+
+        # ── undo / redo ───────────────────────────────────────────────────────
+
+        elif key == Key.CTRL_Z:
+            self._do_undo()
+
+        elif key in (Key.CTRL_SHIFT_Z, Key.CTRL_Y):
+            self._do_redo()
 
         elif (
             key not in (Key.ESC, Key.ENTER, Key.TAB, Key.UP, Key.DOWN)
             and len(key) == 1
             and key.isprintable()
         ):
+            self._save_history("type")
             if self._sel_anchor is not None:
                 self._delete_sel()
-            self.value = (
-                self.value[: self.cursor_pos] + key + self.value[self.cursor_pos :]
-            )
+            self.value = self.value[: self.cursor_pos] + key + self.value[self.cursor_pos :]
             self.cursor_pos += 1
+
+        # Navigation (or select-all) breaks type coalescing so the next
+        # edit starts a fresh undo point.
+        if key in self._NAV_KEYS and self.value is _prev_value:
+            self._last_action = None
 
     @property
     def _display_value(self):
