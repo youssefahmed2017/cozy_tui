@@ -3,7 +3,7 @@ from cozy_tui.widget import Widget
 from cozy_tui.style import Style
 from cozy_tui.events import Key
 
-_PRESS_DURATION = 1.0
+_PRESS_DURATION = 0.3
 
 
 class Button(Widget):
@@ -49,16 +49,15 @@ class Button(Widget):
 
         is_focused = canvas.focused is self
         w = self._width()
-        inner = w - 2                              # chars between the brackets
         raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
         fg = self.style.fg or "white"
 
-        label = f"[{self.text.center(inner)}]"
+        label = self.text.center(w)
 
         if self._pressed:
-            style = Style(fg=raw_bg or "black", bg=fg, styles=["dim"])
+            style = Style(fg=fg, bg=raw_bg, styles=["dim"])
         elif is_focused:
-            style = Style(fg="black", bg="white", styles=["bold"])
+            style = Style(fg=raw_bg or "black", bg=fg, styles=["bold"])
         else:
             style = Style(fg=fg, bg=raw_bg)
 
