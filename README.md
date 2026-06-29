@@ -66,12 +66,12 @@ from cozy_tui import App, Box, Label, Input, Button, Style
 ## Quick Start
 
 ```python
-from cozy_tui import App, Box, Label, Input, Button, Style
+from cozy_tui import App, Box, Label, Input, Button, Checkbox, Style
 from cozy_tui.events import Key
 
 app = App(full=True, size=None, style=Style(fg="white", bg="black"))
 
-box = Box(2, 1, "60x12", border="rounded", style=Style(fg="white", bg="black"), title="Sign Up")
+box = Box(2, 1, "60x14", border="rounded", style=Style(fg="white", bg="black"), title="Sign Up")
 
 box.add(Label(2, 2, "Username:"))
 box.add(Input(12, 2, 20, placeholder="Enter username"))
@@ -79,8 +79,11 @@ box.add(Input(12, 2, 20, placeholder="Enter username"))
 box.add(Label(2, 4, "Bio:"))
 box.add(Input(12, 4, 20, placeholder="Tell us about you", multiline=True))
 
-btn = Button(2, 7, "Submit", size=20, style=Style(fg="white", bg="blue"))
-btn.on_click(lambda: print("Submitted!"))
+box.add(Checkbox(2, 7, "Subscribe to newsletter"))
+box.add(Checkbox(2, 9, "I agree to the terms", checked=True))
+
+btn = Button(2, 11, "Submit", width=20, style=Style(fg="white", bg="blue"))
+btn.on_click(lambda b: print("Submitted!"))
 box.add(btn)
 
 app.add(box)
