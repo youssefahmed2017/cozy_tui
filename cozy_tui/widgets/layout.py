@@ -21,14 +21,18 @@ class Layout(Widget):
         return self
 
     def natural_width(self, scale):
+        self._arrange()
         return self._computed_width
 
     def natural_height(self, scale):
+        self._arrange()
         return self._computed_height
 
     def contains(self, col: int, row: int) -> bool:
-        return (self.abs_x <= col < self.abs_x + self._computed_width
-                and self.abs_y <= row < self.abs_y + self._computed_height)
+        return (
+            self.abs_x <= col < self.abs_x + self._computed_width
+            and self.abs_y <= row < self.abs_y + self._computed_height
+        )
 
     def _arrange(self):
         raise NotImplementedError
