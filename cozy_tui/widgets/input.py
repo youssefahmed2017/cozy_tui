@@ -95,6 +95,31 @@ class Input(Widget):
     def _sel_style(self) -> Style:
         return Style(fg="white", bg="blue")
 
+    # ── word-boundary helpers ────────────────────────────────────────────────
+
+    def _word_right(self, pos: int) -> int:
+        """Return the position after jumping one word to the right (VS Code style)."""
+        v = self.value
+        n = len(v)
+        # Skip punctuation/whitespace, then skip the word body
+        while pos < n and not (v[pos].isalnum() or v[pos] == "_"):
+            pos += 1
+        while pos < n and (v[pos].isalnum() or v[pos] == "_"):
+            pos += 1
+        return pos
+
+    def _word_left(self, pos: int) -> int:
+        """Return the position after jumping one word to the left (VS Code style)."""
+        v = self.value
+        pos -= 1
+        # Skip punctuation/whitespace backwards
+        while pos > 0 and not (v[pos].isalnum() or v[pos] == "_"):
+            pos -= 1
+        # Skip word body backwards
+        while pos > 0 and (v[pos - 1].isalnum() or v[pos - 1] == "_"):
+            pos -= 1
+        return max(0, pos)
+
     # ── position helpers (multi-line) ────────────────────────────────────────
 
     def _cursor_to_line_col(self):
@@ -310,6 +335,22 @@ class Input(Widget):
             lines = self.value.split("\n")
             if line < len(lines) - 1:
                 self._shift_move(self._line_col_to_pos(line + 1, min(col, len(lines[line + 1]))))
+
+        # ── word navigation ──────────────────────────────────────────────────
+
+        elif key == Key.CTRL_RIGHT:
+            self._clear_sel()
+            self.cursor_pos = self._word_right(self.cursor_pos)
+
+        elif key == Key.CTRL_LEFT:
+            self._clear_sel()
+            self.cursor_pos = self._word_left(self.cursor_pos)
+
+        elif key == Key.CTRL_SHIFT_RIGHT:
+            self._shift_move(self._word_right(self.cursor_pos))
+
+        elif key == Key.CTRL_SHIFT_LEFT:
+            self._shift_move(self._word_left(self.cursor_pos))
 
         # ── edit operations ──────────────────────────────────────────────────
 

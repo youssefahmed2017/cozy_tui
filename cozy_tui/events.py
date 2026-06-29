@@ -44,8 +44,12 @@ class Key:
     SHIFT_RIGHT = "SHIFT_RIGHT"
     SHIFT_UP    = "SHIFT_UP"
     SHIFT_DOWN  = "SHIFT_DOWN"
-    SHIFT_HOME  = "SHIFT_HOME"
-    SHIFT_END   = "SHIFT_END"
+    SHIFT_HOME        = "SHIFT_HOME"
+    SHIFT_END         = "SHIFT_END"
+    CTRL_LEFT         = "CTRL_LEFT"
+    CTRL_RIGHT        = "CTRL_RIGHT"
+    CTRL_SHIFT_LEFT   = "CTRL_SHIFT_LEFT"
+    CTRL_SHIFT_RIGHT  = "CTRL_SHIFT_RIGHT"
 # fmt: on
 
 # Internal read buffer.  os.read() reads the VT-processed byte stream while
@@ -99,6 +103,10 @@ _CSI_MAP = {
     "1;2F": Key.SHIFT_END,
     "1;5A": Key.CTRL_UP,
     "1;5B": Key.CTRL_DOWN,
+    "1;5C": Key.CTRL_RIGHT,
+    "1;5D": Key.CTRL_LEFT,
+    "1;6C": Key.CTRL_SHIFT_RIGHT,
+    "1;6D": Key.CTRL_SHIFT_LEFT,
     "13;2u": Key.SHIFT_ENTER,  # XTerm / Windows Terminal Shift+Enter
 }
 
