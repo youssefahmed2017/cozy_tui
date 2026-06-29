@@ -27,7 +27,7 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
 
 ## Features
 
-- **No dependencies** — pure Python, uses only the standard library
+- **Very few dependencies** — alsmost pure Python, uses only one dependency `cozy-kit`, everything else is the standard library.
 - **Widgets**: `Button`, `Input`, `Label`, `Box`
 - **Multi-line Input**: Shift+Enter to insert newlines, UP/DOWN to navigate lines
 - **Focus system**: Tab / Shift+Tab to cycle focus, click to focus with mouse
