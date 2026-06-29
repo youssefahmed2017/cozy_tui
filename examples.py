@@ -34,11 +34,12 @@ def save_data():
 # CountdownTimer widget
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class CountdownTimer(Widget):
     def __init__(self, x, y, width, style=None):
         super().__init__(x, y, style)
         self.width = width
-        self.minutes = 0        # stored in seconds
+        self.minutes = 0  # stored in seconds
         self.remaining = 0.0
         self.running = False
         self._last = None
@@ -130,22 +131,30 @@ def switch_screen(box, focus=None, keys=None):
     app.widgets = [box]
     app.focused = focus
     app._key_handlers = dict(keys or {})
+    app.invalidate()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Welcome screen
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def show_welcome():
-    box = Box(2, 1, "900x270", border="rounded",
-              style=Style(fg="cyan", bg="black"), title=" TIMER APP ")
+    box = Box(
+        2,
+        1,
+        "900x270",
+        border="rounded",
+        style=Style(fg="cyan", bg="black"),
+        title=" TIMER APP ",
+    )
 
     box.add(Label(3, 2, "Welcome! Log in or register to track your timers."))
 
     row = HBox(3, 5, gap=3)
-    btn_l = Button(0, 0, "Login",    width=14, style=Style(fg="white", bg="blue"))
+    btn_l = Button(0, 0, "Login", width=14, style=Style(fg="white", bg="blue"))
     btn_r = Button(0, 0, "Register", width=14, style=Style(fg="white", bg="green"))
-    btn_q = Button(0, 0, "Quit",     width=14, style=Style(fg="white", bg="red"))
+    btn_q = Button(0, 0, "Quit", width=14, style=Style(fg="white", bg="red"))
 
     btn_l.on_click(lambda b: show_login())
     btn_r.on_click(lambda b: show_register())
@@ -161,9 +170,16 @@ def show_welcome():
 # Login screen
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def show_login(error=""):
-    box = Box(2, 1, "900x390", border="rounded",
-              style=Style(fg="blue", bg="black"), title=" LOGIN ")
+    box = Box(
+        2,
+        1,
+        "900x390",
+        border="rounded",
+        style=Style(fg="blue", bg="black"),
+        title=" LOGIN ",
+    )
 
     inp_user = Input(13, 2, 22, placeholder="your username")
     inp_pass = Input(13, 4, 22, placeholder="your password", masked=True)
@@ -178,7 +194,9 @@ def show_login(error=""):
 
     row = HBox(3, 8, gap=2)
     btn_login = Button(0, 0, "Login", width=12, style=Style(fg="white", bg="blue"))
-    btn_back  = Button(0, 0, "Back",  width=12, style=Style(fg="white", bg="bright_black"))
+    btn_back = Button(
+        0, 0, "Back", width=12, style=Style(fg="white", bg="bright_black")
+    )
 
     def do_login(b):
         u = inp_user.value.strip()
@@ -201,17 +219,23 @@ def show_login(error=""):
     row.add(btn_login).add(btn_back)
     box.add(row)
 
-    switch_screen(box, focus=inp_user,
-                  keys={Key.ESC: lambda: show_welcome()})
+    switch_screen(box, focus=inp_user, keys={Key.ESC: lambda: show_welcome()})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Register screen
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def show_register(error=""):
-    box = Box(2, 1, "900x390", border="rounded",
-              style=Style(fg="green", bg="black"), title=" REGISTER ")
+    box = Box(
+        2,
+        1,
+        "900x390",
+        border="rounded",
+        style=Style(fg="green", bg="black"),
+        title=" REGISTER ",
+    )
 
     inp_user = Input(13, 2, 22, placeholder="choose a username")
     inp_pass = Input(13, 4, 22, placeholder="choose a password", masked=True)
@@ -225,8 +249,10 @@ def show_register(error=""):
         box.add(Label(3, 6, f"✗  {error}", style=Style(fg="red")))
 
     row = HBox(3, 8, gap=2)
-    btn_reg  = Button(0, 0, "Register", width=14, style=Style(fg="white", bg="green"))
-    btn_back = Button(0, 0, "Back",     width=14, style=Style(fg="white", bg="bright_black"))
+    btn_reg = Button(0, 0, "Register", width=14, style=Style(fg="white", bg="green"))
+    btn_back = Button(
+        0, 0, "Back", width=14, style=Style(fg="white", bg="bright_black")
+    )
 
     def do_register(b):
         u = inp_user.value.strip()
@@ -248,29 +274,34 @@ def show_register(error=""):
     row.add(btn_reg).add(btn_back)
     box.add(row)
 
-    switch_screen(box, focus=inp_user,
-                  keys={Key.ESC: lambda: show_welcome()})
+    switch_screen(box, focus=inp_user, keys={Key.ESC: lambda: show_welcome()})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Timer screen
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def show_timer():
     username = current_user[0]
     user = data["users"][username]
     records = user.setdefault("records", [])
 
-    box = Box(2, 1, "1020x630", border="rounded",
-              style=Style(fg="cyan", bg="black"),
-              title=f" TIMER — {username} ")
+    box = Box(
+        2,
+        1,
+        "1020x630",
+        border="rounded",
+        style=Style(fg="cyan", bg="black"),
+        title=f" TIMER — {username} ",
+    )
 
     timer = CountdownTimer(3, 2, width=30, style=Style(fg="cyan", bg="black"))
 
     def on_complete(orig_minutes):
         records.append({"minutes": orig_minutes, "date": date.today().isoformat()})
         save_data()
-        show_timer()   # refresh so the new record appears
+        show_timer()  # refresh so the new record appears
 
     timer.on_complete(on_complete)
     box.add(timer)
@@ -282,9 +313,13 @@ def show_timer():
     box.add(inp_minutes)
 
     ctrl = HBox(3, 11, gap=2)
-    btn_set   = Button(0, 0, "Set & Start",  width=14, style=Style(fg="white", bg="blue"))
-    btn_pause = Button(0, 0, "Pause/Resume", width=15, style=Style(fg="white", bg="yellow"))
-    btn_reset = Button(0, 0, "Reset",        width=10, style=Style(fg="white", bg="bright_black"))
+    btn_set = Button(0, 0, "Set & Start", width=14, style=Style(fg="white", bg="blue"))
+    btn_pause = Button(
+        0, 0, "Pause/Resume", width=15, style=Style(fg="white", bg="yellow")
+    )
+    btn_reset = Button(
+        0, 0, "Reset", width=10, style=Style(fg="white", bg="bright_black")
+    )
 
     def do_set(b):
         t = inp_minutes.value.strip()
@@ -299,34 +334,44 @@ def show_timer():
     box.add(ctrl)
 
     box.add(Label(3, 13, "─" * 30, style=Style(fg="cyan")))
-    box.add(Label(3, 14, "Recent Records",
-                  style=Style(fg="bright_white", styles=["bold"])))
+    box.add(
+        Label(3, 14, "Recent Records", style=Style(fg="bright_white", styles=["bold"]))
+    )
 
-    recent = records[-5:][::-1]   # last 5, newest first
+    recent = records[-5:][::-1]  # last 5, newest first
     if recent:
         for i, rec in enumerate(recent):
-            box.add(Label(4, 15 + i,
-                          f"{rec['date']}  —  {rec['minutes']} min",
-                          style=Style(fg="bright_black")))
+            box.add(
+                Label(
+                    4,
+                    15 + i,
+                    f"{rec['date']}  —  {rec['minutes']} min",
+                    style=Style(fg="bright_black"),
+                )
+            )
     else:
         box.add(Label(4, 15, "No records yet.", style=Style(fg="bright_black")))
 
     box.add(Label(3, 21, "─" * 30, style=Style(fg="cyan")))
 
-    btn_logout = Button(3, 22, "Logout", width=12, style=Style(fg="white", bg="magenta"))
+    btn_logout = Button(
+        3, 22, "Logout", width=12, style=Style(fg="white", bg="magenta")
+    )
     btn_logout.on_click(lambda b: _logout())
     box.add(btn_logout)
-    box.add(Label(17, 22, "SPACE Pause  R Reset  ESC Quit",
-                  style=Style(fg="bright_black")))
+    box.add(
+        Label(17, 22, "SPACE Pause  R Reset  ESC Quit", style=Style(fg="bright_black"))
+    )
 
     switch_screen(
-        box, focus=inp_minutes,
+        box,
+        focus=inp_minutes,
         keys={
-            " ":     lambda: timer.toggle(),
-            "r":     lambda: timer.reset(),
-            "R":     lambda: timer.reset(),
+            " ": lambda: timer.toggle(),
+            "r": lambda: timer.reset(),
+            "R": lambda: timer.reset(),
             Key.ESC: lambda: "quit",
-        }
+        },
     )
 
 

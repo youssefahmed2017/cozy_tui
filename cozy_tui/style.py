@@ -2,37 +2,19 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-from cozy_kit import TextCustomizations
-
-tc = TextCustomizations()
-
 
 class Style:
-    def __init__(
-        self,
-        fg=None,
-        bg=None,
-        styles=None,
-    ):
+    __slots__ = ("fg", "bg", "styles")
+
+    def __init__(self, fg=None, bg=None, styles=None):
         self.fg = fg
         self.bg = f"{bg}_bg" if bg else None
-        self.styles = styles or []
+        self.styles = tuple(styles) if styles else ()
 
 
 class Cell:
+    __slots__ = ("char", "style")
+
     def __init__(self, char: str, style: Style) -> None:
         self.char = char
         self.style = style
-
-    def render(self):
-        args = []
-
-        if self.style.bg:
-            args.append(self.style.bg)
-
-        if self.style.fg:
-            args.append(self.style.fg)
-
-        args.extend(self.style.styles)
-
-        return tc.customize(self.char, *args)

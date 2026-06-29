@@ -3,11 +3,7 @@ import time
 import os
 import ctypes
 from cozy_tui.style import Style, Cell
-from cozy_tui.ansi import (
-    _BG,
-    _FG,
-    _ST,
-)
+from cozy_tui.ansi import style_esc
 from cozy_tui.events import (
     Key,
     MouseClick,
@@ -22,6 +18,10 @@ _ENABLE_PROCESSED_INPUT = 0x0001  # Ctrl+C → CTRL_C_EVENT signal; must be OFF
 _ENABLE_LINE_INPUT      = 0x0002  # line-buffered; must be OFF for raw mode
 _ENABLE_ECHO_INPUT      = 0x0004  # echo; must be OFF for raw mode
 # fmt: on
+
+# Sentinel stored in _prev_cells to mark a cell that has never been rendered.
+# Must not equal any valid (char, fg, bg, styles) tuple.
+_UNSET = object()
 
 
 def _enable_vt_console():
@@ -73,6 +73,7 @@ class App:
         self.focused = None
         self._key_handlers = {}
         self._cursor_on = True
+        self._last_cursor_esc = None   # track last-emitted cursor state
 
     def _init_size(self, size=None):
         if self.full:
@@ -93,6 +94,13 @@ class App:
             [Cell(char=" ", style=self.style) for _ in range(self.cols)]
             for _ in range(self.rows)
         ]
+        # Double buffer: stores the last-rendered (char, fg, bg, styles) per cell.
+        # _UNSET marks cells that have never been written to the terminal.
+        self._prev_cells = [
+            [_UNSET] * self.cols for _ in range(self.rows)
+        ]
+        self._full_render_pending = True
+        self._last_cursor_esc = None
 
     def _check_resize(self):
         if not self.full:
@@ -111,6 +119,9 @@ class App:
             [Cell(char=" ", style=self.style) for _ in range(self.cols)]
             for _ in range(self.rows)
         ]
+        self._prev_cells = [[_UNSET] * self.cols for _ in range(self.rows)]
+        self._full_render_pending = True
+        self._last_cursor_esc = None
         max_scroll = max(0, self._content_rows - self.rows)
         self.scroll_y = min(self.scroll_y, max_scroll)
         return True
@@ -127,6 +138,11 @@ class App:
 
     def focus(self, widget):
         self.focused = widget
+
+    def invalidate(self):
+        """Force a full render on the next frame — call after switching screens."""
+        self._full_render_pending = True
+        self._last_cursor_esc = None
 
     def _collect_focusables(self):
         result = []
@@ -153,77 +169,122 @@ class App:
         self.focused = focusables[(idx + direction) % len(focusables)]
 
     def write(self, x, y, text, style: Style):
-        # Track the furthest row any widget writes to for scroll clamping.
         if y + 1 > self._content_rows:
             self._content_rows = y + 1
-
         vy = y - self.scroll_y
         if not (0 <= vy < len(self.buffer)):
             return
-
+        row = self.buffer[vy]
+        n = len(row)
         for i, ch in enumerate(text):
             col = x + i
-            if 0 <= col < len(self.buffer[vy]):
-                cell = self.buffer[vy][col]
+            if col >= n:
+                break
+            if col >= 0:
+                cell = row[col]
                 cell.char = ch
                 cell.style = style
 
     def clear(self):
         self._content_rows = 0
+        base = self.style
         for row in self.buffer:
             for cell in row:
                 cell.char = " "
-                cell.style = self.style
+                cell.style = base
+
+    # ── rendering ─────────────────────────────────────────────────────────────
 
     def render(self):
         self.clear()
-
         for widget in self.widgets:
             widget.draw(self)
 
+        if self._full_render_pending:
+            self._full_render_pending = False
+            self._do_full_render()
+        else:
+            self._do_diff_render()
+
+    def _cursor_esc(self) -> str:
+        """Return the terminal escape to position / show / hide the cursor."""
+        focused = self.focused
+        if focused is None:
+            return "\033[?25l"
+        if not getattr(focused, "cursor", False):
+            return "\033[?25l"
+        if getattr(focused, "cursor_style", None) != "vertical":
+            return "\033[?25l"
+        if not self._cursor_on:
+            return "\033[?25l"
+        pos = focused._get_cursor_screen_pos(self.scroll_y)
+        if pos is None:
+            return "\033[?25l"
+        sc, sr = pos
+        if 0 <= sr < self.rows and 0 <= sc < self.cols:
+            return f"\033[{sr + 1};{sc + 1}H\033[?25h"
+        return "\033[?25l"
+
+    def _do_full_render(self):
+        """Write every cell to the terminal and sync _prev_cells."""
         lines = []
-        for row in self.buffer:
+        prev = self._prev_cells
+
+        for r, row in enumerate(self.buffer):
             parts = []
-            prev_key = None
+            prev_style_key = None
             run = []
-            for cell in row:
-                key = (cell.style.fg, cell.style.bg, tuple(cell.style.styles))
-                if key != prev_key:
+            prev_row = prev[r]
+
+            for c, cell in enumerate(row):
+                sk = cell.style.styles
+                style_key = (cell.style.fg, cell.style.bg, sk)
+
+                if style_key != prev_style_key:
                     if run:
                         parts.append("".join(run))
                         run = []
-                    codes = []
-                    if cell.style.bg in _BG:
-                        codes.append(_BG[cell.style.bg])
-                    if cell.style.fg in _FG:
-                        codes.append(_FG[cell.style.fg])
-                    for s in cell.style.styles:
-                        if s in _ST:
-                            codes.append(_ST[s])
-                    parts.append(f"\033[0;{';'.join(codes)}m" if codes else "\033[0m")
-                    prev_key = key
+                    parts.append(style_esc(cell.style.fg, cell.style.bg, sk))
+                    prev_style_key = style_key
+
                 run.append(cell.char)
+                prev_row[c] = (cell.char, cell.style.fg, cell.style.bg, sk)
+
             if run:
                 parts.append("".join(run))
             parts.append("\033[0m")
             lines.append("".join(parts))
 
-        cursor_esc = "\033[?25l"
-        focused = self.focused
-        if (
-            focused is not None
-            and getattr(focused, "cursor", False)
-            and getattr(focused, "cursor_style", None) == "vertical"
-            and self._cursor_on
-        ):
-            pos = focused._get_cursor_screen_pos(self.scroll_y)
-            if pos is not None:
-                sc, sr = pos
-                if 0 <= sr < self.rows and 0 <= sc < self.cols:
-                    cursor_esc = f"\033[{sr + 1};{sc + 1}H\033[?25h"
-
-        sys.stdout.write("\033[H" + "\n".join(lines) + cursor_esc)
+        cursor = self._cursor_esc()
+        sys.stdout.write("\033[H" + "\n".join(lines) + cursor)
         sys.stdout.flush()
+        self._last_cursor_esc = cursor
+
+    def _do_diff_render(self):
+        """Write only cells that changed since the last render."""
+        out = []
+        prev = self._prev_cells
+
+        for r, row in enumerate(self.buffer):
+            prev_row = prev[r]
+            for c, cell in enumerate(row):
+                sk = cell.style.styles
+                key = (cell.char, cell.style.fg, cell.style.bg, sk)
+                if key == prev_row[c]:
+                    continue
+                prev_row[c] = key
+                out.append(f"\033[{r + 1};{c + 1}H")
+                out.append(style_esc(cell.style.fg, cell.style.bg, sk))
+                out.append(cell.char)
+
+        cursor = self._cursor_esc()
+        if out or cursor != self._last_cursor_esc:
+            out.append(cursor)
+            sys.stdout.write("".join(out))
+            sys.stdout.flush()
+            self._last_cursor_esc = cursor
+
+    # ── hit testing ───────────────────────────────────────────────────────────
 
     def _hit_test(self, col: int, row: int):
         """Return the topmost focusable widget whose bounding box contains (col, row)."""
@@ -250,7 +311,6 @@ class App:
             if self.full
             else "\033[2J\033[H\033[?25l\033[?1000h\033[?1006h"
         )
-
         exit_ = (
             "\033[?1006l\033[?1000l\033[?25h\033[?1049l"
             if self.full
