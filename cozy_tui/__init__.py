@@ -4,6 +4,7 @@ from cozy_tui.style import Style
 from cozy_tui.widgets.box import Box
 from cozy_tui.widgets.label import Label
 from cozy_tui.widgets.input import Input
+from cozy_tui.widgets.button import Button
 
 __all__ = [
     "App",
@@ -11,4 +12,5 @@ __all__ = [
     "Box",
     "Label",
     "Input",
+    "Button",
 ]

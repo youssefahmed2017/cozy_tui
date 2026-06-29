@@ -281,6 +281,8 @@ class App:
                     target = self._hit_test(key.col, key.row + self.scroll_y)
                     if target is not None:
                         self.focused = target
+                        if hasattr(target, "on_mouse_click"):
+                            target.on_mouse_click()
                     continue
                 if key == Key.CTRL_C:
                     break
