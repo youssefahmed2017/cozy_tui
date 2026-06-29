@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
-import re
-from io import StringIO
-
 from cozy_tui.widgets.input import Input
 from cozy_tui.style import Style
 
 try:
     from rich.console import Console
     from rich.markdown import Markdown as _RichMarkdown
+    from rich.color import ColorType
     _RICH_OK = True
 except ImportError:
     _RICH_OK = False
 
-# ── ANSI parser ───────────────────────────────────────────────────────────────
+# ── Rich → cozy_tui colour mapping ───────────────────────────────────────────
 
 _ANSI16 = [
     "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
@@ -23,27 +21,90 @@ _ANSI16 = [
     "bright_blue", "bright_magenta", "bright_cyan", "bright_white",
 ]
 
-_FG_CODES = {
-    30: "black",        31: "red",          32: "green",        33: "yellow",
-    34: "blue",         35: "magenta",      36: "cyan",         37: "white",
-    90: "bright_black", 91: "bright_red",   92: "bright_green", 93: "bright_yellow",
-    94: "bright_blue",  95: "bright_magenta", 96: "bright_cyan", 97: "bright_white",
-}
-_BG_CODES = {
-    40: "black",         41: "red",           42: "green",         43: "yellow",
-    44: "blue",          45: "magenta",        46: "cyan",          47: "white",
-    100: "bright_black", 101: "bright_red",   102: "bright_green", 103: "bright_yellow",
-    104: "bright_blue",  105: "bright_magenta", 106: "bright_cyan", 107: "bright_white",
-}
+# Canonical RGB values for each of the 16 ANSI colours (used for nearest-match)
+_ANSI16_RGB = [
+    (0,   0,   0),    # black
+    (170, 0,   0),    # red
+    (0,   170, 0),    # green
+    (170, 170, 0),    # yellow
+    (0,   0,   170),  # blue
+    (170, 0,   170),  # magenta
+    (0,   170, 170),  # cyan
+    (170, 170, 170),  # white
+    (85,  85,  85),   # bright_black
+    (255, 85,  85),   # bright_red
+    (85,  255, 85),   # bright_green
+    (255, 255, 85),   # bright_yellow
+    (85,  85,  255),  # bright_blue
+    (255, 85,  255),  # bright_magenta
+    (85,  255, 255),  # bright_cyan
+    (255, 255, 255),  # bright_white
+]
 
-_CSI_RE = re.compile(r"\x1b\[([0-9;]*)([A-Za-z])")
-_OSC_RE = re.compile(r"\x1b\][^\x07]*\x07|\x1b\][^\x1b]*\x1b\\")
+
+def _eight_bit_to_rgb(n: int) -> tuple:
+    """Convert a 256-colour palette index to (R, G, B)."""
+    if n < 16:
+        return _ANSI16_RGB[n]
+    if n < 232:
+        n -= 16
+        r, g, b = n // 36, (n // 6) % 6, n % 6
+        def _v(x): return 0 if x == 0 else 55 + x * 40
+        return _v(r), _v(g), _v(b)
+    v = 8 + (n - 232) * 10   # grayscale ramp
+    return v, v, v
+
+
+def _nearest_ansi16(r: int, g: int, b: int) -> str:
+    """Return the closest ANSI-16 colour name for an arbitrary RGB value."""
+    return _ANSI16[
+        min(
+            range(16),
+            key=lambda i: (
+                (r - _ANSI16_RGB[i][0]) ** 2
+                + (g - _ANSI16_RGB[i][1]) ** 2
+                + (b - _ANSI16_RGB[i][2]) ** 2
+            ),
+        )
+    ]
+
+
+def _cozy_color(rich_color) -> str | None:
+    """Map any Rich Color to a cozy_tui colour name, or None to inherit."""
+    if rich_color is None or rich_color.type == ColorType.DEFAULT:
+        return None
+    if rich_color.type == ColorType.STANDARD:
+        n = rich_color.number
+        return _ANSI16[n] if n is not None and 0 <= n < 16 else None
+    if rich_color.type == ColorType.EIGHT_BIT:
+        n = rich_color.number
+        if n is None:
+            return None
+        return _ANSI16[n] if n < 16 else _nearest_ansi16(*_eight_bit_to_rgb(n))
+    if rich_color.type == ColorType.TRUECOLOR:
+        t = rich_color.triplet
+        return _nearest_ansi16(t.red, t.green, t.blue) if t else None
+    return None
+
+
+def _to_cozy_style(rich_style, base: Style) -> Style:
+    """Convert a Rich Segment Style to a cozy_tui Style, inheriting from base."""
+    if not rich_style:
+        return base
+    fg = _cozy_color(rich_style.color)   if rich_style.color   is not None else base.fg
+    bg = _cozy_color(rich_style.bgcolor) if rich_style.bgcolor is not None else base.bg
+    st = list(base.styles)
+    for attr, name in (
+        ("bold", "bold"), ("italic", "italic"),
+        ("underline", "underline"), ("dim", "dim"),
+    ):
+        if getattr(rich_style, attr, False) and name not in st:
+            st.append(name)
+    return Style(fg=fg, bg=bg, styles=st)
 
 
 def _emit(lines: list, text: str, style: Style) -> None:
-    """Append *text* to *lines*, splitting on newlines."""
-    if not text:
-        return
+    """Append text to lines, creating a new line entry on each '\\n'."""
     if "\n" in text:
         parts = text.split("\n")
         for i, part in enumerate(parts):
@@ -51,71 +112,11 @@ def _emit(lines: list, text: str, style: Style) -> None:
                 lines[-1].append((part, style))
             if i < len(parts) - 1:
                 lines.append([])
-    else:
+    elif text:
         lines[-1].append((text, style))
 
 
-def _parse_ansi_lines(raw: str, base: Style) -> list:
-    """Parse an ANSI-escaped string into ``list[list[(str, Style)]]``."""
-    lines: list[list] = [[]]
-    raw = _OSC_RE.sub("", raw)   # strip hyperlinks / OSC sequences
-
-    fg, bg, st = base.fg, base.bg, list(base.styles)
-    pos = 0
-
-    while pos < len(raw):
-        m = _CSI_RE.search(raw, pos)
-        if not m:
-            _emit(lines, raw[pos:], Style(fg=fg, bg=bg, styles=list(st)))
-            break
-
-        if m.start() > pos:
-            _emit(lines, raw[pos:m.start()], Style(fg=fg, bg=bg, styles=list(st)))
-
-        if m.group(2) == "m":   # SGR — only sequence type we care about
-            params = (
-                [int(x) for x in m.group(1).split(";") if x.isdigit()]
-                if m.group(1) else [0]
-            )
-            i = 0
-            while i < len(params):
-                p = params[i]
-                if p == 0:
-                    fg, bg, st = base.fg, base.bg, list(base.styles)
-                elif p == 1 and "bold"      not in st: st.append("bold")
-                elif p == 2 and "dim"       not in st: st.append("dim")
-                elif p == 3 and "italic"    not in st: st.append("italic")
-                elif p == 4 and "underline" not in st: st.append("underline")
-                elif p == 22: st = [s for s in st if s not in ("bold", "dim")]
-                elif p == 23: st = [s for s in st if s != "italic"]
-                elif p == 24: st = [s for s in st if s != "underline"]
-                elif p in _FG_CODES: fg = _FG_CODES[p]
-                elif p == 39:         fg = base.fg
-                elif p in _BG_CODES: bg = _BG_CODES[p]
-                elif p == 49:         bg = base.bg
-                elif p == 38:
-                    if i + 2 < len(params) and params[i + 1] == 5:
-                        n = params[i + 2]
-                        fg = _ANSI16[n] if n < 16 else fg
-                        i += 2
-                    elif i + 4 < len(params) and params[i + 1] == 2:
-                        i += 4
-                elif p == 48:
-                    if i + 2 < len(params) and params[i + 1] == 5:
-                        n = params[i + 2]
-                        bg = _ANSI16[n] if n < 16 else bg
-                        i += 2
-                    elif i + 4 < len(params) and params[i + 1] == 2:
-                        i += 4
-                i += 1
-        # All other CSI sequences (cursor movement, erase, etc.) are consumed silently
-
-        pos = m.end()
-
-    return lines
-
-
-# ── Widget ────────────────────────────────────────────────────────────────────
+# ── widget ────────────────────────────────────────────────────────────────────
 
 class MarkdownInput(Input):
     """Input widget that renders content as a live Markdown preview when unfocused.
@@ -126,6 +127,19 @@ class MarkdownInput(Input):
 
     - focused   → raw text with cursor  (standard Input rendering)
     - unfocused → Rich Markdown preview
+
+    Rendering pipeline::
+
+        self.value
+            ↓
+        Console.render()       # yields Segment(text, rich_style)
+            ↓
+        _to_cozy_style()       # STANDARD/EIGHT_BIT/TRUECOLOR → nearest ANSI-16 name
+            ↓
+        canvas.write()
+
+    No ANSI is emitted or parsed.  Rich's Segment objects already carry
+    typed colour/style info, so the conversion goes Style → Style directly.
 
     Requires ``rich`` (``pip install rich``).  Falls back to plain Input
     rendering if Rich is not installed.
@@ -148,16 +162,15 @@ class MarkdownInput(Input):
     def _render_md(self, text: str, w: int) -> list:
         if not text:
             return []
-        buf = StringIO()
-        con = Console(
-            file=buf,
-            width=w,
-            color_system="standard",
-            highlight=False,
-            force_terminal=True,
-        )
-        con.print(_RichMarkdown(text), end="")
-        return _parse_ansi_lines(buf.getvalue(), self.style)
+        # color_system="truecolor" ensures style.color / style.bgcolor are always
+        # populated on segments so _cozy_color() can map them to ANSI-16 names.
+        con = Console(width=w, color_system="truecolor", highlight=False, markup=False)
+        lines: list[list[tuple[str, Style]]] = [[]]
+        for seg in con.render(_RichMarkdown(text)):
+            if not seg.text:
+                continue
+            _emit(lines, seg.text, _to_cozy_style(seg.style, self.style))
+        return lines
 
     # ── draw ──────────────────────────────────────────────────────────────────
 
