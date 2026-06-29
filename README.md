@@ -1,6 +1,6 @@
 # cozy_tui
 
-A lightweight Python TUI (Terminal User Interface) library for Windows. Build keyboard-driven terminal apps with widgets, focus management, mouse support, and smooth cursor blinking — all rendered through raw VT sequences with no external dependencies.
+A lightweight Python TUI (Terminal User Interface) library for Windows. Build keyboard-driven terminal apps with widgets, focus management, mouse support, and smooth cursor blinking — all rendered through raw VT sequences.
 
 ---
 
@@ -34,7 +34,7 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
 
 ## Features
 
-- **Very few dependencies** — almost pure Python, uses only one dependency `cozy-kit`, everything else is the standard library.
+- **Very few dependencies** — almost pure Python, uses only two dependencies, `cozy-kit` and `pyperclip`, everything else is the standard library.
 - **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Box`, `MarkdownInput`
 - **Layouts**: `VBox`, `HBox`, `Grid` — auto-position children without manual x/y
 - **Multi-line Input**: Enter or Shift+Enter to insert newlines, UP/DOWN to navigate lines
