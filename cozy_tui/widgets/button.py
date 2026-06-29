@@ -9,16 +9,15 @@ _PRESS_DURATION = 0.3
 class Button(Widget):
     focusable = True
 
-    def __init__(self, x, y, text, size=None, style=None):
+    def __init__(self, x, y, text, width=None, style=None):
         super().__init__(x, y, style)
         self.text = text
-        self.size = size          # total width; None = auto (len(text) + 4)
-        self._handler = None
+        self.width = width
         self._pressed = False
         self._press_time = 0.0
 
     def _width(self):
-        return self.size if self.size else len(self.text) + 4
+        return max(self.width or 0, len(self.text) + 4, 8)
 
     def natural_width(self, scale):
         return self._width()
@@ -26,15 +25,10 @@ class Button(Widget):
     def contains(self, col: int, row: int) -> bool:
         return self.abs_x <= col < self.abs_x + self._width() and self.abs_y == row
 
-    def on_click(self, func):
-        self._handler = func
-        return self
-
     def _activate(self):
         self._pressed = True
         self._press_time = time.monotonic()
-        if self._handler:
-            self._handler()
+        self._fire_click()
 
     def on_key(self, key):
         if key in (Key.ENTER, " "):
