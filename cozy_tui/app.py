@@ -336,7 +336,7 @@ class App:
 
                 self._cursor_on = True
                 key = read_key()
-                if key is None:
+                if not key:  # None or "" from focus/resize console events
                     continue
                 if isinstance(key, MouseClick):
                     target = self._hit_test(key.col, key.row + self.scroll_y)

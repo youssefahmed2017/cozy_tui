@@ -1,58 +1,25 @@
-import ctypes as _ct
+import pyperclip as _pyperclip
 
 from cozy_tui.widget import Widget
 from cozy_tui.style import Style
 from cozy_tui.events import Key
 
-# ── Windows clipboard ─────────────────────────────────────────────────────────
-
-_CF_UNICODETEXT = 13
-_GMEM_MOVEABLE  = 0x0002
-_u32 = _ct.windll.user32
-_k32 = _ct.windll.kernel32
-
+# ── Clipboard ─────────────────────────────────────────────────────────────────
 
 def _clipboard_get() -> str:
-    if not _u32.OpenClipboard(None):
-        return ""
     try:
-        h = _u32.GetClipboardData(_CF_UNICODETEXT)
-        if not h:
-            return ""
-        ptr = _k32.GlobalLock(h)
-        if not ptr:
-            return ""
-        try:
-            return _ct.wstring_at(ptr)
-        finally:
-            _k32.GlobalUnlock(h)
+        return _pyperclip.paste() or ""
     except Exception:
         return ""
-    finally:
-        _u32.CloseClipboard()
 
 
 def _clipboard_set(text: str) -> None:
     if not text:
         return
-    data = text.encode("utf-16-le") + b"\x00\x00"
-    h = _k32.GlobalAlloc(_GMEM_MOVEABLE, len(data))
-    if not h:
-        return
-    ptr = _k32.GlobalLock(h)
-    if not ptr:
-        _k32.GlobalFree(h)
-        return
     try:
-        _ct.memmove(ptr, data, len(data))
-    finally:
-        _k32.GlobalUnlock(h)
-    if _u32.OpenClipboard(None):
-        _u32.EmptyClipboard()
-        _u32.SetClipboardData(_CF_UNICODETEXT, h)
-        _u32.CloseClipboard()
-    else:
-        _k32.GlobalFree(h)
+        _pyperclip.copy(text)
+    except Exception:
+        pass
 
 
 # ── Input widget ──────────────────────────────────────────────────────────────

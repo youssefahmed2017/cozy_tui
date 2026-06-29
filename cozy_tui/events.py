@@ -1,5 +1,8 @@
 import os
-import msvcrt
+import ctypes as _ct
+
+_k32 = _ct.windll.kernel32
+_h_stdin = _k32.GetStdHandle(_ct.c_ulong(-10))  # STD_INPUT_HANDLE
 
 # fmt: off
 class MouseClick:
@@ -53,7 +56,13 @@ _buf: list[str] = []
 
 
 def kbhit() -> bool:
-    return bool(_buf) or msvcrt.kbhit()
+    if _buf:
+        return True
+    # WaitForSingleObject with 0ms timeout: returns 0 (WAIT_OBJECT_0) when stdin
+    # has any pending input — keyboard, mouse clicks, or mouse scroll VT bytes.
+    # msvcrt.kbhit() only detects KEY_EVENT records and misses mouse scroll in
+    # Windows Terminal (ConPTY), where mouse events arrive as raw pipe bytes.
+    return _k32.WaitForSingleObject(_h_stdin, 0) == 0
 
 
 def _read_char() -> str:
