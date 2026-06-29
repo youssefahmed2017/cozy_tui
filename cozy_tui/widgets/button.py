@@ -34,7 +34,7 @@ class Button(Widget):
         if key in (Key.ENTER, " "):
             self._activate()
 
-    def on_mouse_click(self):
+    def on_mouse_click(self, col=None, row=None):
         self._activate()
 
     def draw(self, canvas):

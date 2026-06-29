@@ -1,7 +1,61 @@
+import ctypes as _ct
+
 from cozy_tui.widget import Widget
 from cozy_tui.style import Style
 from cozy_tui.events import Key
 
+# ── Windows clipboard ─────────────────────────────────────────────────────────
+
+_CF_UNICODETEXT = 13
+_GMEM_MOVEABLE  = 0x0002
+_u32 = _ct.windll.user32
+_k32 = _ct.windll.kernel32
+
+
+def _clipboard_get() -> str:
+    if not _u32.OpenClipboard(None):
+        return ""
+    try:
+        h = _u32.GetClipboardData(_CF_UNICODETEXT)
+        if not h:
+            return ""
+        ptr = _k32.GlobalLock(h)
+        if not ptr:
+            return ""
+        try:
+            return _ct.wstring_at(ptr)
+        finally:
+            _k32.GlobalUnlock(h)
+    except Exception:
+        return ""
+    finally:
+        _u32.CloseClipboard()
+
+
+def _clipboard_set(text: str) -> None:
+    if not text:
+        return
+    data = text.encode("utf-16-le") + b"\x00\x00"
+    h = _k32.GlobalAlloc(_GMEM_MOVEABLE, len(data))
+    if not h:
+        return
+    ptr = _k32.GlobalLock(h)
+    if not ptr:
+        _k32.GlobalFree(h)
+        return
+    try:
+        _ct.memmove(ptr, data, len(data))
+    finally:
+        _k32.GlobalUnlock(h)
+    if _u32.OpenClipboard(None):
+        _u32.EmptyClipboard()
+        _u32.SetClipboardData(_CF_UNICODETEXT, h)
+        _u32.CloseClipboard()
+    else:
+        _k32.GlobalFree(h)
+
+
+# ── Input widget ──────────────────────────────────────────────────────────────
 
 class Input(Widget):
     focusable = True
@@ -24,17 +78,55 @@ class Input(Widget):
         self.width = width
         self.placeholder = placeholder
         self.value = ""
-        self.cursor_pos = 0  # caret position (flat index into value)
-        self._scroll_off = 0  # horizontal scroll offset (single-line mode)
+        self.cursor_pos = 0
+        self._scroll_off = 0
         self.cursor = cursor
         self.cursor_style = cursor_style
         self.flash = flash
         self.multiline = multiline
         self.masked = masked
         self.masked_symbol = masked_symbol
+        self._sel_anchor: int | None = None  # None = no selection
 
     def natural_width(self, scale):
         return self.width
+
+    # ── selection helpers ────────────────────────────────────────────────────
+
+    def _sel_range(self) -> tuple[int, int] | None:
+        """Return (start, end) selection range, or None when nothing is selected."""
+        if self._sel_anchor is None or self._sel_anchor == self.cursor_pos:
+            return None
+        a, b = self._sel_anchor, self.cursor_pos
+        return (a, b) if a < b else (b, a)
+
+    def _sel_text(self) -> str:
+        r = self._sel_range()
+        return self.value[r[0] : r[1]] if r else ""
+
+    def _clear_sel(self) -> None:
+        self._sel_anchor = None
+
+    def _delete_sel(self) -> None:
+        r = self._sel_range()
+        if r is None:
+            return
+        a, b = r
+        self.value = self.value[:a] + self.value[b:]
+        self.cursor_pos = a
+        self._sel_anchor = None
+
+    def _shift_move(self, new_pos: int) -> None:
+        """Move cursor to new_pos while extending/creating a selection."""
+        new_pos = max(0, min(new_pos, len(self.value)))
+        if self._sel_anchor is None:
+            self._sel_anchor = self.cursor_pos
+        self.cursor_pos = new_pos
+        if self.cursor_pos == self._sel_anchor:
+            self._sel_anchor = None
+
+    def _sel_style(self) -> Style:
+        return Style(fg="white", bg="blue")
 
     # ── position helpers (multi-line) ────────────────────────────────────────
 
@@ -47,7 +139,7 @@ class Input(Widget):
     def _line_col_to_pos(self, line: int, col: int) -> int:
         """Convert (line, col) to a flat cursor_pos."""
         lines = self.value.split("\n")
-        pos = sum(len(lines[i]) + 1 for i in range(line))  # +1 for the \n
+        pos = sum(len(lines[i]) + 1 for i in range(line))
         return pos + min(col, len(lines[line]) if line < len(lines) else 0)
 
     def _get_cursor_screen_pos(self, scroll_y: int):
@@ -86,7 +178,6 @@ class Input(Widget):
         return self._row_count(w)
 
     def _row_count(self, w: int) -> int:
-        """Total display rows needed for current value at display width w."""
         if self.multiline:
             logical = self.value.split("\n") if self.value else [""]
             return sum(max(1, (len(l) + w - 1) // w) for l in logical)
@@ -110,7 +201,7 @@ class Input(Widget):
         return self.style
 
     def _focused_style(self):
-        return Style(fg="black", bg="white")  # Style() adds _bg automatically
+        return Style(fg="black", bg="white")
 
     def _placeholder_style(self, focused: bool = False):
         if focused:
@@ -120,26 +211,71 @@ class Input(Widget):
 
     def _cursor_style_obj(self, char_at_cursor, content_style: Style):
         fg = content_style.fg
-        bg = content_style.bg  # has _bg suffix or None
-        raw_bg = bg.replace("_bg", "") if bg else None  # strip suffix for Style()
+        bg = content_style.bg
+        raw_bg = bg.replace("_bg", "") if bg else None
 
         if self.cursor_style == "block":
             return Style(fg=raw_bg or "black", bg=fg or "white"), char_at_cursor
-        elif self.cursor_style == "underline":
+        else:  # vertical / underline — underline so it's always visible
             return Style(fg=fg, bg=raw_bg, styles=["underline"]), char_at_cursor
-        else:  # vertical (default) — underline the char so it never disappears
-            return Style(fg=fg, bg=raw_bg, styles=["underline"]), char_at_cursor
+
+    # ── mouse click ──────────────────────────────────────────────────────────
+
+    def on_mouse_click(self, col=None, row=None):
+        self._clear_sel()
+        if col is not None and row is not None:
+            self._set_cursor_from_mouse(col, row)
+        self._fire_click()
+
+    def _set_cursor_from_mouse(self, col: int, row: int) -> None:
+        """Position cursor_pos from a terminal click at (col, row)."""
+        w = self._clip_width or self.width
+        if self.multiline:
+            target_row = row - self.abs_y
+            display_row = 0
+            flat_pos = 0
+            value_lines = self.value.split("\n")
+            for li, logical_line in enumerate(self._display_value.split("\n")):
+                vline_len = len(value_lines[li]) if li < len(value_lines) else 0
+                chunks_count = max(1, (len(logical_line) + w - 1) // w) if logical_line else 1
+                if display_row + chunks_count > target_row:
+                    chunk_idx = target_row - display_row
+                    col_in_chunk = max(0, col - self.abs_x)
+                    pos = flat_pos + chunk_idx * w + col_in_chunk
+                    self.cursor_pos = max(0, min(pos, flat_pos + vline_len))
+                    return
+                display_row += chunks_count
+                flat_pos += vline_len + 1
+            self.cursor_pos = len(self.value)
+        elif self._clip_width:
+            line = max(0, row - self.abs_y)
+            pos = line * w + max(0, col - self.abs_x)
+            self.cursor_pos = max(0, min(pos, len(self.value)))
+        else:
+            pos = self._scroll_off + max(0, col - self.abs_x)
+            self.cursor_pos = max(0, min(pos, len(self.value)))
 
     # ── key handling ─────────────────────────────────────────────────────────
 
     def on_key(self, key):
         if key == Key.LEFT:
-            self.cursor_pos = max(0, self.cursor_pos - 1)
+            r = self._sel_range()
+            if r is not None:
+                self.cursor_pos = r[0]
+                self._clear_sel()
+            else:
+                self.cursor_pos = max(0, self.cursor_pos - 1)
 
         elif key == Key.RIGHT:
-            self.cursor_pos = min(len(self.value), self.cursor_pos + 1)
+            r = self._sel_range()
+            if r is not None:
+                self.cursor_pos = r[1]
+                self._clear_sel()
+            else:
+                self.cursor_pos = min(len(self.value), self.cursor_pos + 1)
 
         elif key == Key.HOME:
+            self._clear_sel()
             if self.multiline:
                 line, _ = self._cursor_to_line_col()
                 self.cursor_pos = self._line_col_to_pos(line, 0)
@@ -147,6 +283,7 @@ class Input(Widget):
                 self.cursor_pos = 0
 
         elif key == Key.END:
+            self._clear_sel()
             if self.multiline:
                 line, _ = self._cursor_to_line_col()
                 lines = self.value.split("\n")
@@ -155,6 +292,7 @@ class Input(Widget):
                 self.cursor_pos = len(self.value)
 
         elif key == Key.UP and self.multiline:
+            self._clear_sel()
             line, col = self._cursor_to_line_col()
             if line > 0:
                 lines = self.value.split("\n")
@@ -163,6 +301,7 @@ class Input(Widget):
                 )
 
         elif key == Key.DOWN and self.multiline:
+            self._clear_sel()
             line, col = self._cursor_to_line_col()
             lines = self.value.split("\n")
             if line < len(lines) - 1:
@@ -170,30 +309,107 @@ class Input(Widget):
                     line + 1, min(col, len(lines[line + 1]))
                 )
 
+        # ── Shift navigation ─────────────────────────────────────────────────
+
+        elif key == Key.SHIFT_LEFT:
+            self._shift_move(self.cursor_pos - 1)
+
+        elif key == Key.SHIFT_RIGHT:
+            self._shift_move(self.cursor_pos + 1)
+
+        elif key == Key.SHIFT_HOME:
+            if self.multiline:
+                line, _ = self._cursor_to_line_col()
+                self._shift_move(self._line_col_to_pos(line, 0))
+            else:
+                self._shift_move(0)
+
+        elif key == Key.SHIFT_END:
+            if self.multiline:
+                line, _ = self._cursor_to_line_col()
+                lines = self.value.split("\n")
+                self._shift_move(self._line_col_to_pos(line, len(lines[line])))
+            else:
+                self._shift_move(len(self.value))
+
+        elif key == Key.SHIFT_UP and self.multiline:
+            line, col = self._cursor_to_line_col()
+            if line > 0:
+                lines = self.value.split("\n")
+                self._shift_move(self._line_col_to_pos(line - 1, min(col, len(lines[line - 1]))))
+
+        elif key == Key.SHIFT_DOWN and self.multiline:
+            line, col = self._cursor_to_line_col()
+            lines = self.value.split("\n")
+            if line < len(lines) - 1:
+                self._shift_move(self._line_col_to_pos(line + 1, min(col, len(lines[line + 1]))))
+
+        # ── edit operations ──────────────────────────────────────────────────
+
         elif key == Key.BACKSPACE:
-            if self.cursor_pos > 0:
+            if self._sel_anchor is not None:
+                self._delete_sel()
+            elif self.cursor_pos > 0:
                 self.value = (
                     self.value[: self.cursor_pos - 1] + self.value[self.cursor_pos :]
                 )
                 self.cursor_pos -= 1
 
         elif key == Key.DELETE:
-            if self.cursor_pos < len(self.value):
+            if self._sel_anchor is not None:
+                self._delete_sel()
+            elif self.cursor_pos < len(self.value):
                 self.value = (
                     self.value[: self.cursor_pos] + self.value[self.cursor_pos + 1 :]
                 )
 
         elif key in (Key.ENTER, Key.SHIFT_ENTER) and self.multiline:
+            if self._sel_anchor is not None:
+                self._delete_sel()
             self.value = (
                 self.value[: self.cursor_pos] + "\n" + self.value[self.cursor_pos :]
             )
             self.cursor_pos += 1
+
+        # ── clipboard / select-all ────────────────────────────────────────────
+
+        elif key == Key.CTRL_A:
+            if self.value:
+                self._sel_anchor = 0
+                self.cursor_pos = len(self.value)
+
+        elif key == Key.CTRL_C:
+            text = self._sel_text()
+            if text:
+                _clipboard_set(text)
+
+        elif key == Key.CTRL_X:
+            text = self._sel_text()
+            if text:
+                _clipboard_set(text)
+                self._delete_sel()
+
+        elif key == Key.CTRL_V:
+            pasted = _clipboard_get()
+            if pasted:
+                if self._sel_anchor is not None:
+                    self._delete_sel()
+                if not self.multiline:
+                    pasted = pasted.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+                else:
+                    pasted = pasted.replace("\r\n", "\n").replace("\r", "\n")
+                self.value = (
+                    self.value[: self.cursor_pos] + pasted + self.value[self.cursor_pos :]
+                )
+                self.cursor_pos += len(pasted)
 
         elif (
             key not in (Key.ESC, Key.ENTER, Key.TAB, Key.UP, Key.DOWN)
             and len(key) == 1
             and key.isprintable()
         ):
+            if self._sel_anchor is not None:
+                self._delete_sel()
             self.value = (
                 self.value[: self.cursor_pos] + key + self.value[self.cursor_pos :]
             )
@@ -207,6 +423,37 @@ class Input(Widget):
 
     # ── drawing ──────────────────────────────────────────────────────────────
 
+    def _write_span(
+        self,
+        canvas,
+        x: int,
+        y: int,
+        text: str,
+        start: int,
+        style: Style,
+        sel,
+        sel_style: Style,
+    ) -> None:
+        """Write text at (x, y), highlighting characters within the sel range."""
+        if not text:
+            return
+        if sel is None:
+            canvas.write(x, y, text, style)
+            return
+        sel_a, sel_b = sel
+        col = x
+        i = 0
+        n = len(text)
+        while i < n:
+            in_sel = sel_a <= (start + i) < sel_b
+            cur_style = sel_style if in_sel else style
+            j = i + 1
+            while j < n and (sel_a <= (start + j) < sel_b) == in_sel:
+                j += 1
+            canvas.write(col, y, text[i:j], cur_style)
+            col += j - i
+            i = j
+
     def draw(self, canvas):
         is_focused = canvas.focused is self
         if self.multiline:
@@ -219,15 +466,22 @@ class Input(Widget):
     def _draw_scrolling(self, canvas, is_focused):
         w = self.width
         cs = self._focused_style() if is_focused else self._normal_style()
+        sel = self._sel_range() if is_focused else None
+        sel_s = self._sel_style()
 
         if self.value:
             if self.cursor_pos < self._scroll_off:
                 self._scroll_off = self.cursor_pos
             elif self.cursor_pos >= self._scroll_off + w:
                 self._scroll_off = self.cursor_pos - w + 1
-            visible = self._display_value[self._scroll_off : self._scroll_off + w].ljust(w)
+            visible = self._display_value[self._scroll_off : self._scroll_off + w]
             cursor_col = self.cursor_pos - self._scroll_off
-            canvas.write(self.abs_x, self.abs_y, visible, cs)
+
+            self._write_span(canvas, self.abs_x, self.abs_y, visible, self._scroll_off, cs, sel, sel_s)
+            fill = w - len(visible)
+            if fill > 0:
+                canvas.write(self.abs_x + len(visible), self.abs_y, " " * fill, cs)
+
             cursor_visible = canvas._cursor_on if self.cursor else False
             if (
                 self.cursor
@@ -250,15 +504,24 @@ class Input(Widget):
     def _draw_wrapped(self, canvas, is_focused):
         w = self._clip_width
         cs = self._focused_style() if is_focused else self._normal_style()
+        sel = self._sel_range() if is_focused else None
+        sel_s = self._sel_style()
 
         if self.value:
-            lines = [self._display_value[i : i + w] for i in range(0, len(self.value), w)]
+            lines = [
+                self._display_value[i : i + w] for i in range(0, len(self.value), w)
+            ]
             cursor_line = self.cursor_pos // w
             cursor_col = self.cursor_pos % w
             while len(lines) <= cursor_line:
                 lines.append("")
+
             for i, line in enumerate(lines):
-                canvas.write(self.abs_x, self.abs_y + i, line.ljust(w), cs)
+                self._write_span(canvas, self.abs_x, self.abs_y + i, line, i * w, cs, sel, sel_s)
+                fill = w - len(line)
+                if fill > 0:
+                    canvas.write(self.abs_x + len(line), self.abs_y + i, " " * fill, cs)
+
             cursor_visible = canvas._cursor_on if self.flash else True
             if (
                 self.cursor
@@ -289,6 +552,8 @@ class Input(Widget):
     def _draw_multiline(self, canvas, is_focused):
         w = self._clip_width or self.width
         cs = self._focused_style() if is_focused else self._normal_style()
+        sel = self._sel_range() if is_focused else None
+        sel_s = self._sel_style()
         cursor_visible = (
             is_focused
             and self.cursor
@@ -307,13 +572,23 @@ class Input(Widget):
             return
 
         display_row = 0
+        flat_pos = 0  # flat index into value at start of the current logical line
+        value_lines = self.value.split("\n")
+
         for li, logical_line in enumerate(self._display_value.split("\n")):
-            # Each logical line may span multiple display rows if it overflows w
+            vline_len = len(value_lines[li]) if li < len(value_lines) else 0
             chunks = [
                 logical_line[i : i + w] for i in range(0, max(1, len(logical_line)), w)
             ] or [""]
+
             for ci, chunk in enumerate(chunks):
-                canvas.write(self.abs_x, self.abs_y + display_row, chunk.ljust(w), cs)
+                vy = self.abs_y + display_row
+                chunk_flat_start = flat_pos + ci * w
+
+                self._write_span(canvas, self.abs_x, vy, chunk, chunk_flat_start, cs, sel, sel_s)
+                fill = w - len(chunk)
+                if fill > 0:
+                    canvas.write(self.abs_x + len(chunk), vy, " " * fill, cs)
 
                 if cursor_visible and li == cur_line:
                     chunk_start = ci * w
@@ -322,25 +597,16 @@ class Input(Widget):
                         cc = cur_col - chunk_start
                         char_at = chunk[cc] if cc < len(chunk) else " "
                         cur_style, cur_char = self._cursor_style_obj(char_at, cs)
-                        canvas.write(
-                            self.abs_x + cc,
-                            self.abs_y + display_row,
-                            cur_char,
-                            cur_style,
-                        )
+                        canvas.write(self.abs_x + cc, vy, cur_char, cur_style)
                     elif cur_col == len(logical_line) and ci == len(chunks) - 1:
-                        # Cursor at end of logical line
                         cc = cur_col - chunk_start
                         if 0 <= cc <= w:
                             cur_style, cur_char = self._cursor_style_obj(" ", cs)
-                            canvas.write(
-                                self.abs_x + cc,
-                                self.abs_y + display_row,
-                                cur_char,
-                                cur_style,
-                            )
+                            canvas.write(self.abs_x + cc, vy, cur_char, cur_style)
 
                 display_row += 1
+
+            flat_pos += vline_len + 1  # +1 for the \n between logical lines
 
     def get(self):
         return self.value

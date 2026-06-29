@@ -73,7 +73,7 @@ class App:
         self.focused = None
         self._key_handlers = {}
         self._cursor_on = True
-        self._last_cursor_esc = None   # track last-emitted cursor state
+        self._last_cursor_esc = None  # track last-emitted cursor state
 
     def _init_size(self, size=None):
         if self.full:
@@ -96,9 +96,7 @@ class App:
         ]
         # Double buffer: stores the last-rendered (char, fg, bg, styles) per cell.
         # _UNSET marks cells that have never been written to the terminal.
-        self._prev_cells = [
-            [_UNSET] * self.cols for _ in range(self.rows)
-        ]
+        self._prev_cells = [[_UNSET] * self.cols for _ in range(self.rows)]
         self._full_render_pending = True
         self._last_cursor_esc = None
 
@@ -345,10 +343,14 @@ class App:
                     if target is not None:
                         self.focused = target
                         if hasattr(target, "on_mouse_click"):
-                            target.on_mouse_click()
+                            target.on_mouse_click(key.col, key.row + self.scroll_y)
                     continue
                 if key == Key.CTRL_C:
-                    break
+                    # Let text widgets handle Ctrl+C as copy; quit only when nothing is focused
+                    if self.focused and hasattr(self.focused, "value"):
+                        self.focused.on_key(key)
+                    else:
+                        break
                 elif key in (Key.SCROLL_UP, Key.PAGE_UP, Key.CTRL_UP):
                     self._scroll(-3)
                 elif key in (Key.SCROLL_DOWN, Key.PAGE_DOWN, Key.CTRL_DOWN):

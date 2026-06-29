@@ -32,8 +32,17 @@ class Key:
     SCROLL_UP  = "SCROLL_UP"
     SCROLL_DOWN = "SCROLL_DOWN"
     CTRL_C      = "\x03"
+    CTRL_A      = "\x01"
+    CTRL_V      = "\x16"
+    CTRL_X      = "\x18"
     SHIFT_TAB   = "SHIFT_TAB"
     SHIFT_ENTER = "SHIFT_ENTER"
+    SHIFT_LEFT  = "SHIFT_LEFT"
+    SHIFT_RIGHT = "SHIFT_RIGHT"
+    SHIFT_UP    = "SHIFT_UP"
+    SHIFT_DOWN  = "SHIFT_DOWN"
+    SHIFT_HOME  = "SHIFT_HOME"
+    SHIFT_END   = "SHIFT_END"
 # fmt: on
 
 # Internal read buffer.  os.read() reads the VT-processed byte stream while
@@ -73,6 +82,12 @@ _CSI_MAP = {
     "3;1~": Key.DELETE,  # Windows Terminal: explicit "no modifier" variant
     "5~": Key.PAGE_UP,
     "6~": Key.PAGE_DOWN,
+    "1;2A": Key.SHIFT_UP,
+    "1;2B": Key.SHIFT_DOWN,
+    "1;2C": Key.SHIFT_RIGHT,
+    "1;2D": Key.SHIFT_LEFT,
+    "1;2H": Key.SHIFT_HOME,
+    "1;2F": Key.SHIFT_END,
     "1;5A": Key.CTRL_UP,
     "1;5B": Key.CTRL_DOWN,
     "13;2u": Key.SHIFT_ENTER,  # XTerm / Windows Terminal Shift+Enter

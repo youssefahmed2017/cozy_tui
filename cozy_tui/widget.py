@@ -44,7 +44,7 @@ class Widget:
         if self._change_handler:
             self._change_handler(value)
 
-    def on_mouse_click(self):
+    def on_mouse_click(self, col=None, row=None):
         self._fire_click()
 
     def natural_width(self, scale):

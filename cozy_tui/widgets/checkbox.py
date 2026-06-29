@@ -15,7 +15,9 @@ class Checkbox(Widget):
         return len(self.text) + 4  # "[x] text"
 
     def contains(self, col: int, row: int) -> bool:
-        return self.abs_x <= col < self.abs_x + self.natural_width(1) and self.abs_y == row
+        return (
+            self.abs_x <= col < self.abs_x + self.natural_width(1) and self.abs_y == row
+        )
 
     def _toggle(self):
         self.checked = not self.checked
@@ -26,12 +28,12 @@ class Checkbox(Widget):
         if key in (Key.ENTER, " "):
             self._toggle()
 
-    def on_mouse_click(self):
+    def on_mouse_click(self, col=None, row=None):
         self._toggle()
 
     def draw(self, canvas):
         is_focused = canvas.focused is self
-        mark = "x" if self.checked else " "
+        mark = "✔" if self.checked else " "
         label = f"[{mark}] {self.text}"
 
         raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
