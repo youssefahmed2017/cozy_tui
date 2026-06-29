@@ -160,6 +160,23 @@ def _read_csi():
     if buf.startswith("3") and buf.endswith("~"):
         return Key.DELETE
 
+    # XTerm modifyOtherKeys / kitty keyboard: ESC [ codepoint ; modifier u
+    # Windows Terminal sends these when \033[>4;1m is active.  Map modified
+    # letter keys back to their expected constants so existing handlers work.
+    if buf.endswith("u") and ";" in buf:
+        try:
+            cp, mod = (int(x) for x in buf[:-1].split(";", 1))
+        except ValueError:
+            return None
+        # Ctrl+Shift+Z (modifier 6, codepoint 90='Z' or 122='z') → CTRL_SHIFT_Z
+        if mod == 6 and cp in (90, 122):
+            return Key.CTRL_SHIFT_Z
+        # Ctrl+letter or Ctrl+Shift+letter → ASCII control code (chr(cp % 32))
+        # Covers a-z (97-122) and A-Z (65-90); cp % 32 gives 1-26.
+        if mod in (5, 6) and (65 <= cp <= 90 or 97 <= cp <= 122):
+            return chr(cp % 32)
+        return None
+
     return _CSI_MAP.get(buf)
 
 
