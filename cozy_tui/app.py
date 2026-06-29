@@ -7,6 +7,7 @@ from cozy_tui.ansi import style_esc
 from cozy_tui.events import (
     Key,
     MouseClick,
+    MouseDrag,
     read_key,
     kbhit,
 )
@@ -211,7 +212,8 @@ class App:
             return "\033[?25l"
         if not getattr(focused, "cursor", False):
             return "\033[?25l"
-        if getattr(focused, "cursor_style", None) != "vertical":
+        style = getattr(focused, "cursor_style", None)
+        if style not in ("vertical", "block"):
             return "\033[?25l"
         if not self._cursor_on:
             return "\033[?25l"
@@ -220,7 +222,8 @@ class App:
             return "\033[?25l"
         sc, sr = pos
         if 0 <= sr < self.rows and 0 <= sc < self.cols:
-            return f"\033[{sr + 1};{sc + 1}H\033[?25h"
+            shape = "\033[2 q" if style == "block" else "\033[6 q"
+            return f"\033[{sr + 1};{sc + 1}H{shape}\033[?25h"
         return "\033[?25l"
 
     def _do_full_render(self):
@@ -305,12 +308,12 @@ class App:
 
     def run(self):
         enter = (
-            "\033[?1049h\033[2J\033[H\033[?25l\033[?1000h\033[?1006h\033[>4;1m"
+            "\033[?1049h\033[2J\033[H\033[?25l\033[?1000h\033[?1002h\033[?1006h\033[>4;1m"
             if self.full
-            else "\033[2J\033[H\033[?25l\033[?1000h\033[?1006h\033[>4;1m"
+            else "\033[2J\033[H\033[?25l\033[?1000h\033[?1002h\033[?1006h\033[>4;1m"
         )
         exit_ = (
-            "\033[>4;0m\033[?1006l\033[?1000l\033[?25h\033[?1049l"
+            "\033[>4;0m\033[?1006l\033[?1002l\033[?1000l\033[?25h\033[?1049l"
             if self.full
             else "\033[>4;0m\033[?1006l\033[?1000l\033[?25h"
         )
@@ -344,6 +347,10 @@ class App:
                         self.focused = target
                         if hasattr(target, "on_mouse_click"):
                             target.on_mouse_click(key.col, key.row + self.scroll_y)
+                    continue
+                if isinstance(key, MouseDrag):
+                    if self.focused and hasattr(self.focused, "on_mouse_drag"):
+                        self.focused.on_mouse_drag(key.col, key.row + self.scroll_y)
                     continue
                 if key == Key.CTRL_C:
                     # Let text widgets handle Ctrl+C as copy; quit only when nothing is focused

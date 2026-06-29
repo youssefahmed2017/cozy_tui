@@ -16,6 +16,17 @@ class MouseClick:
         return f"MouseClick(col={self.col}, row={self.row}, btn={self.btn})"
 
 
+class MouseDrag:
+    """Mouse motion while a button is held (drag), with 0-indexed coordinates."""
+    def __init__(self, col: int, row: int, btn: int):
+        self.col = col
+        self.row = row
+        self.btn = btn  # 0=left, 1=middle, 2=right
+
+    def __repr__(self):
+        return f"MouseDrag(col={self.col}, row={self.row}, btn={self.btn})"
+
+
 class Key:
     ESC        = "\x1b"
     ENTER      = "\r"
@@ -50,9 +61,9 @@ class Key:
     CTRL_RIGHT        = "CTRL_RIGHT"
     CTRL_SHIFT_LEFT   = "CTRL_SHIFT_LEFT"
     CTRL_SHIFT_RIGHT  = "CTRL_SHIFT_RIGHT"
-    CTRL_Z            = "\x1a"
+    CTRL_U            = "\x15"
     CTRL_Y            = "\x19"
-    CTRL_SHIFT_Z      = "CTRL_SHIFT_Z"
+    INSERT            = "INSERT"
 # fmt: on
 
 # Internal read buffer.  os.read() reads the VT-processed byte stream while
@@ -94,6 +105,7 @@ _CSI_MAP = {
     "H": Key.HOME,
     "F": Key.END,
     "Z": Key.SHIFT_TAB,
+    "2~": Key.INSERT,
     "3~": Key.DELETE,
     "3;1~": Key.DELETE,  # Windows Terminal: explicit "no modifier" variant
     "5~": Key.PAGE_UP,
@@ -112,8 +124,8 @@ _CSI_MAP = {
     "1;6D": Key.CTRL_SHIFT_LEFT,
     # Ctrl+Shift+Z via XTerm modifyOtherKeys level 1 (\033[>4;1m):
     # Z=90 or z=122, Ctrl+Shift modifier=6
-    "90;6u":  Key.CTRL_SHIFT_Z,
-    "122;6u": Key.CTRL_SHIFT_Z,
+    "90;6u":  Key.CTRL_Y,
+    "122;6u": Key.CTRL_Y,
     "13;2u": Key.SHIFT_ENTER,  # XTerm / Windows Terminal Shift+Enter
 }
 
@@ -139,6 +151,10 @@ def _read_csi():
             return Key.SCROLL_UP
         if btn == 65:
             return Key.SCROLL_DOWN
+        if btn & 32:  # motion with button held (drag); bit 32 is the motion flag
+            if pressed:
+                return MouseDrag(col - 1, row - 1, btn & 3)
+            return None
         if pressed:
             return MouseClick(col - 1, row - 1, btn)  # SGR is 1-indexed
         return None
@@ -168,9 +184,9 @@ def _read_csi():
             cp, mod = (int(x) for x in buf[:-1].split(";", 1))
         except ValueError:
             return None
-        # Ctrl+Shift+Z (modifier 6, codepoint 90='Z' or 122='z') → CTRL_SHIFT_Z
+        # Ctrl+Shift+Z (modifier 6, codepoint 90='Z' or 122='z') → treat as redo
         if mod == 6 and cp in (90, 122):
-            return Key.CTRL_SHIFT_Z
+            return Key.CTRL_Y
         # Ctrl+letter or Ctrl+Shift+letter → ASCII control code (chr(cp % 32))
         # Covers a-z (97-122) and A-Z (65-90); cp % 32 gives 1-26.
         if mod in (5, 6) and (65 <= cp <= 90 or 97 <= cp <= 122):
