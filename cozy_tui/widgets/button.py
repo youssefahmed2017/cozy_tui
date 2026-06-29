@@ -9,21 +9,24 @@ _PRESS_DURATION = 1.0
 class Button(Widget):
     focusable = True
 
-    def __init__(self, x, y, text, style=None):
+    def __init__(self, x, y, text, size=None, style=None):
         super().__init__(x, y, style)
         self.text = text
+        self.size = size          # total width; None = auto (len(text) + 4)
         self._handler = None
         self._pressed = False
         self._press_time = 0.0
 
+    def _width(self):
+        return self.size if self.size else len(self.text) + 4
+
     def natural_width(self, scale):
-        return len(self.text) + 4  # "[ text ]"
+        return self._width()
 
     def contains(self, col: int, row: int) -> bool:
-        return self.abs_x <= col < self.abs_x + self.natural_width(1) and self.abs_y == row
+        return self.abs_x <= col < self.abs_x + self._width() and self.abs_y == row
 
     def on_click(self, func):
-        """Register a handler called when the button is activated."""
         self._handler = func
         return self
 
@@ -45,16 +48,18 @@ class Button(Widget):
             self._pressed = False
 
         is_focused = canvas.focused is self
+        w = self._width()
+        inner = w - 2                              # chars between the brackets
         raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
+        fg = self.style.fg or "white"
+
+        label = f"[{self.text.center(inner)}]"
 
         if self._pressed:
-            style = Style(fg="white", bg=raw_bg, styles=["dim"])
-            label = f"[·{self.text}·]"
+            style = Style(fg=raw_bg or "black", bg=fg, styles=["dim"])
         elif is_focused:
             style = Style(fg="black", bg="white", styles=["bold"])
-            label = f"[ {self.text} ]"
         else:
-            style = Style(fg=self.style.fg, bg=raw_bg)
-            label = f"[ {self.text} ]"
+            style = Style(fg=fg, bg=raw_bg)
 
         canvas.write(self.abs_x, self.abs_y, label, style)
