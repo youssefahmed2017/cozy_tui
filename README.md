@@ -17,6 +17,7 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
   - [Label](#label)
   - [Input](#input)
   - [Button](#button)
+  - [Checkbox](#checkbox)
 - [Styling](#styling)
 - [Key Bindings](#key-bindings)
 - [Mouse Support](#mouse-support)
@@ -27,8 +28,8 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
 
 ## Features
 
-- **Very few dependencies** — alsmost pure Python, uses only one dependency `cozy-kit`, everything else is the standard library.
-- **Widgets**: `Button`, `Input`, `Label`, `Box`
+- **Very few dependencies** — almost pure Python, uses only one dependency `cozy-kit`, everything else is the standard library.
+- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Box`
 - **Multi-line Input**: Shift+Enter to insert newlines, UP/DOWN to navigate lines
 - **Focus system**: Tab / Shift+Tab to cycle focus, click to focus with mouse
 - **Cursor blinking**: Uses the real terminal cursor — smooth blink with no character replacement
@@ -268,20 +269,20 @@ box.add(notes_input)
 A focusable button that executes a callback when activated. Activates on Enter, Space, or mouse click.
 
 ```python
-Button(x, y, text, size=None, style=None)
+Button(x, y, text, width=None, style=None)
 ```
 
 | Parameter | Description |
 |-----------|-------------|
 | `x`, `y` | Position |
 | `text` | Label shown on the button |
-| `size` | Total width in characters. Defaults to `len(text)` (no padding). Set larger to add breathing room around the text. |
+| `width` | Total width in characters. Defaults to `len(text) + 4` (minimum 8). Set larger to add breathing room. |
 | `style` | `fg` = text color, `bg` = button background color |
 
 **Methods:**
 
 ```python
-btn.on_click(func)   # Register a callback; returns self for chaining
+btn.on_click(func)   # Register a callback (receives the button as argument); returns self for chaining
 ```
 
 **Visual states:**
@@ -305,8 +306,65 @@ app.focus(btn)
 
 ```python
 box.add(
-    Button(2, 6, "Delete", size=16, style=Style(fg="white", bg="red"))
+    Button(2, 6, "Delete", width=16, style=Style(fg="white", bg="red"))
     .on_click(handle_delete)
+)
+```
+
+---
+
+### `Checkbox`
+
+A focusable toggle widget. Clicking or pressing Enter/Space flips between checked and unchecked.
+
+```python
+Checkbox(x, y, text, checked=False, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `text` | Label shown next to the checkbox |
+| `checked` | Initial checked state (`False` by default) |
+| `style` | `fg` = text color, `bg` = background color |
+
+**Reading the value:**
+
+```python
+cb.checked    # bool — True if checked
+```
+
+**Methods:**
+
+```python
+cb.on_change(func)   # Called with the new bool value whenever the checkbox is toggled
+cb.on_click(func)    # Called with the widget itself on every toggle (same as Button)
+```
+
+Both methods return `self` for chaining.
+
+**Visual states:**
+
+| State | Appearance |
+|-------|-----------|
+| Unchecked | `[ ] Label text` — normal style |
+| Checked | `[x] Label text` — bold |
+| Focused | `[x] Label text` — black on white, bold |
+
+**Example:**
+
+```python
+cb = Checkbox(2, 3, "Enable notifications", checked=True)
+cb.on_change(lambda checked: print(f"Notifications: {checked}"))
+box.add(cb)
+```
+
+**Chaining:**
+
+```python
+box.add(
+    Checkbox(2, 5, "I agree to the terms")
+    .on_change(lambda v: btn.on_click(submit if v else None))
 )
 ```
 
@@ -368,6 +426,13 @@ Style(fg="cyan")                                  # cyan text, default backgroun
 | Enter | Activate button |
 | Space | Activate button |
 
+### Checkbox widget
+
+| Key | Action |
+|-----|--------|
+| Enter | Toggle checked state |
+| Space | Toggle checked state |
+
 ### Registering custom global shortcuts
 
 ```python
@@ -390,6 +455,7 @@ Mouse clicks are handled automatically:
 
 - **Click any focusable widget** → gives it focus
 - **Click a Button** → gives it focus and activates it
+- **Click a Checkbox** → gives it focus and toggles it
 - **Scroll wheel** → scrolls the app content up/down
 
 No extra setup needed — mouse support is enabled automatically when `app.run()` starts.
@@ -398,7 +464,7 @@ No extra setup needed — mouse support is enabled automatically when `app.run()
 
 ## Focus System
 
-Focus determines which widget receives keyboard input. Only `focusable` widgets (currently `Input` and `Button`) can hold focus.
+Focus determines which widget receives keyboard input. Only `focusable` widgets (`Input`, `Button`, `Checkbox`) can hold focus.
 
 ```python
 app.focus(widget)      # set initial focus manually
