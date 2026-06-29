@@ -36,7 +36,8 @@ def _enable_vt_console():
         k32.GetConsoleMode(h_in, ctypes.byref(m_in))
         k32.GetConsoleMode(h_out, ctypes.byref(m_out))
         raw_in = (
-            m_in.value & ~(_ENABLE_PROCESSED_INPUT | _ENABLE_LINE_INPUT | _ENABLE_ECHO_INPUT)
+            m_in.value
+            & ~(_ENABLE_PROCESSED_INPUT | _ENABLE_LINE_INPUT | _ENABLE_ECHO_INPUT)
         ) | _ENABLE_VT_INPUT
         k32.SetConsoleMode(h_in, raw_in)
         k32.SetConsoleMode(h_out, m_out.value | _ENABLE_VT_PROCESSING)
@@ -209,10 +210,12 @@ class App:
 
         cursor_esc = "\033[?25l"
         focused = self.focused
-        if (focused is not None
-                and getattr(focused, "cursor", False)
-                and getattr(focused, "cursor_style", None) == "vertical"
-                and self._cursor_on):
+        if (
+            focused is not None
+            and getattr(focused, "cursor", False)
+            and getattr(focused, "cursor_style", None) == "vertical"
+            and self._cursor_on
+        ):
             pos = focused._get_cursor_screen_pos(self.scroll_y)
             if pos is not None:
                 sc, sr = pos

@@ -1,7 +1,6 @@
 import os
 import msvcrt
 
-
 # fmt: off
 class MouseClick:
     """A mouse button press event with 0-indexed terminal coordinates."""
@@ -53,7 +52,7 @@ def _read_char() -> str:
     global _buf
     if _buf:
         return _buf.pop(0)
-    raw = os.read(0, 1024)          # reads ALL currently available bytes
+    raw = os.read(0, 1024)  # reads ALL currently available bytes
     chars = list(raw.decode("utf-8", errors="replace"))
     if not chars:
         return ""
@@ -63,20 +62,20 @@ def _read_char() -> str:
 
 # CSI final-byte → Key constant
 _CSI_MAP = {
-    "A":    Key.UP,
-    "B":    Key.DOWN,
-    "C":    Key.RIGHT,
-    "D":    Key.LEFT,
-    "H":    Key.HOME,
-    "F":    Key.END,
-    "Z":    Key.SHIFT_TAB,
-    "3~":   Key.DELETE,
-    "3;1~": Key.DELETE,   # Windows Terminal: explicit "no modifier" variant
-    "5~":   Key.PAGE_UP,
-    "6~":   Key.PAGE_DOWN,
-    "1;5A":  Key.CTRL_UP,
-    "1;5B":  Key.CTRL_DOWN,
-    "13;2u": Key.SHIFT_ENTER,   # XTerm / Windows Terminal Shift+Enter
+    "A": Key.UP,
+    "B": Key.DOWN,
+    "C": Key.RIGHT,
+    "D": Key.LEFT,
+    "H": Key.HOME,
+    "F": Key.END,
+    "Z": Key.SHIFT_TAB,
+    "3~": Key.DELETE,
+    "3;1~": Key.DELETE,  # Windows Terminal: explicit "no modifier" variant
+    "5~": Key.PAGE_UP,
+    "6~": Key.PAGE_DOWN,
+    "1;5A": Key.CTRL_UP,
+    "1;5B": Key.CTRL_DOWN,
+    "13;2u": Key.SHIFT_ENTER,  # XTerm / Windows Terminal Shift+Enter
 }
 
 
@@ -127,7 +126,7 @@ def _read_csi():
 
 def read_key():
     ch = _read_char()
-    if ch == "\x7f":        # DEL char — Windows Terminal sends this for Backspace
+    if ch == "\x7f":  # DEL char — Windows Terminal sends this for Backspace
         return Key.BACKSPACE
     if ch == "\x1b":
         # After a bulk read, _buf will contain the rest of a VT sequence if
@@ -140,5 +139,7 @@ def read_key():
         if ch2 == "O":
             _read_char()  # SS3 payload (F1–F4) — consume and ignore
             return None
+        if ch2 == "\r":  # Windows Terminal sends ESC+CR for Shift+Enter
+            return Key.SHIFT_ENTER
         return Key.ESC
     return ch

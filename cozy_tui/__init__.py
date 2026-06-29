@@ -10,6 +10,7 @@ from cozy_tui.widgets.layout import Layout
 from cozy_tui.widgets.vbox import VBox
 from cozy_tui.widgets.hbox import HBox
 from cozy_tui.widgets.grid import Grid
+from cozy_tui.widgets.markdown_input import MarkdownInput
 
 __all__ = [
     "App",
@@ -23,4 +24,5 @@ __all__ = [
     "VBox",
     "HBox",
     "Grid",
+    "MarkdownInput",
 ]
