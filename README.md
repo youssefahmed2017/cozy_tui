@@ -18,6 +18,7 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
   - [Input](#input)
   - [Button](#button)
   - [Checkbox](#checkbox)
+  - [MarkdownInput](#markdowninput)
 - [Layouts](#layouts)
   - [Layout (base)](#layout-base)
   - [VBox](#vbox)
@@ -34,9 +35,10 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
 ## Features
 
 - **Very few dependencies** — almost pure Python, uses only one dependency `cozy-kit`, everything else is the standard library.
-- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Box`
+- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Box`, `MarkdownInput`
 - **Layouts**: `VBox`, `HBox`, `Grid` — auto-position children without manual x/y
-- **Multi-line Input**: Shift+Enter to insert newlines, UP/DOWN to navigate lines
+- **Multi-line Input**: Enter or Shift+Enter to insert newlines, UP/DOWN to navigate lines
+- **Markdown preview**: `MarkdownInput` renders live Rich Markdown when unfocused
 - **Focus system**: Tab / Shift+Tab to cycle focus, click to focus with mouse
 - **Cursor blinking**: Uses the real terminal cursor — smooth blink with no character replacement
 - **Mouse support**: Click to focus widgets, click to activate buttons, scroll wheel to scroll
@@ -229,7 +231,8 @@ lbl.text = "Status: done"
 A focusable text input field. Supports single-line and multi-line modes.
 
 ```python
-Input(x, y, width, placeholder="", style=None, cursor=True, cursor_style="vertical", flash=True, multiline=False)
+Input(x, y, width, placeholder="", style=None, cursor=True, cursor_style="vertical",
+      flash=True, multiline=False, masked=False, masked_symbol="*")
 ```
 
 | Parameter | Description |
@@ -241,7 +244,9 @@ Input(x, y, width, placeholder="", style=None, cursor=True, cursor_style="vertic
 | `cursor` | Whether to show the cursor (`True` by default) |
 | `cursor_style` | `"vertical"` (default), `"block"`, or `"underline"` |
 | `flash` | Whether the cursor blinks (`True` by default) |
-| `multiline` | Enables multi-line editing with Shift+Enter |
+| `multiline` | Enables multi-line editing — Enter or Shift+Enter inserts a newline |
+| `masked` | Hide typed characters (e.g. for passwords). `False` by default. |
+| `masked_symbol` | Character used for masking. Defaults to `"*"`. |
 
 **Reading the value:**
 
@@ -260,14 +265,20 @@ value = inp.get()    # method
 
 **Multi-line mode:**
 
-When `multiline=True`, the input stores newlines in `.value`. Use Shift+Enter to insert a newline, and UP/DOWN arrows to move between lines.
+When `multiline=True`, the input stores newlines in `.value`. Press Enter or Shift+Enter to insert a newline; use UP/DOWN arrows to move between lines.
+
+**Masked mode:**
+
+When `masked=True`, typed characters are replaced visually by `masked_symbol` (default `"*"`). The real text is still stored in `.value` and used for validation — only the display is affected.
 
 **Example:**
 
 ```python
 name_input = Input(10, 2, 25, placeholder="Your name")
-notes_input = Input(10, 4, 25, placeholder="Notes...", multiline=True)
+pass_input = Input(10, 4, 25, placeholder="Password", masked=True)
+notes_input = Input(10, 6, 25, placeholder="Notes...", multiline=True)
 box.add(name_input)
+box.add(pass_input)
 box.add(notes_input)
 ```
 
@@ -376,6 +387,92 @@ box.add(
     .on_change(lambda v: btn.on_click(submit if v else None))
 )
 ```
+
+---
+
+### `MarkdownInput`
+
+A multi-line text editor that renders its content as **live Markdown** using [Rich](https://github.com/Textualize/rich) when not focused. All editing behaviour is inherited from `Input` — only the rendering differs.
+
+> **Requires Rich:** `pip install rich`  
+> Falls back to plain `Input` rendering if Rich is not installed.
+
+```python
+MarkdownInput(x, y, width, placeholder="", style=None, multiline=True, ...)
+```
+
+All `Input` parameters are accepted. Typical usage sets `multiline=True` so the user can write multi-line Markdown.
+
+**Behaviour:**
+
+| State | Display |
+|-------|---------|
+| **Focused** | Raw Markdown source with blinking cursor — edit normally |
+| **Unfocused** | Rich-rendered Markdown preview (headings, bold, italic, code, etc.) |
+
+Tab cycles focus away; the preview appears instantly when another widget receives focus.
+
+**Rendering pipeline:**
+
+```
+self.value  →  Rich Markdown renderer  →  ANSI output  →  canvas.write()
+```
+
+Rich renders with `color_system="standard"` (16 colours), so the preview respects the terminal palette. Truecolor values Rich uses internally are downsampled to the nearest standard colour.
+
+**Caching:** The rendered output is cached by `(value, width)` — Rich only re-renders when the text or display width actually changes, not on every frame.
+
+**Example:**
+
+```python
+from cozy_tui import App, Box, Button, MarkdownInput, Style
+from cozy_tui.events import Key
+
+app = App(full=True, size=None, style=Style(fg="white", bg="black"))
+
+box = Box(2, 1, "2100x660", border="rounded",
+          style=Style(fg="cyan", bg="black"), title=" Markdown Editor ")
+
+editor = MarkdownInput(
+    2, 2, 66,
+    multiline=True,
+    placeholder="# Title\n\nStart writing **Markdown** here...",
+    style=Style(fg="white"),
+)
+
+preview_btn = Button(2, 20, "Preview (Tab)", width=18,
+                     style=Style(fg="white", bg="bright_black"))
+preview_btn.on_click(lambda b: app.focus(editor))
+
+box.add(editor)
+box.add(preview_btn)
+app.add(box)
+app.focus(editor)
+app.on_key(Key.ESC, lambda: "quit")
+app.run()
+```
+
+**Supported Markdown elements** (via Rich):
+
+- Headings (`#`, `##`, `###`, ...)
+- **Bold** (`**text**`), *italic* (`*text*`), `inline code` (`` `code` ``)
+- Fenced code blocks (` ``` `)
+- Blockquotes (`> text`)
+- Horizontal rules (`---`)
+- Unordered and ordered lists
+
+**Extending:**
+
+`MarkdownInput` is designed to be the first of a family of specialised editors that share `Input`'s editing engine:
+
+```
+Input
+ ├── MarkdownInput   ← live Rich Markdown preview
+ ├── CodeInput       ← syntax highlighting (future)
+ └── RichTextInput   ← arbitrary Rich renderables (future)
+```
+
+To create your own, subclass `Input` and override `draw()` (and optionally `natural_height()`). Only the rendering path needs to change.
 
 ---
 
@@ -535,7 +632,7 @@ Style(fg="cyan")                                  # cyan text, default backgroun
 | Home / End | Jump to line start / end |
 | Backspace | Delete character behind cursor |
 | Delete | Delete character ahead of cursor |
-| Shift+Enter | Insert newline (multiline mode only) |
+| Enter / Shift+Enter | Insert newline (multiline mode only) |
 | UP / DOWN | Move between lines (multiline mode only) |
 
 ### Button widget
