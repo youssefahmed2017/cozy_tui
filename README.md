@@ -18,6 +18,11 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
   - [Input](#input)
   - [Button](#button)
   - [Checkbox](#checkbox)
+- [Layouts](#layouts)
+  - [Layout (base)](#layout-base)
+  - [VBox](#vbox)
+  - [HBox](#hbox)
+  - [Grid](#grid)
 - [Styling](#styling)
 - [Key Bindings](#key-bindings)
 - [Mouse Support](#mouse-support)
@@ -30,6 +35,7 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
 
 - **Very few dependencies** — almost pure Python, uses only one dependency `cozy-kit`, everything else is the standard library.
 - **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Box`
+- **Layouts**: `VBox`, `HBox`, `Grid` — auto-position children without manual x/y
 - **Multi-line Input**: Shift+Enter to insert newlines, UP/DOWN to navigate lines
 - **Focus system**: Tab / Shift+Tab to cycle focus, click to focus with mouse
 - **Cursor blinking**: Uses the real terminal cursor — smooth blink with no character replacement
@@ -369,6 +375,116 @@ box.add(
     Checkbox(2, 5, "I agree to the terms")
     .on_change(lambda v: btn.on_click(submit if v else None))
 )
+```
+
+---
+
+## Layouts
+
+Layouts are borderless containers that **automatically position their children** — you don't set `x`/`y` on children added to a layout. They inherit from `Widget` and can be placed anywhere a widget can (inside a `Box`, directly on `App`, or nested inside other layouts).
+
+All layouts support `.add(widget)` which returns `self` for chaining.
+
+### `Layout` (base)
+
+The base class for all layouts. Not used directly — subclass it and implement `_arrange()` to set each child's `x`, `y`, and update `self._computed_width` / `self._computed_height`.
+
+```python
+class MyLayout(Layout):
+    def _arrange(self):
+        # position self.children, then set:
+        self._computed_width = ...
+        self._computed_height = ...
+```
+
+---
+
+### `VBox`
+
+Stack children **vertically**, top to bottom. Width grows to the widest child; height is the sum of child heights plus gaps.
+
+```python
+VBox(x, y, gap=0, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `gap` | Blank rows between children (default `0`) |
+
+**Example:**
+
+```python
+from cozy_tui import VBox, Label, Button, Style
+
+vbox = VBox(2, 2, gap=1)
+vbox.add(Label(0, 0, "Name:"))
+vbox.add(Input(0, 0, 20, placeholder="Enter name"))
+vbox.add(Button(0, 0, "Submit", width=20, style=Style(fg="white", bg="blue")))
+box.add(vbox)
+```
+
+> Children's `x`/`y` are ignored — the layout computes them. Pass `0, 0` or any placeholder.
+
+---
+
+### `HBox`
+
+Stack children **horizontally**, left to right. Height grows to the tallest child; width is the sum of child widths plus gaps.
+
+```python
+HBox(x, y, gap=0, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `gap` | Blank columns between children (default `0`) |
+
+**Example:**
+
+```python
+from cozy_tui import HBox, Button, Style
+
+hbox = HBox(2, 10, gap=2)
+hbox.add(Button(0, 0, "OK", width=10, style=Style(fg="white", bg="green")))
+hbox.add(Button(0, 0, "Cancel", width=10, style=Style(fg="white", bg="red")))
+box.add(hbox)
+```
+
+---
+
+### `Grid`
+
+Arrange children in a **fixed number of columns**, filling left to right, top to bottom. Column widths are sized to the widest child in each column; row heights to the tallest child in each row.
+
+```python
+Grid(x, y, cols, gap_x=1, gap_y=0, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `cols` | Number of columns |
+| `gap_x` | Horizontal gap between columns (default `1`) |
+| `gap_y` | Vertical gap between rows (default `0`) |
+
+**Example:**
+
+```python
+from cozy_tui import Grid, Checkbox
+
+grid = Grid(2, 2, cols=2, gap_x=4, gap_y=1)
+for option in ["Red", "Green", "Blue", "Yellow"]:
+    grid.add(Checkbox(0, 0, option))
+box.add(grid)
+```
+
+This renders as:
+
+```
+[✔] Red      [✔] Green
+[✔] Blue     [✔] Yellow
 ```
 
 ---
