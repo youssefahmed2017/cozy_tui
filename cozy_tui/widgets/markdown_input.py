@@ -9,6 +9,7 @@ try:
     from rich.console import Console
     from rich.markdown import Markdown as _RichMarkdown
     from rich.color import ColorType
+
     _RICH_OK = True
 except ImportError:
     _RICH_OK = False
@@ -16,28 +17,41 @@ except ImportError:
 # ── Rich → cozy_tui colour mapping ───────────────────────────────────────────
 
 _ANSI16 = [
-    "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
-    "bright_black", "bright_red", "bright_green", "bright_yellow",
-    "bright_blue", "bright_magenta", "bright_cyan", "bright_white",
+    "black",
+    "red",
+    "green",
+    "yellow",
+    "blue",
+    "magenta",
+    "cyan",
+    "white",
+    "bright_black",
+    "bright_red",
+    "bright_green",
+    "bright_yellow",
+    "bright_blue",
+    "bright_magenta",
+    "bright_cyan",
+    "bright_white",
 ]
 
 # Canonical RGB values for each of the 16 ANSI colours (used for nearest-match)
 _ANSI16_RGB = [
-    (0,   0,   0),    # black
-    (170, 0,   0),    # red
-    (0,   170, 0),    # green
-    (170, 170, 0),    # yellow
-    (0,   0,   170),  # blue
-    (170, 0,   170),  # magenta
-    (0,   170, 170),  # cyan
+    (0, 0, 0),  # black
+    (170, 0, 0),  # red
+    (0, 170, 0),  # green
+    (170, 170, 0),  # yellow
+    (0, 0, 170),  # blue
+    (170, 0, 170),  # magenta
+    (0, 170, 170),  # cyan
     (170, 170, 170),  # white
-    (85,  85,  85),   # bright_black
-    (255, 85,  85),   # bright_red
-    (85,  255, 85),   # bright_green
-    (255, 255, 85),   # bright_yellow
-    (85,  85,  255),  # bright_blue
-    (255, 85,  255),  # bright_magenta
-    (85,  255, 255),  # bright_cyan
+    (85, 85, 85),  # bright_black
+    (255, 85, 85),  # bright_red
+    (85, 255, 85),  # bright_green
+    (255, 255, 85),  # bright_yellow
+    (85, 85, 255),  # bright_blue
+    (255, 85, 255),  # bright_magenta
+    (85, 255, 255),  # bright_cyan
     (255, 255, 255),  # bright_white
 ]
 
@@ -49,9 +63,12 @@ def _eight_bit_to_rgb(n: int) -> tuple:
     if n < 232:
         n -= 16
         r, g, b = n // 36, (n // 6) % 6, n % 6
-        def _v(x): return 0 if x == 0 else 55 + x * 40
+
+        def _v(x):
+            return 0 if x == 0 else 55 + x * 40
+
         return _v(r), _v(g), _v(b)
-    v = 8 + (n - 232) * 10   # grayscale ramp
+    v = 8 + (n - 232) * 10  # grayscale ramp
     return v, v, v
 
 
@@ -91,12 +108,14 @@ def _to_cozy_style(rich_style, base: Style) -> Style:
     """Convert a Rich Segment Style to a cozy_tui Style, inheriting from base."""
     if not rich_style:
         return base
-    fg = _cozy_color(rich_style.color)   if rich_style.color   is not None else base.fg
+    fg = _cozy_color(rich_style.color) if rich_style.color is not None else base.fg
     bg = _cozy_color(rich_style.bgcolor) if rich_style.bgcolor is not None else base.bg
     st = list(base.styles)
     for attr, name in (
-        ("bold", "bold"), ("italic", "italic"),
-        ("underline", "underline"), ("dim", "dim"),
+        ("bold", "bold"),
+        ("italic", "italic"),
+        ("underline", "underline"),
+        ("dim", "dim"),
     ):
         if getattr(rich_style, attr, False) and name not in st:
             st.append(name)
@@ -117,6 +136,7 @@ def _emit(lines: list, text: str, style: Style) -> None:
 
 
 # ── widget ────────────────────────────────────────────────────────────────────
+
 
 class MarkdownInput(Input):
     """Input widget that renders content as a live Markdown preview when unfocused.
@@ -148,7 +168,7 @@ class MarkdownInput(Input):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._md_cache_key: tuple | None = None
-        self._md_lines: list | None = None   # list[list[(str, Style)]]
+        self._md_lines: list | None = None  # list[list[(str, Style)]]
 
     # ── rendering cache ───────────────────────────────────────────────────────
 

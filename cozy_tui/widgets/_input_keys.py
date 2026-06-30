@@ -6,12 +6,22 @@ class _KeysMixin:
 
     # Keys that should break typing coalescing even if cursor doesn't move.
     _NAV_KEYS = {
-        Key.LEFT, Key.RIGHT, Key.UP, Key.DOWN,
-        Key.HOME, Key.END,
-        Key.SHIFT_LEFT, Key.SHIFT_RIGHT, Key.SHIFT_UP, Key.SHIFT_DOWN,
-        Key.SHIFT_HOME, Key.SHIFT_END,
-        Key.CTRL_LEFT, Key.CTRL_RIGHT,
-        Key.CTRL_SHIFT_LEFT, Key.CTRL_SHIFT_RIGHT,
+        Key.LEFT,
+        Key.RIGHT,
+        Key.UP,
+        Key.DOWN,
+        Key.HOME,
+        Key.END,
+        Key.SHIFT_LEFT,
+        Key.SHIFT_RIGHT,
+        Key.SHIFT_UP,
+        Key.SHIFT_DOWN,
+        Key.SHIFT_HOME,
+        Key.SHIFT_END,
+        Key.CTRL_LEFT,
+        Key.CTRL_RIGHT,
+        Key.CTRL_SHIFT_LEFT,
+        Key.CTRL_SHIFT_RIGHT,
         Key.CTRL_A,
     }
 
@@ -96,13 +106,17 @@ class _KeysMixin:
             line, col = self._cursor_to_line_col()
             if line > 0:
                 lines = self.value.split("\n")
-                self._shift_move(self._line_col_to_pos(line - 1, min(col, len(lines[line - 1]))))
+                self._shift_move(
+                    self._line_col_to_pos(line - 1, min(col, len(lines[line - 1])))
+                )
 
         elif key == Key.SHIFT_DOWN and self.multiline:
             line, col = self._cursor_to_line_col()
             lines = self.value.split("\n")
             if line < len(lines) - 1:
-                self._shift_move(self._line_col_to_pos(line + 1, min(col, len(lines[line + 1]))))
+                self._shift_move(
+                    self._line_col_to_pos(line + 1, min(col, len(lines[line + 1])))
+                )
 
         # ── word navigation ──────────────────────────────────────────────────
 
@@ -128,7 +142,9 @@ class _KeysMixin:
                 self._delete_sel()
             elif self.cursor_pos > 0:
                 self._save_history("backspace")
-                self.value = self.value[: self.cursor_pos - 1] + self.value[self.cursor_pos :]
+                self.value = (
+                    self.value[: self.cursor_pos - 1] + self.value[self.cursor_pos :]
+                )
                 self.cursor_pos -= 1
 
         elif key == Key.DELETE:
@@ -137,13 +153,17 @@ class _KeysMixin:
                 self._delete_sel()
             elif self.cursor_pos < len(self.value):
                 self._save_history("delete")
-                self.value = self.value[: self.cursor_pos] + self.value[self.cursor_pos + 1 :]
+                self.value = (
+                    self.value[: self.cursor_pos] + self.value[self.cursor_pos + 1 :]
+                )
 
         elif key in (Key.ENTER, Key.SHIFT_ENTER) and self.multiline:
             self._save_history("edit")
             if self._sel_anchor is not None:
                 self._delete_sel()
-            self.value = self.value[: self.cursor_pos] + "\n" + self.value[self.cursor_pos :]
+            self.value = (
+                self.value[: self.cursor_pos] + "\n" + self.value[self.cursor_pos :]
+            )
             self.cursor_pos += 1
 
         # ── clipboard / select-all ────────────────────────────────────────────
@@ -172,10 +192,18 @@ class _KeysMixin:
                 if self._sel_anchor is not None:
                     self._delete_sel()
                 if not self.multiline:
-                    pasted = pasted.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+                    pasted = (
+                        pasted.replace("\r\n", " ")
+                        .replace("\r", " ")
+                        .replace("\n", " ")
+                    )
                 else:
                     pasted = pasted.replace("\r\n", "\n").replace("\r", "\n")
-                self.value = self.value[: self.cursor_pos] + pasted + self.value[self.cursor_pos :]
+                self.value = (
+                    self.value[: self.cursor_pos]
+                    + pasted
+                    + self.value[self.cursor_pos :]
+                )
                 self.cursor_pos += len(pasted)
 
         # ── insert / overwrite mode ───────────────────────────────────────────
@@ -201,10 +229,16 @@ class _KeysMixin:
             if self._sel_anchor is not None:
                 self._delete_sel()
             elif self._overwrite and self.cursor_pos < len(self.value):
-                self.value = self.value[: self.cursor_pos] + key + self.value[self.cursor_pos + 1 :]
+                self.value = (
+                    self.value[: self.cursor_pos]
+                    + key
+                    + self.value[self.cursor_pos + 1 :]
+                )
                 self.cursor_pos += 1
                 return
-            self.value = self.value[: self.cursor_pos] + key + self.value[self.cursor_pos :]
+            self.value = (
+                self.value[: self.cursor_pos] + key + self.value[self.cursor_pos :]
+            )
             self.cursor_pos += 1
 
         # Navigation breaks type coalescing so the next edit starts a fresh undo point.

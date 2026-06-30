@@ -3,8 +3,11 @@ import os
 import sys
 import time
 from datetime import date
+from pathlib import Path
 
-from cozy_tui import App, Box, Label, Input, Button, HBox, Style
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from cozy_tui import App, Box, Label, Input, Button, HBox, Style, ProgressBar
 from cozy_tui.widget import Widget
 from cozy_tui.events import Key
 
@@ -44,6 +47,13 @@ class CountdownTimer(Widget):
         self.running = False
         self._last = None
         self._complete_cb = None
+        self._bar = ProgressBar(
+            x,
+            y + 2,
+            progress=0,
+            width=width,
+            style=style or Style(fg="cyan", bg="black"),
+        )
 
     def natural_width(self, scale):
         return self.width
@@ -100,10 +110,11 @@ class CountdownTimer(Widget):
         canvas.write(self.abs_x, self.abs_y, f"{m:02d}:{s:02d}".center(w), t_style)
 
         frac = (self.remaining / self.minutes) if self.minutes else 0
-        bar_w = w - 2
-        filled = round(frac * bar_w)
-        bar = "█" * filled + "░" * (bar_w - filled)
-        canvas.write(self.abs_x, self.abs_y + 2, f"[{bar}]", self.style)
+        self._bar.x = self.abs_x
+        self._bar.y = self.abs_y + 2
+        self._bar._layout_y = 0
+        self._bar.set(round(frac * 100))
+        self._bar.draw(canvas)
 
         if self.remaining == 0.0 and self.minutes > 0:
             status, fg = "✓  Time's up!", "green"

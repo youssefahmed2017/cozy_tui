@@ -8,23 +8,18 @@ class _HistoryMixin:
         if action in self._COALESCE and action == self._last_action:
             return
         self._undo_stack.append((self.value, self.cursor_pos))
-        if len(self._undo_stack) > self._MAX_HISTORY:
-            self._undo_stack.pop(0)
         self._redo_stack.clear()
         self._last_action = action
 
-    def _do_undo(self) -> None:
-        if not self._undo_stack:
+    def _step(self, src, dst) -> None:
+        if not src:
             return
-        self._redo_stack.append((self.value, self.cursor_pos))
-        self.value, self.cursor_pos = self._undo_stack.pop()
-        self._sel_anchor = None
-        self._last_action = None
+        dst.append((self.value, self.cursor_pos))
+        self.value, self.cursor_pos = src.pop()
+        self._sel_anchor = self._last_action = None
+
+    def _do_undo(self) -> None:
+        self._step(self._undo_stack, self._redo_stack)
 
     def _do_redo(self) -> None:
-        if not self._redo_stack:
-            return
-        self._undo_stack.append((self.value, self.cursor_pos))
-        self.value, self.cursor_pos = self._redo_stack.pop()
-        self._sel_anchor = None
-        self._last_action = None
+        self._step(self._redo_stack, self._undo_stack)

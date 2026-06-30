@@ -11,6 +11,9 @@ from cozy_tui.widgets.vbox import VBox
 from cozy_tui.widgets.hbox import HBox
 from cozy_tui.widgets.grid import Grid
 from cozy_tui.widgets.markdown_input import MarkdownInput
+from cozy_tui.widgets.list_view import ListView, ListItem
+from cozy_tui.widgets.dropdown import Dropdown
+from cozy_tui.widgets.progress_bar import ProgressBar
 
 __all__ = [
     "App",
@@ -25,4 +28,8 @@ __all__ = [
     "HBox",
     "Grid",
     "MarkdownInput",
+    "ListView",
+    "ListItem",
+    "Dropdown",
+    "ProgressBar",
 ]

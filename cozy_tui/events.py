@@ -124,7 +124,7 @@ _CSI_MAP = {
     "1;6D": Key.CTRL_SHIFT_LEFT,
     # Ctrl+Shift+Z via XTerm modifyOtherKeys level 1 (\033[>4;1m):
     # Z=90 or z=122, Ctrl+Shift modifier=6
-    "90;6u":  Key.CTRL_Y,
+    "90;6u": Key.CTRL_Y,
     "122;6u": Key.CTRL_Y,
     "13;2u": Key.SHIFT_ENTER,  # XTerm / Windows Terminal Shift+Enter
 }

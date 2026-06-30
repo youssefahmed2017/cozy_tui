@@ -59,10 +59,12 @@ def _restore_vt_console(old_in, old_out):
 
 
 class App:
-    SCALE = 30
+    SCALE = 10
     BLINK_INTERVAL = 0.5
 
-    def __init__(self, size, style: Style, full=True):
+    def __init__(
+        self, style: Style = Style(bg="black", fg="white"), size=None, full=True
+    ):
         self.style = style
         self.full = full
         self.scroll_y = 0
@@ -75,6 +77,7 @@ class App:
         self._key_handlers = {}
         self._cursor_on = True
         self._last_cursor_esc = None  # track last-emitted cursor state
+        self._should_quit = False
 
     def _init_size(self, size=None):
         if self.full:
@@ -175,14 +178,16 @@ class App:
             return
         row = self.buffer[vy]
         n = len(row)
-        for i, ch in enumerate(text):
-            col = x + i
-            if col >= n:
-                break
-            if col >= 0:
-                cell = row[col]
-                cell.char = ch
-                cell.style = style
+        col_start = x if x >= 0 else 0
+        col_end = x + len(text)
+        if col_end > n:
+            col_end = n
+        if col_start >= col_end:
+            return
+        for ci in range(col_start, col_end):
+            cell = row[ci]
+            cell.char = text[ci - x]
+            cell.style = style
 
     def clear(self):
         self._content_rows = 0
@@ -306,6 +311,9 @@ class App:
                 return result
         return None
 
+    def quit(self):
+        self._should_quit = True
+
     def run(self):
         enter = (
             "\033[?1049h\033[2J\033[H\033[?25l\033[?1000h\033[?1002h\033[?1006h\033[>4;1m"
@@ -321,7 +329,7 @@ class App:
         sys.stdout.flush()
         old_in, old_out = _enable_vt_console()
         try:
-            while True:
+            while not self._should_quit:
                 if self._check_resize():
                     pass  # buffer already rebuilt; fall through to render
                 self.render()
@@ -333,7 +341,22 @@ class App:
                         last_blink = time.monotonic()
                     elif time.monotonic() - last_blink >= self.BLINK_INTERVAL:
                         self._cursor_on = not self._cursor_on
-                        self.render()
+                        focused = self.focused
+                        # For terminal-native cursors (vertical/block) the cursor
+                        # is not in the cell buffer — just resend the cursor escape.
+                        if (
+                            focused is not None
+                            and getattr(focused, "cursor", False)
+                            and getattr(focused, "cursor_style", None)
+                            in ("vertical", "block")
+                        ):
+                            esc = self._cursor_esc()
+                            if esc != self._last_cursor_esc:
+                                sys.stdout.write(esc)
+                                sys.stdout.flush()
+                                self._last_cursor_esc = esc
+                        else:
+                            self.render()
                         last_blink = time.monotonic()
                     time.sleep(0.02)
 
@@ -353,11 +376,7 @@ class App:
                         self.focused.on_mouse_drag(key.col, key.row + self.scroll_y)
                     continue
                 if key == Key.CTRL_C:
-                    # Let text widgets handle Ctrl+C as copy; quit only when nothing is focused
-                    if self.focused and hasattr(self.focused, "value"):
-                        self.focused.on_key(key)
-                    else:
-                        break
+                    self.quit()
                 elif key in (Key.SCROLL_UP, Key.PAGE_UP, Key.CTRL_UP):
                     self._scroll(-3)
                 elif key in (Key.SCROLL_DOWN, Key.PAGE_DOWN, Key.CTRL_DOWN):
@@ -367,7 +386,8 @@ class App:
                 elif key == Key.SHIFT_TAB:
                     self._cycle_focus(-1)
                 elif key in self._key_handlers:
-                    if self._key_handlers[key]() == "quit":
+                    result = self._key_handlers[key]()
+                    if result == "quit" or self._should_quit:
                         break
                 elif self.focused:
                     self.focused.on_key(key)

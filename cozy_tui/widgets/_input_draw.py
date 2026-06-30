@@ -7,7 +7,14 @@ class _DrawMixin:
     def _display_value(self):
         if not self.masked:
             return self.value
-        return "".join(self.masked_symbol if c != "\n" else "\n" for c in self.value)
+        # Re-build only when value is a different object (strings are immutable,
+        # so any mutation produces a new string and breaks identity).
+        if self.value is self._masked_cache_key:
+            return self._masked_cache_val
+        result = "".join(self.masked_symbol if c != "\n" else "\n" for c in self.value)
+        self._masked_cache_key = self.value
+        self._masked_cache_val = result
+        return result
 
     def _write_span(
         self,
@@ -63,7 +70,16 @@ class _DrawMixin:
             visible = self._display_value[self._scroll_off : self._scroll_off + w]
             cursor_col = self.cursor_pos - self._scroll_off
 
-            self._write_span(canvas, self.abs_x, self.abs_y, visible, self._scroll_off, cs, sel, sel_s)
+            self._write_span(
+                canvas,
+                self.abs_x,
+                self.abs_y,
+                visible,
+                self._scroll_off,
+                cs,
+                sel,
+                sel_s,
+            )
             fill = w - len(visible)
             if fill > 0:
                 canvas.write(self.abs_x + len(visible), self.abs_y, " " * fill, cs)
@@ -103,7 +119,9 @@ class _DrawMixin:
                 lines.append("")
 
             for i, line in enumerate(lines):
-                self._write_span(canvas, self.abs_x, self.abs_y + i, line, i * w, cs, sel, sel_s)
+                self._write_span(
+                    canvas, self.abs_x, self.abs_y + i, line, i * w, cs, sel, sel_s
+                )
                 fill = w - len(line)
                 if fill > 0:
                     canvas.write(self.abs_x + len(line), self.abs_y + i, " " * fill, cs)
@@ -171,7 +189,9 @@ class _DrawMixin:
                 vy = self.abs_y + display_row
                 chunk_flat_start = flat_pos + ci * w
 
-                self._write_span(canvas, self.abs_x, vy, chunk, chunk_flat_start, cs, sel, sel_s)
+                self._write_span(
+                    canvas, self.abs_x, vy, chunk, chunk_flat_start, cs, sel, sel_s
+                )
                 fill = w - len(chunk)
                 if fill > 0:
                     canvas.write(self.abs_x + len(chunk), vy, " " * fill, cs)

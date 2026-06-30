@@ -1,3 +1,5 @@
+from collections import deque
+
 from cozy_tui.widget import Widget
 from cozy_tui.style import Style
 from cozy_tui.widgets._input_history import _HistoryMixin
@@ -36,7 +38,9 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
         self.masked_symbol = masked_symbol
         self._overwrite = False
         self._sel_anchor: int | None = None
-        self._undo_stack: list = []
+        self._masked_cache_key: str | None = None  # identity-cached masked display
+        self._masked_cache_val: str = ""
+        self._undo_stack = deque(maxlen=_HistoryMixin._MAX_HISTORY)
         self._redo_stack: list = []
         self._last_action: str | None = None
 
@@ -213,7 +217,9 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
             value_lines = self.value.split("\n")
             for li, logical_line in enumerate(self._display_value.split("\n")):
                 vline_len = len(value_lines[li]) if li < len(value_lines) else 0
-                chunks_count = max(1, (len(logical_line) + w - 1) // w) if logical_line else 1
+                chunks_count = (
+                    max(1, (len(logical_line) + w - 1) // w) if logical_line else 1
+                )
                 if display_row + chunks_count > target_row:
                     chunk_idx = target_row - display_row
                     col_in_chunk = max(0, col - self.abs_x)

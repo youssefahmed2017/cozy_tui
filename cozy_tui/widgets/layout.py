@@ -13,19 +13,25 @@ class Layout(Widget):
         self.children = []
         self._computed_width = 0
         self._computed_height = 0
+        self._dirty = True
 
     def add(self, widget):
         widget.parent = self
         widget._layout_y = 0
         self.children.append(widget)
+        self._dirty = True
         return self
 
     def natural_width(self, scale):
-        self._arrange()
+        if self._dirty:
+            self._arrange()
+            self._dirty = False
         return self._computed_width
 
     def natural_height(self, scale):
-        self._arrange()
+        if self._dirty:
+            self._arrange()
+            self._dirty = False
         return self._computed_height
 
     def contains(self, col: int, row: int) -> bool:
@@ -38,6 +44,8 @@ class Layout(Widget):
         raise NotImplementedError
 
     def draw(self, canvas):
-        self._arrange()
+        if self._dirty:
+            self._arrange()
+        self._dirty = True  # re-dirty so next frame's natural_width/height recomputes
         for child in self.children:
             child.draw(canvas)

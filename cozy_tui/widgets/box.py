@@ -22,6 +22,10 @@ class Box(Widget):
         self.width, self.height = map(int, size.split("x"))
         self.border = self.BORDERS[border]
         self.children = []
+        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
+        self._focused_border_style_cache = Style(
+            fg="bright_white", bg=raw_bg, styles=["bold"]
+        )
 
     def natural_width(self, scale):
         return self.width // scale + 2
@@ -115,7 +119,7 @@ class Box(Widget):
             child.draw(canvas)
 
         # Draw borders last; highlight when a descendant has focus
-        bs = self._focus_border_style() if focused else self.style
+        bs = self._focused_border_style_cache if focused else self.style
         canvas.write(self.abs_x, self.abs_y, top, bs)
         for j in range(height):
             canvas.write(self.abs_x, self.abs_y + 1 + j, v, bs)
@@ -123,13 +127,13 @@ class Box(Widget):
         canvas.write(self.abs_x, self.abs_y + height + 1, bottom, bs)
 
     def _has_focused(self, canvas) -> bool:
-        def check(w):
-            if w is canvas.focused:
+        # Walk UP the parent chain from the focused widget — O(depth) vs O(N widgets).
+        w = canvas.focused
+        while w is not None:
+            w = w.parent
+            if w is self:
                 return True
-            if hasattr(w, "children"):
-                return any(check(c) for c in w.children)
-            return False
-        return any(check(c) for c in self.children)
+        return False
 
     def _focus_border_style(self):
         raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None

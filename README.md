@@ -19,6 +19,9 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
   - [Button](#button)
   - [Checkbox](#checkbox)
   - [MarkdownInput](#markdowninput)
+  - [ListView / ListItem](#listview--listitem)
+  - [Dropdown](#dropdown)
+  - [ProgressBar](#progressbar)
 - [Layouts](#layouts)
   - [Layout (base)](#layout-base)
   - [VBox](#vbox)
@@ -29,13 +32,14 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
 - [Mouse Support](#mouse-support)
 - [Focus System](#focus-system)
 - [Scrolling](#scrolling)
+- [Examples](#examples)
 
 ---
 
 ## Features
 
 - **Very few dependencies** — almost pure Python, uses only two dependencies, `cozy-kit` and `pyperclip`, everything else is the standard library.
-- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Box`, `MarkdownInput`
+- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Box`, `MarkdownInput`, `ListView`, `Dropdown`, `ProgressBar`
 - **Layouts**: `VBox`, `HBox`, `Grid` — auto-position children without manual x/y
 - **Multi-line Input**: Enter or Shift+Enter to insert newlines, UP/DOWN to navigate lines
 - **Markdown preview**: `MarkdownInput` renders live Rich Markdown when unfocused
@@ -79,7 +83,8 @@ from cozy_tui.events import Key
 
 app = App(full=True, size=None, style=Style(fg="white", bg="black"))
 
-box = Box(2, 1, "60x14", border="rounded", style=Style(fg="white", bg="black"), title="Sign Up")
+# Box size = virtual pixels ÷ 30 → "1800x420" = 60 cols × 14 rows
+box = Box(2, 1, "1800x420", border="rounded", style=Style(fg="white", bg="black"), title="Sign Up")
 
 box.add(Label(2, 2, "Username:"))
 box.add(Input(12, 2, 20, placeholder="Enter username"))
@@ -145,6 +150,7 @@ app.add(widget)             # Add a top-level widget
 app.focus(widget)           # Set the initially focused widget
 app.on_key(key, func)       # Register a global key handler
                             # Return "quit" from func to exit the app
+app.quit()                  # Exit the app from anywhere (e.g. inside a callback)
 app.run()                   # Start the event loop (blocking)
 ```
 
@@ -170,7 +176,7 @@ Box(x, y, size, text="", border="single", style=None, title="")
 | Parameter | Description |
 |-----------|-------------|
 | `x`, `y` | Position in terminal characters |
-| `size` | `"WxH"` string in virtual units (each unit = 30 chars) |
+| `size` | `"WxH"` string in virtual pixels — divide by `30` to get character dimensions. `"900x600"` = 30 cols × 20 rows. |
 | `text` | Optional centered text in the box interior |
 | `border` | Border style: `"single"`, `"double"`, `"rounded"`, `"bold"`, `"none"` |
 | `style` | Style for the box background and border |
@@ -476,6 +482,155 @@ To create your own, subclass `Input` and override `draw()` (and optionally `natu
 
 ---
 
+### `ListView` / `ListItem`
+
+A scrollable, keyboard-navigable list of items. Items can be plain strings or `ListItem(text, value)` objects to separate display text from the returned value.
+
+```python
+ListView(x, y, items=None, *, width=None, height=None, style=None)
+ListItem(text, value=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `items` | Initial list of strings or `ListItem` objects |
+| `width` | Fixed width in chars. `None` = auto-sized from the widest item. |
+| `height` | Number of visible rows. `None` = show all items. |
+
+**Reading the value:**
+
+```python
+lv.selected        # value of the highlighted item
+lv.selected_index  # integer index
+```
+
+**Mutating the list:**
+
+```python
+lv.append(item)          # add to the end
+lv.insert(index, item)   # insert at position
+lv.remove(item)          # remove by reference
+lv.clear()               # remove all items
+lv.set(value)            # jump to the item whose value equals value
+```
+
+**Callbacks:**
+
+```python
+lv.on_change(func)   # called with selected value when cursor moves (returns self)
+lv.on_select(func)   # called with selected value when Enter is pressed or item clicked (returns self)
+```
+
+**Key bindings:** Up/Down — move, Home/End — first/last, Enter — confirm selection.
+
+**Example:**
+
+```python
+from cozy_tui import ListView, ListItem
+
+lv = ListView(2, 2, [
+    ListItem("Python",     "py"),
+    ListItem("JavaScript", "js"),
+    ListItem("Rust",       "rs"),
+], height=5)
+lv.on_select(lambda val: print(f"Chose: {val}"))
+box.add(lv)
+```
+
+---
+
+### `Dropdown`
+
+A collapsed header that opens a `ListView` popup when activated. Only one row tall when closed; expands downward when open.
+
+```python
+Dropdown(x, y, items=None, *, width=None, height=6, style=None, placeholder=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `items` | Initial list of strings or `ListItem` objects |
+| `width` | Fixed header width. `None` = auto from items. |
+| `height` | Max visible rows in the popup (default `6`) |
+| `placeholder` | Ghost text shown when no item is selected |
+
+**Reading the value:**
+
+```python
+dd.selected        # value of the confirmed selection
+dd.selected_index  # integer index
+```
+
+**Mutating the list:** same API as `ListView` — `append`, `insert`, `remove`, `clear`, `set`.
+
+**Callbacks:**
+
+```python
+dd.on_change(func)   # called with value when confirmed (returns self)
+dd.on_select(func)   # alias — called on same event (returns self)
+```
+
+**Key bindings:** Enter/Space/Down — open; Up/Down — navigate; Enter — confirm; Esc/Space — close without confirming.
+
+**Example:**
+
+```python
+from cozy_tui import Dropdown, ListItem, Style
+
+dd = Dropdown(2, 2, [
+    ListItem("Option A", "a"),
+    ListItem("Option B", "b"),
+    ListItem("Option C", "c"),
+], placeholder="Select one...", style=Style(fg="white"))
+dd.on_change(lambda val: print(f"Selected: {val}"))
+box.add(dd)
+```
+
+---
+
+### `ProgressBar`
+
+A non-interactive horizontal progress bar. Displays `[====    ] NNN%`.
+
+```python
+ProgressBar(x, y, fill="=", empty=" ", progress=0, *, width=20, min=0, max=100, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `fill` | Character for the filled portion (default `"="`) |
+| `empty` | Character for the empty portion (default `" "`) |
+| `progress` | Initial value (default `0`) |
+| `width` | Total width in characters including the `[ ] NNN%` frame (default `20`) |
+| `min` | Minimum value (default `0`) |
+| `max` | Maximum value (default `100`) |
+
+**Methods:**
+
+```python
+bar.set(value)           # set the value directly (clamped to min–max)
+bar.increment(amount=1)  # add amount to current value
+bar.decrement(amount=1)  # subtract amount from current value
+bar.get()                # return current value
+bar.on_change(func)      # called with new value whenever it changes
+```
+
+**Example:**
+
+```python
+from cozy_tui import ProgressBar, Style
+
+bar = ProgressBar(2, 5, fill="█", empty="░", width=30,
+                  style=Style(fg="bright_green"))
+bar.set(42)
+box.add(bar)
+```
+
+---
+
 ## Layouts
 
 Layouts are borderless containers that **automatically position their children** — you don't set `x`/`y` on children added to a layout. They inherit from `Widget` and can be placed anywhere a widget can (inside a `Box`, directly on `App`, or nested inside other layouts).
@@ -680,7 +835,7 @@ No extra setup needed — mouse support is enabled automatically when `app.run()
 
 ## Focus System
 
-Focus determines which widget receives keyboard input. Only `focusable` widgets (`Input`, `Button`, `Checkbox`) can hold focus.
+Focus determines which widget receives keyboard input. Only `focusable` widgets (`Input`, `Button`, `Checkbox`, `ListView`, `Dropdown`) can hold focus.
 
 ```python
 app.focus(widget)      # set initial focus manually
@@ -692,3 +847,60 @@ While running:
 - **Mouse click** focuses the clicked widget
 
 Focused widgets receive a visual highlight — inputs show a white background and a blinking cursor; buttons invert their colors and go bold. The parent `Box` also highlights its border when any child has focus.
+
+---
+
+## Scrolling
+
+When content is taller than the terminal, the app scrolls vertically. Scroll controls:
+
+| Key / Action | Effect |
+|---|---|
+| Scroll wheel up | Scroll up 3 rows |
+| Scroll wheel down | Scroll down 3 rows |
+| Page Up / Ctrl+Up | Scroll up 3 rows |
+| Page Down / Ctrl+Down | Scroll down 3 rows |
+
+---
+
+## Examples
+
+The `examples/` directory contains runnable apps. Each example adds the project root to `sys.path` automatically, so they can be run from any directory.
+
+### `examples/basic/basic.py` — Hello World
+
+Minimal app with a label and a quit button. Good starting point.
+
+```bash
+python examples/basic/basic.py
+```
+
+### `examples/timer_app/timer.py` — Timer / Forms
+
+Demonstrates `Input`, `Button`, `Checkbox`, `ProgressBar`, `Dropdown`, `ListView`, `VBox`, `HBox`, and `Grid` in a single app.
+
+```bash
+python examples/timer_app/timer.py
+```
+
+### `examples/calculator_app/calculator.py` — Calculator
+
+A fully keyboard-driven calculator supporting `+`, `-`, `×`, `÷`, `**` (exponent), `√` (square root), and `!` (factorial).
+
+```bash
+python examples/calculator_app/calculator.py
+```
+
+**Calculator keyboard shortcuts:**
+
+| Key | Action |
+|---|---|
+| `0`–`9`, `.` | Enter digits |
+| `+` `-` `*` `/` | Arithmetic operators (`*` inserts `×`, `/` inserts `÷`) |
+| `^` | Exponent (`**`) |
+| `r` | Square root (`√(`) |
+| `!` | Factorial |
+| Enter / `=` | Evaluate |
+| Backspace | Delete last character |
+| `c` | Clear |
+| ESC | Quit |
