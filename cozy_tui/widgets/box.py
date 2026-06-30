@@ -1,7 +1,5 @@
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
-from cozy_tui.widgets.label import Label
-from cozy_tui.widgets.input import Input
 
 
 class Box(Widget):
@@ -57,30 +55,22 @@ class Box(Widget):
 
         # Expand width only for children that are neither Label nor Input
         for child in self.children:
-            if not isinstance(child, (Label, Input)):
+            if not child.laps:
                 child_right = child.x + child.natural_width(scale)
                 if child_right > width:
                     width = child_right
 
-        # Detect overflow for Label/Input children and compute extra lines each adds
+        # Detect overflow for lapping children and compute extra lines each adds.
+        # After _clip_width is set, every lapping widget's natural_height() is correct.
         overflow_extra = {}
         for child in self.children:
-            if isinstance(child, (Label, Input)):
+            if child.laps:
                 child_right = child.x + child.natural_width(scale)
                 if child_right > width:
                     child._clip_width = max(1, width - child.x)
-                    if isinstance(child, Input):
-                        num_lines = child._row_count(child._clip_width)
-                    else:
-                        num_lines = max(
-                            1,
-                            (len(child.text) + child._clip_width - 1)
-                            // child._clip_width,
-                        )
-                    overflow_extra[id(child)] = num_lines - 1
-                elif isinstance(child, Input) and child.multiline and child.value:
-                    # Multi-line input that fits horizontally still needs extra rows
-                    overflow_extra[id(child)] = child.value.count("\n")
+                extra = child.natural_height(scale) - 1
+                if extra > 0:
+                    overflow_extra[id(child)] = extra
 
         # Push children down: accumulate shifts from wrapping children above each row.
         # Children at the same y all get the same shift (group by y).

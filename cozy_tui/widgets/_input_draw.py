@@ -99,7 +99,7 @@ class _DrawMixin:
             canvas.write(
                 self.abs_x,
                 self.abs_y,
-                self.placeholder[:w].ljust(w),
+                self.placeholder.replace("\n", " ")[:w].ljust(w),
                 self._placeholder_style(is_focused),
             )
 
@@ -149,7 +149,7 @@ class _DrawMixin:
             canvas.write(
                 self.abs_x,
                 self.abs_y,
-                self.placeholder[:w].ljust(w),
+                self.placeholder.replace("\n", " ")[:w].ljust(w),
                 self._placeholder_style(is_focused),
             )
 
@@ -167,12 +167,14 @@ class _DrawMixin:
         cur_line, cur_col = self._cursor_to_line_col()
 
         if not self.value:
-            canvas.write(
-                self.abs_x,
-                self.abs_y,
-                self.placeholder[:w].ljust(w),
-                self._placeholder_style(is_focused),
-            )
+            ph_style = self._placeholder_style(is_focused)
+            for row_i, ph_line in enumerate(self.placeholder.split("\n")):
+                canvas.write(
+                    self.abs_x,
+                    self.abs_y + row_i,
+                    ph_line[:w].ljust(w),
+                    ph_style,
+                )
             return
 
         display_row = 0

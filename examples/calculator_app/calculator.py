@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from cozy_tui import App, Box, Label, Button, HBox, VBox, Style
+from cozy_tui import App, Box, Button, HBox, Label, Style, VBox
 from cozy_tui.events import Key
 
 # ── app ───────────────────────────────────────────────────────────────────────

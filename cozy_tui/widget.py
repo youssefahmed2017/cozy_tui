@@ -13,6 +13,7 @@ class Widget:
         self._clip_width = None
         self._click_handler = None
         self._change_handler = None
+        self.laps = False
 
     @property
     def abs_x(self):

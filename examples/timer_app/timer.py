@@ -7,9 +7,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from cozy_tui import App, Box, Label, Input, Button, HBox, Style, ProgressBar
-from cozy_tui.widget import Widget
+from cozy_tui import App, Box, Button, HBox, Input, Label, ProgressBar, Style
 from cozy_tui.events import Key
+from cozy_tui.widget import Widget
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data layer

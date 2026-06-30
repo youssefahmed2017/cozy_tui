@@ -1,0 +1,21 @@
+{
+  "users": {
+    "Youssef": {
+      "password": "123",
+      "tasks": [
+        {
+          "text": "Work on Cozy TUI",
+          "done": true
+        },
+        {
+          "text": "Add Cozy TUI examples collection",
+          "done": false
+        },
+        {
+          "text": "Sleep",
+          "done": false
+        }
+      ]
+    }
+  }
+}

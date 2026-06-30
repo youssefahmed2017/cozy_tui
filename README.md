@@ -20,6 +20,7 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
   - [Checkbox](#checkbox)
   - [MarkdownInput](#markdowninput)
   - [ListView / ListItem](#listview--listitem)
+  - [CheckList / CheckItem](#checklist--checkitem)
   - [Dropdown](#dropdown)
   - [ProgressBar](#progressbar)
 - [Layouts](#layouts)
@@ -39,7 +40,7 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
 ## Features
 
 - **Very few dependencies** — almost pure Python, uses only two dependencies, `cozy-kit` and `pyperclip`, everything else is the standard library.
-- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Box`, `MarkdownInput`, `ListView`, `Dropdown`, `ProgressBar`
+- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Box`, `MarkdownInput`, `ListView`, `CheckList`, `Dropdown`, `ProgressBar`
 - **Layouts**: `VBox`, `HBox`, `Grid` — auto-position children without manual x/y
 - **Multi-line Input**: Enter or Shift+Enter to insert newlines, UP/DOWN to navigate lines
 - **Markdown preview**: `MarkdownInput` renders live Rich Markdown when unfocused
@@ -536,6 +537,85 @@ lv = ListView(2, 2, [
 ], height=5)
 lv.on_select(lambda val: print(f"Chose: {val}"))
 box.add(lv)
+```
+
+---
+
+### `CheckList` / `CheckItem`
+
+A scrollable list where each item has an independent checked state. Combines `ListView`-style navigation with `Checkbox`-style toggling — every row shows `[ ]` or `[✔]` and can be toggled individually.
+
+```python
+CheckList(x, y, items=None, *, width=None, height=None, style=None)
+CheckItem(text, value=None, checked=False)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `items` | Initial list of strings or `CheckItem` objects |
+| `width` | Fixed width in chars. `None` = auto-sized from the widest item. |
+| `height` | Number of visible rows. `None` = show all items. |
+
+**Reading values:**
+
+```python
+cl.selected        # value of the highlighted item
+cl.selected_index  # integer index of the highlighted item
+cl.checked_values  # list of .value for every checked item
+cl.checked_items   # list of CheckItem objects for every checked item
+```
+
+**Mutating the list:**
+
+```python
+cl.append(item)               # add to the end (string or CheckItem)
+cl.insert(index, item)        # insert at position
+cl.remove(item)               # remove by reference
+cl.clear()                    # remove all items
+cl.set_checked(value, checked) # flip one item's state by value
+```
+
+**Bulk operations** (do not fire `on_toggle`):
+
+```python
+cl.check_all()    # check every item
+cl.uncheck_all()  # uncheck every item
+cl.toggle_all()   # flip every item's state
+```
+
+**Callbacks:**
+
+```python
+cl.on_change(func)   # func(value) — called when the cursor moves to a different row (returns self)
+cl.on_toggle(func)   # func(value, checked) — called when an item is toggled by the user (returns self)
+```
+
+**Key bindings:** Up/Down — move cursor, Home/End — first/last, Enter/Space — toggle highlighted item.
+
+**Mouse:** clicking a row moves the cursor to it and toggles it immediately.
+
+**Visual states:**
+
+| State | Appearance |
+|-------|-----------|
+| Normal unchecked | `  [ ] text` |
+| Normal checked | `  [✔] text` — dimmed |
+| Selected (focused) | `> [ ] text` — black on white, bold |
+
+**Example:**
+
+```python
+from cozy_tui import CheckList, CheckItem, Style
+
+cl = CheckList(2, 2, [
+    CheckItem("Buy groceries"),
+    CheckItem("Walk the dog", checked=True),
+    CheckItem("Finish report"),
+], height=5, style=Style(fg="white"))
+
+cl.on_toggle(lambda value, checked: print(f"{value.text}: {checked}"))
+box.add(cl)
 ```
 
 ---
