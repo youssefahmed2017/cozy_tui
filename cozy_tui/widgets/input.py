@@ -1,9 +1,9 @@
 from collections import deque
 
-from cozy_tui.widget import Widget
 from cozy_tui.style import Style
-from cozy_tui.widgets._input_history import _HistoryMixin
+from cozy_tui.widget import Widget
 from cozy_tui.widgets._input_draw import _DrawMixin
+from cozy_tui.widgets._input_history import _HistoryMixin
 from cozy_tui.widgets._input_keys import _KeysMixin
 
 
@@ -25,6 +25,7 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
         masked_symbol="*",
     ):
         super().__init__(x, y, style)
+        self.laps = True
         self.width = width
         self.placeholder = placeholder
         self.value = ""
@@ -43,6 +44,7 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
         self._undo_stack = deque(maxlen=_HistoryMixin._MAX_HISTORY)
         self._redo_stack: list = []
         self._last_action: str | None = None
+        self.laps = True
 
     def natural_width(self, scale):
         return self.width

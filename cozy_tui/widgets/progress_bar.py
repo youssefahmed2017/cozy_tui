@@ -1,6 +1,7 @@
-from cozy_tui.widget import Widget
-from cozy_tui.style import Style
 from math import floor
+
+from cozy_tui.style import Style
+from cozy_tui.widget import Widget
 
 
 class ProgressBar(Widget):

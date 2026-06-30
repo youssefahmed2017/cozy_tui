@@ -1,16 +1,11 @@
+import ctypes
+import os
 import sys
 import time
-import os
-import ctypes
-from cozy_tui.style import Style, Cell
+
 from cozy_tui.ansi import style_esc
-from cozy_tui.events import (
-    Key,
-    MouseClick,
-    MouseDrag,
-    read_key,
-    kbhit,
-)
+from cozy_tui.events import Key, MouseClick, MouseDrag, kbhit, read_key
+from cozy_tui.style import Cell, Style
 
 # fmt: off
 _ENABLE_VT_INPUT        = 0x0200  # keyboard/mouse → VT sequences on stdin
@@ -316,14 +311,14 @@ class App:
 
     def run(self):
         enter = (
-            "\033[?1049h\033[2J\033[H\033[?25l\033[?1000h\033[?1002h\033[?1006h\033[>4;1m"
+            "\033[?1049h\033[2J\033[H\033[?25l\033[?1000h\033[?1002h\033[?1006h\033[?2004h\033[>4;1m"
             if self.full
-            else "\033[2J\033[H\033[?25l\033[?1000h\033[?1002h\033[?1006h\033[>4;1m"
+            else "\033[2J\033[H\033[?25l\033[?1000h\033[?1002h\033[?1006h\033[?2004h\033[>4;1m"
         )
         exit_ = (
-            "\033[>4;0m\033[?1006l\033[?1002l\033[?1000l\033[?25h\033[?1049l"
+            "\033[>4;0m\033[?2004l\033[?1006l\033[?1002l\033[?1000l\033[?25h\033[?1049l"
             if self.full
-            else "\033[>4;0m\033[?1006l\033[?1000l\033[?25h"
+            else "\033[>4;0m\033[?2004l\033[?1006l\033[?1000l\033[?25h"
         )
         sys.stdout.write(enter)
         sys.stdout.flush()
@@ -376,7 +371,12 @@ class App:
                         self.focused.on_mouse_drag(key.col, key.row + self.scroll_y)
                     continue
                 if key == Key.CTRL_C:
-                    self.quit()
+                    # Text inputs (cursor=True) handle Ctrl+C for copy; everything
+                    # else treats it as quit.
+                    if self.focused and getattr(self.focused, "cursor", False):
+                        self.focused.on_key(key)
+                    else:
+                        self.quit()
                 elif key in (Key.SCROLL_UP, Key.PAGE_UP, Key.CTRL_UP):
                     self._scroll(-3)
                 elif key in (Key.SCROLL_DOWN, Key.PAGE_DOWN, Key.CTRL_DOWN):

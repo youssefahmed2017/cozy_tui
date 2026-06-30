@@ -1,4 +1,4 @@
-from cozy_tui.events import Key
+from cozy_tui.events import Key, Paste
 from cozy_tui.widgets._input_clipboard import _clipboard_get, _clipboard_set
 
 
@@ -25,8 +25,26 @@ class _KeysMixin:
         Key.CTRL_A,
     }
 
+    def _do_paste(self, text: str) -> None:
+        self._save_history("edit")
+        if self._sel_anchor is not None:
+            self._delete_sel()
+        if not self.multiline:
+            text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+        else:
+            text = text.replace("\r\n", "\n").replace("\r", "\n")
+        self.value = (
+            self.value[: self.cursor_pos] + text + self.value[self.cursor_pos :]
+        )
+        self.cursor_pos += len(text)
+        self._sel_anchor = None
+
     def on_key(self, key):
         _prev_value = self.value
+
+        if isinstance(key, Paste):
+            self._do_paste(key.text)
+            return
 
         if key == Key.LEFT:
             r = self._sel_range()
@@ -188,23 +206,7 @@ class _KeysMixin:
         elif key == Key.CTRL_V:
             pasted = _clipboard_get()
             if pasted:
-                self._save_history("edit")
-                if self._sel_anchor is not None:
-                    self._delete_sel()
-                if not self.multiline:
-                    pasted = (
-                        pasted.replace("\r\n", " ")
-                        .replace("\r", " ")
-                        .replace("\n", " ")
-                    )
-                else:
-                    pasted = pasted.replace("\r\n", "\n").replace("\r", "\n")
-                self.value = (
-                    self.value[: self.cursor_pos]
-                    + pasted
-                    + self.value[self.cursor_pos :]
-                )
-                self.cursor_pos += len(pasted)
+                self._do_paste(pasted)
 
         # ── insert / overwrite mode ───────────────────────────────────────────
 

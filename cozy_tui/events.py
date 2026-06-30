@@ -1,10 +1,19 @@
-import os
 import ctypes as _ct
+import os
 
 _k32 = _ct.windll.kernel32
 _h_stdin = _k32.GetStdHandle(_ct.c_ulong(-10))  # STD_INPUT_HANDLE
 
 # fmt: off
+class Paste:
+    """All text from a single terminal bracketed-paste event (ESC[200~...ESC[201~)."""
+    def __init__(self, text: str):
+        self.text = text
+
+    def __repr__(self):
+        return f"Paste({self.text!r})"
+
+
 class MouseClick:
     """A mouse button press event with 0-indexed terminal coordinates."""
     def __init__(self, col: int, row: int, btn: int):
@@ -191,7 +200,33 @@ def _read_csi():
         # Covers a-z (97-122) and A-Z (65-90); cp % 32 gives 1-26.
         if mod in (5, 6) and (65 <= cp <= 90 or 97 <= cp <= 122):
             return chr(cp % 32)
+        if mod == 1:
+            return Key.BACKSPACE if cp == 127 else chr(cp)
         return None
+
+    # Bracketed paste: ESC [ 200 ~ ... ESC [ 201 ~
+    if buf == "200~":
+        chars = []
+        while True:
+            c = _read_char()
+            if c == "\x1b":
+                c2 = _read_char()
+                if c2 == "[":
+                    seq = ""
+                    while True:
+                        sc = _read_char()
+                        seq += sc
+                        if sc.isalpha() or sc == "~":
+                            break
+                    if seq == "201~":
+                        break
+                    chars.append("\x1b[" + seq)
+                else:
+                    chars.append("\x1b")
+                    chars.append(c2)
+            else:
+                chars.append(c)
+        return Paste("".join(chars))
 
     return _CSI_MAP.get(buf)
 

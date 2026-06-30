@@ -1,6 +1,6 @@
-from cozy_tui.widget import Widget
-from cozy_tui.style import Style
 from cozy_tui.events import Key
+from cozy_tui.style import Style
+from cozy_tui.widget import Widget
 from cozy_tui.widgets.list_view import ListView, _display, _value
 
 

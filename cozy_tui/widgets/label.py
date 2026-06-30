@@ -5,9 +5,15 @@ class Label(Widget):
     def __init__(self, x, y, text, style=None):
         super().__init__(x, y, style)
         self.text = text
+        self.laps = True
 
     def natural_width(self, scale):
         return len(self.text)
+
+    def natural_height(self, scale):
+        if self._clip_width and self.text:
+            return max(1, (len(self.text) + self._clip_width - 1) // self._clip_width)
+        return 1
 
     def draw(self, canvas):
         if self._clip_width:
