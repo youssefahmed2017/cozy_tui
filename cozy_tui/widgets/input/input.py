@@ -2,9 +2,9 @@ from collections import deque
 
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
-from cozy_tui.widgets._input_draw import _DrawMixin
-from cozy_tui.widgets._input_history import _HistoryMixin
-from cozy_tui.widgets._input_keys import _KeysMixin
+from cozy_tui.widgets.input._input_draw import _DrawMixin
+from cozy_tui.widgets.input._input_history import _HistoryMixin
+from cozy_tui.widgets.input._input_keys import _KeysMixin
 
 
 class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):

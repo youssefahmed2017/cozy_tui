@@ -1,5 +1,6 @@
 from cozy_tui.events import Key, Paste
-from cozy_tui.widgets._input_clipboard import _clipboard_get, _clipboard_set
+from cozy_tui.widgets.input._input_clipboard import (_clipboard_get,
+                                                     _clipboard_set)
 
 
 class _KeysMixin:

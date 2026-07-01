@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from cozy_tui.widgets.input import Input
-from cozy_tui.widgets.markdown import _RICH_OK, Markdown
+from cozy_tui.widgets.display.markdown import _RICH_OK, Markdown
+from cozy_tui.widgets.input.input import Input
 
 
 class MarkdownInput(Input, Markdown):

@@ -15,6 +15,8 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
   - [App](#app)
   - [Box](#box)
   - [Label](#label)
+  - [AnimatedLabel / GlowAnimation](#animatedlabel--glowanimation)
+  - [Text](#text)
   - [Input](#input)
   - [Button](#button)
   - [Checkbox](#checkbox)
@@ -23,6 +25,9 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
   - [CheckList / CheckItem](#checklist--checkitem)
   - [Dropdown](#dropdown)
   - [ProgressBar](#progressbar)
+  - [Table / TableRow](#table--tablerow)
+  - [Collapsible](#collapsible)
+  - [Tree / TreeNode](#tree--treenode)
 - [Layouts](#layouts)
   - [Layout (base)](#layout-base)
   - [VBox](#vbox)
@@ -40,7 +45,7 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
 ## Features
 
 - **Very few dependencies** — almost pure Python, uses only two dependencies, `cozy-kit` and `pyperclip`, everything else is the standard library.
-- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Box`, `MarkdownInput`, `ListView`, `CheckList`, `Dropdown`, `ProgressBar`
+- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `AnimatedLabel`, `Text`, `Box`, `MarkdownInput`, `ListView`, `CheckList`, `Dropdown`, `ProgressBar`, `Table`, `Collapsible`, `Tree`
 - **Layouts**: `VBox`, `HBox`, `Grid` — auto-position children without manual x/y
 - **Multi-line Input**: Enter or Shift+Enter to insert newlines, UP/DOWN to navigate lines
 - **Markdown preview**: `MarkdownInput` renders live Rich Markdown when unfocused
@@ -233,6 +238,87 @@ lbl.text = "Status: done"
 
 ---
 
+### `AnimatedLabel` / `GlowAnimation`
+
+A label whose text is rendered with a per-character animated color wave. Useful for decorative headers or status lines.
+
+```python
+AnimatedLabel(x, y, text, animation, *, style=None)
+GlowAnimation(colors=None, interval=0.05)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `text` | The text to animate |
+| `animation` | A `GlowAnimation` instance (or any object with `.colors` and `.interval`) |
+| `colors` | List of named or hex colors cycling across the text characters |
+| `interval` | Seconds between animation frames (default `0.05`) |
+
+**Example:**
+
+```python
+from cozy_tui import AnimatedLabel, GlowAnimation
+
+anim = GlowAnimation(
+    colors=["red", "yellow", "green", "cyan", "blue", "magenta"],
+    interval=0.08,
+)
+lbl = AnimatedLabel(2, 2, "cozy_tui", anim)
+app.add(lbl)
+```
+
+The wave shifts one character position each frame, producing a smooth color sweep across the text.
+
+---
+
+### `Text`
+
+A read-only multi-line text display with automatic word wrapping and optional scrolling. Useful for help text, logs, or any longer content.
+
+```python
+Text(x, y, *, width, height, text="", align="left", show_border=False, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `width` | Display width in characters (inner text area) |
+| `height` | Number of visible rows (inner text area) |
+| `text` | Initial text content. Use `\n` for explicit line breaks. |
+| `align` | `"left"` (default), `"center"`, or `"right"` |
+| `show_border` | Draw a single-line border around the widget (`False` by default). The border turns bold-white when focused. |
+
+**Updating the text:**
+
+```python
+txt.text = "New content goes here."
+txt.set("Also works via set().")
+```
+
+**Key bindings (when focused):**
+
+| Key | Action |
+|-----|--------|
+| Up / Scroll Up | Scroll up one line |
+| Down / Scroll Down | Scroll down one line |
+| Page Up | Scroll up by height |
+| Page Down | Scroll down by height |
+| Home | Jump to the first line |
+| End | Jump to the last line |
+
+**Example:**
+
+```python
+from cozy_tui import Text, Style
+
+txt = Text(2, 2, width=50, height=10, align="left", show_border=True,
+           text="Lorem ipsum dolor sit amet, consectetur adipiscing elit.")
+app.add(txt)
+app.focus(txt)
+```
+
+---
+
 ### `Input`
 
 A focusable text input field. Supports single-line and multi-line modes.
@@ -386,15 +472,6 @@ cb.on_change(lambda checked: print(f"Notifications: {checked}"))
 box.add(cb)
 ```
 
-**Chaining:**
-
-```python
-box.add(
-    Checkbox(2, 5, "I agree to the terms")
-    .on_change(lambda v: btn.on_click(submit if v else None))
-)
-```
-
 ---
 
 ### `MarkdownInput`
@@ -419,67 +496,16 @@ All `Input` parameters are accepted. Typical usage sets `multiline=True` so the 
 
 Tab cycles focus away; the preview appears instantly when another widget receives focus.
 
-**Rendering pipeline:**
-
-```
-self.value  →  Rich Markdown renderer  →  ANSI output  →  canvas.write()
-```
-
-Rich renders with `color_system="standard"` (16 colours), so the preview respects the terminal palette. Truecolor values Rich uses internally are downsampled to the nearest standard colour.
-
-**Caching:** The rendered output is cached by `(value, width)` — Rich only re-renders when the text or display width actually changes, not on every frame.
-
 **Example:**
 
 ```python
 from cozy_tui import App, Box, Button, MarkdownInput, Style
-from cozy_tui.events import Key
 
-app = App(full=True, size=None, style=Style(fg="white", bg="black"))
-
-box = Box(2, 1, "2100x660", border="rounded",
-          style=Style(fg="cyan", bg="black"), title=" Markdown Editor ")
-
-editor = MarkdownInput(
-    2, 2, 66,
-    multiline=True,
-    placeholder="# Title\n\nStart writing **Markdown** here...",
-    style=Style(fg="white"),
-)
-
-preview_btn = Button(2, 20, "Preview (Tab)", width=18,
-                     style=Style(fg="white", bg="bright_black"))
-preview_btn.on_click(lambda b: app.focus(editor))
-
+editor = MarkdownInput(2, 2, 66, multiline=True,
+                       placeholder="# Title\n\nStart writing **Markdown** here...")
 box.add(editor)
-box.add(preview_btn)
-app.add(box)
 app.focus(editor)
-app.on_key(Key.ESC, lambda: "quit")
-app.run()
 ```
-
-**Supported Markdown elements** (via Rich):
-
-- Headings (`#`, `##`, `###`, ...)
-- **Bold** (`**text**`), *italic* (`*text*`), `inline code` (`` `code` ``)
-- Fenced code blocks (` ``` `)
-- Blockquotes (`> text`)
-- Horizontal rules (`---`)
-- Unordered and ordered lists
-
-**Extending:**
-
-`MarkdownInput` is designed to be the first of a family of specialised editors that share `Input`'s editing engine:
-
-```
-Input
- ├── MarkdownInput   ← live Rich Markdown preview
- ├── CodeInput       ← syntax highlighting (future)
- └── RichTextInput   ← arbitrary Rich renderables (future)
-```
-
-To create your own, subclass `Input` and override `draw()` (and optionally `natural_height()`). Only the rendering path needs to change.
 
 ---
 
@@ -569,10 +595,10 @@ cl.checked_items   # list of CheckItem objects for every checked item
 **Mutating the list:**
 
 ```python
-cl.append(item)               # add to the end (string or CheckItem)
-cl.insert(index, item)        # insert at position
-cl.remove(item)               # remove by reference
-cl.clear()                    # remove all items
+cl.append(item)                # add to the end (string or CheckItem)
+cl.insert(index, item)         # insert at position
+cl.remove(item)                # remove by reference
+cl.clear()                     # remove all items
 cl.set_checked(value, checked) # flip one item's state by value
 ```
 
@@ -595,14 +621,6 @@ cl.on_toggle(func)   # func(value, checked) — called when an item is toggled b
 
 **Mouse:** clicking a row moves the cursor to it and toggles it immediately.
 
-**Visual states:**
-
-| State | Appearance |
-|-------|-----------|
-| Normal unchecked | `  [ ] text` |
-| Normal checked | `  [✔] text` — dimmed |
-| Selected (focused) | `> [ ] text` — black on white, bold |
-
 **Example:**
 
 ```python
@@ -614,7 +632,7 @@ cl = CheckList(2, 2, [
     CheckItem("Finish report"),
 ], height=5, style=Style(fg="white"))
 
-cl.on_toggle(lambda value, checked: print(f"{value.text}: {checked}"))
+cl.on_toggle(lambda value, checked: print(f"{value}: {checked}"))
 box.add(cl)
 ```
 
@@ -707,6 +725,254 @@ bar = ProgressBar(2, 5, fill="█", empty="░", width=30,
                   style=Style(fg="bright_green"))
 bar.set(42)
 box.add(bar)
+```
+
+---
+
+### `Table` / `TableRow`
+
+A scrollable, keyboard-navigable table with sortable columns and optional border.
+
+```python
+Table(x, y, *, height=None, show_header=True, show_border=False, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `height` | Number of visible data rows. `None` = show all rows. |
+| `show_header` | Draw the column header row (default `True`) |
+| `show_border` | Draw a border around the table (default `False`) |
+
+**Building the table:**
+
+```python
+tbl.add_column(title, *, width=None, align="left")
+tbl.add_row(*values, style=None, disabled=False, metadata=None)
+tbl.insert_row(index, *values, ...)
+tbl.remove_row(index)
+tbl.set_cell(row_index, col_index, value)
+tbl.update_row(index, *values)
+tbl.sort(column, *, reverse=False)   # column = title string or int index
+tbl.clear()
+```
+
+**`TableRow`** — the object returned by iteration and `selected_row`:
+
+```python
+row = tbl.selected_row     # TableRow | None
+row[0]                     # access column value by index
+list(row)                  # iterate all values
+row.style                  # per-row style override
+row.disabled               # skip focus/highlight if True
+row.metadata               # arbitrary user data attached to this row
+```
+
+**Callbacks:**
+
+```python
+tbl.on_change(func)   # func(row) — called when selection moves
+tbl.on_select(func)   # func(row) — called on Enter or click
+```
+
+**Key bindings:**
+
+| Key | Action |
+|-----|--------|
+| Up / Down | Move row selection |
+| Left / Right | Move column highlight |
+| Home / End | First / last row |
+| Enter | Fire `on_select` |
+
+**Example:**
+
+```python
+from cozy_tui import Table, Style
+
+tbl = Table(2, 2, height=8, show_border=True)
+tbl.add_column("Name",  width=16)
+tbl.add_column("Lang",  width=12)
+tbl.add_column("Stars", width=8, align="right")
+
+tbl.add_row("cozy_tui",  "Python", "★★★★")
+tbl.add_row("rich",      "Python", "★★★★★")
+tbl.add_row("textual",   "Python", "★★★★★")
+
+tbl.sort("Stars", reverse=True)
+tbl.on_select(lambda row: print(row[0]))
+app.add(tbl)
+```
+
+---
+
+### `Collapsible`
+
+A focusable expand/collapse container. Children are navigated with Up/Down while the `Collapsible` holds focus — Tab does not descend into individual children.
+
+```python
+Collapsible(x, y, *, title="", expanded=True, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `title` | Text shown in the header row |
+| `expanded` | Whether to start open (`True` by default) |
+
+**Adding children:**
+
+```python
+coll.add(widget)              # any Widget — Button, Checkbox, Label, …
+coll.add(ListItem("text", v)) # or a ListItem for text-only rows
+coll.add("plain string")      # plain strings work too
+```
+
+All items (widgets and text) are laid out sequentially, one row each. Widget children draw in their active/focused style when the cursor is on them. Text items render with a `> ` selection prefix.
+
+**Expand/collapse API:**
+
+```python
+coll.expand()
+coll.collapse()
+coll.toggle()
+coll.on_toggle(func)   # func(expanded: bool)
+```
+
+**Key bindings (when focused):**
+
+| Key | Action |
+|-----|--------|
+| Up / Down | Move cursor through children |
+| Left | Collapse |
+| Right | Expand |
+| Enter / Space | Activate selected child (or expand if collapsed) |
+| Home / End | First / last child |
+
+**Callbacks:**
+
+```python
+coll.on_select(func)   # func(value) — fires when Enter is pressed on a text item
+coll.on_toggle(func)   # func(expanded) — fires when the section expands or collapses
+```
+
+**Example:**
+
+```python
+from cozy_tui import Collapsible, Checkbox, ListItem
+
+section = Collapsible(2, 2, title="Theme", expanded=True)
+section.add(ListItem("Dark",      "dark"))
+section.add(ListItem("Light",     "light"))
+section.add(ListItem("Solarized", "solarized"))
+section.on_select(lambda val: print(f"Theme: {val}"))
+app.add(section)
+```
+
+---
+
+### `Tree` / `TreeNode`
+
+A hierarchical tree view where each node can be expanded or collapsed. Navigation moves through the flat list of currently visible nodes.
+
+```python
+Tree(x, y, *, height=None, connectors=False, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `height` | Number of visible rows. `None` = show all visible nodes. |
+| `connectors` | Draw `├──`, `└──`, `│` branch lines (default `False`) |
+
+**Building the tree:**
+
+```python
+root  = tree.add("Project")        # returns a TreeNode
+child = root.add("src")            # TreeNode — chains naturally
+child.add("main.py")
+child.add("app.py")
+```
+
+Every `add()` call returns a `TreeNode`, so nesting is expressed by method chaining.
+
+**`TreeNode` API:**
+
+```python
+node.add(text)       # append a child, return it
+node.expand()        # set expanded = True
+node.collapse()      # set expanded = False
+node.toggle()        # flip expanded (no-op on leaf)
+node.is_leaf         # True if no children
+node.text            # display text
+node.expanded        # current expand state
+node.metadata        # arbitrary user data slot
+```
+
+**Key bindings (when focused):**
+
+| Key | Action |
+|-----|--------|
+| Up / Down | Move selection through visible nodes |
+| Right | Expand the selected node |
+| Left | Collapse (if expanded) or jump to parent (if collapsed) |
+| Enter / Space | Toggle expand/collapse; fires `on_select` |
+| Home / End | First / last visible node |
+
+**Callbacks:**
+
+```python
+tree.on_select(func)   # func(node) — fires on Enter or click
+tree.on_change(func)   # func(node) — fires when selection moves
+```
+
+**Example (without connectors):**
+
+```python
+from cozy_tui import App, Tree
+
+app = App()
+tree = Tree(2, 2)
+
+project = tree.add("Project")
+project.expand()
+
+src = project.add("src")
+src.expand()
+src.add("main.py")
+src.add("app.py")
+
+widgets = src.add("widgets")
+widgets.add("button.py")
+widgets.add("checkbox.py")
+
+project.add("docs").add("README.md")
+
+tree.on_select(lambda node: print(node.text))
+app.add(tree)
+app.focus(tree)
+app.run()
+```
+
+**Connector rendering** (`connectors=True`):
+
+```
+v Project
+├── v src
+│   ├── main.py
+│   ├── app.py
+│   └── > widgets
+└── > docs
+```
+
+After expanding `widgets`:
+
+```
+v Project
+├── v src
+│   ├── main.py
+│   ├── app.py
+│   └── v widgets
+│       ├── button.py
+│       └── checkbox.py
+└── > docs
 ```
 
 ---
@@ -915,7 +1181,7 @@ No extra setup needed — mouse support is enabled automatically when `app.run()
 
 ## Focus System
 
-Focus determines which widget receives keyboard input. Only `focusable` widgets (`Input`, `Button`, `Checkbox`, `ListView`, `Dropdown`) can hold focus.
+Focus determines which widget receives keyboard input. Only `focusable` widgets (`Input`, `Button`, `Checkbox`, `ListView`, `Dropdown`, `Table`, `Collapsible`, `Tree`) can hold focus.
 
 ```python
 app.focus(widget)      # set initial focus manually

@@ -1,4 +1,4 @@
-from cozy_tui.widgets.layout import Layout
+from cozy_tui.widgets.layout.layout import Layout
 
 
 class HBox(Layout):
