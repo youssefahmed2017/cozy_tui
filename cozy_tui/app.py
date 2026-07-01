@@ -73,6 +73,7 @@ class App:
         self._cursor_on = True
         self._last_cursor_esc = None  # track last-emitted cursor state
         self._should_quit = False
+        self.tick_interval: float | None = None  # set to e.g. 0.05 for animations
 
     def _init_size(self, size=None):
         if self.full:
@@ -330,11 +331,13 @@ class App:
                 self.render()
                 last_blink = time.monotonic()
 
+                last_tick = time.monotonic()
                 while not kbhit():
+                    now = time.monotonic()
                     if self._check_resize():
                         self.render()
-                        last_blink = time.monotonic()
-                    elif time.monotonic() - last_blink >= self.BLINK_INTERVAL:
+                        last_blink = last_tick = now
+                    elif now - last_blink >= self.BLINK_INTERVAL:
                         self._cursor_on = not self._cursor_on
                         focused = self.focused
                         # For terminal-native cursors (vertical/block) the cursor
@@ -352,7 +355,11 @@ class App:
                                 self._last_cursor_esc = esc
                         else:
                             self.render()
-                        last_blink = time.monotonic()
+                            last_tick = now
+                        last_blink = now
+                    elif self.tick_interval and now - last_tick >= self.tick_interval:
+                        self.render()
+                        last_tick = now
                     time.sleep(0.02)
 
                 self._cursor_on = True

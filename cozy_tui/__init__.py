@@ -1,5 +1,6 @@
 from cozy_tui.app import App
 from cozy_tui.style import Style
+from cozy_tui.widgets.animated_label import AnimatedLabel, GlowAnimation
 from cozy_tui.widgets.box import Box
 from cozy_tui.widgets.button import Button
 from cozy_tui.widgets.check_list import CheckItem, CheckList
@@ -19,6 +20,8 @@ from cozy_tui.widgets.vbox import VBox
 __all__ = [
     "App",
     "Style",
+    "AnimatedLabel",
+    "GlowAnimation",
     "Box",
     "Label",
     "Input",

@@ -45,16 +45,23 @@ def style_esc(fg, bg, styles) -> str:
 
     Results are cached permanently since the number of distinct styles in a
     typical TUI is small (< 100) and styles are reused every frame.
+    fg/bg accept named colors (e.g. "blue") or "rgb(R,G,B)" truecolor strings.
     """
     key = (fg, bg, styles)
     esc = _ESC_CACHE.get(key)
     if esc is not None:
         return esc
     codes = []
-    if bg in _BG:
-        codes.append(_BG[bg])
-    if fg in _FG:
-        codes.append(_FG[fg])
+    if bg:
+        if bg in _BG:
+            codes.append(_BG[bg])
+        elif bg.startswith("rgb("):
+            codes.append("48;2;" + bg[4:-1].replace(",", ";"))
+    if fg:
+        if fg in _FG:
+            codes.append(_FG[fg])
+        elif fg.startswith("rgb("):
+            codes.append("38;2;" + fg[4:-1].replace(",", ";"))
     for s in styles:
         if s in _ST:
             codes.append(_ST[s])

@@ -8,7 +8,10 @@ class Style:
 
     def __init__(self, fg=None, bg=None, styles=None):
         self.fg = fg
-        self.bg = f"{bg}_bg" if bg else None
+        if bg and not bg.startswith("rgb("):
+            self.bg = f"{bg}_bg"
+        else:
+            self.bg = bg  # None or "rgb(R,G,B)" — no suffix needed
         self.styles = tuple(styles) if styles else ()
 
 
