@@ -91,15 +91,23 @@ class Key:
     CTRL = "ctrl"
 
     @staticmethod
-    def alt(ch: str) -> str:
-        """Key value for Alt+<ch>, e.g. Key.alt('s') == 'alt+s'."""
-        return "alt+" + ch
+    def alt(key: str) -> str:
+        """Key value for Alt+<key>: Key.alt('s') == 'alt+s', Key.alt(Key.F5) == 'alt+F5'."""
+        return "alt+" + key
 
     @staticmethod
-    def ctrl(ch: str) -> str:
-        r"""Key value for Ctrl+<letter> — the actual control byte a terminal
-        sends, so Key.ctrl('a') == '\x01' (== Key.CTRL_A)."""
-        return chr(ord(ch.lower()) & 0x1F)
+    def shift(key: str) -> str:
+        """Key value for Shift+<key> (used with F-keys): Key.shift(Key.F5) == 'shift+F5'."""
+        return "shift+" + key
+
+    @staticmethod
+    def ctrl(key: str) -> str:
+        r"""Key value for Ctrl+<key>. A single letter maps to the actual control
+        byte the terminal sends (Key.ctrl('a') == Key.CTRL_A == '\x01'); anything
+        else (e.g. an F-key) becomes a 'ctrl+<key>' string."""
+        if len(key) == 1 and key.isalpha():
+            return chr(ord(key.lower()) & 0x1F)
+        return "ctrl+" + key
 # fmt: on
 
 # Internal read buffer.  We bulk-read from stdin on every refill so that a full
@@ -166,6 +174,28 @@ _CSI_MAP = {
     "122;6u": Key.CTRL_Y,
     "13;2u": Key.SHIFT_ENTER,  # XTerm / Windows Terminal Shift+Enter
 }
+
+# Function-key codes used for *modified* forms (CSI <code> ; <mod> ~ and
+# CSI 1 ; <mod> P/Q/R/S). Unmodified forms live in _CSI_MAP above.
+_FKEY_TILDE = {
+    "11": Key.F1, "12": Key.F2, "13": Key.F3, "14": Key.F4,
+    "15": Key.F5, "17": Key.F6, "18": Key.F7, "19": Key.F8,
+    "20": Key.F9, "21": Key.F10, "23": Key.F11, "24": Key.F12,
+}
+_FKEY_SS3 = {"P": Key.F1, "Q": Key.F2, "R": Key.F3, "S": Key.F4}
+
+
+def _mod_prefix(mod: int) -> str:
+    """Turn a CSI modifier number (1 + bitmask) into a 'ctrl+alt+shift+' prefix."""
+    bits = mod - 1
+    prefix = ""
+    if bits & 4:
+        prefix += "ctrl+"
+    if bits & 2:
+        prefix += "alt+"
+    if bits & 1:
+        prefix += "shift+"
+    return prefix
 
 
 def _read_csi():
@@ -259,6 +289,18 @@ def _read_csi():
             else:
                 chars.append(c)
         return Paste("".join(chars))
+
+    # Modified function keys → "ctrl+F5", "shift+F5", "ctrl+shift+F5", …
+    #   F5–F12 / legacy F1–F4:  CSI <code> ; <mod> ~
+    #   F1–F4 (xterm):          CSI 1 ; <mod> P/Q/R/S
+    if buf.endswith("~") and ";" in buf:
+        code, _, mod = buf[:-1].partition(";")
+        if code in _FKEY_TILDE and mod.isdigit():
+            return _mod_prefix(int(mod)) + _FKEY_TILDE[code]
+    elif buf[-1:] in ("P", "Q", "R", "S") and buf.startswith("1;"):
+        mod = buf[2:-1]
+        if mod.isdigit():
+            return _mod_prefix(int(mod)) + _FKEY_SS3[buf[-1]]
 
     return _CSI_MAP.get(buf)
 

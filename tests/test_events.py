@@ -50,6 +50,26 @@ def test_csi_function_keys():
     assert feed("\x1b[11~") == Key.F1  # legacy CSI form
 
 
+def test_modified_function_keys_tilde():
+    assert feed("\x1b[15;5~") == "ctrl+F5"        # Ctrl+F5
+    assert feed("\x1b[15;2~") == "shift+F5"       # Shift+F5
+    assert feed("\x1b[15;3~") == "alt+F5"         # Alt+F5
+    assert feed("\x1b[24;6~") == "ctrl+shift+F12"  # Ctrl+Shift+F12
+    assert feed("\x1b[15;7~") == "ctrl+alt+F5"    # Ctrl+Alt+F5
+
+
+def test_modified_function_keys_ss3_form():
+    assert feed("\x1b[1;5P") == "ctrl+F1"   # Ctrl+F1 (xterm CSI form)
+    assert feed("\x1b[1;2S") == "shift+F4"  # Shift+F4
+
+
+def test_modifier_helpers_compose_for_fkeys():
+    assert Key.ctrl(Key.F5) == "ctrl+F5"
+    assert Key.alt(Key.F5) == "alt+F5"
+    assert Key.shift(Key.F5) == "shift+F5"
+    assert Key.ctrl(Key.shift(Key.F12)) == "ctrl+shift+F12"  # canonical order
+
+
 def test_alt_letter_via_esc_prefix():
     assert feed("\x1ba") == Key.alt("a") == "alt+a"
     assert feed("\x1bX") == "alt+X"

@@ -1309,14 +1309,18 @@ Available key constants in `cozy_tui.events.Key`:
 ```python
 from cozy_tui.events import Key
 
-app.on_key(Key.alt("s"), save)      # Alt+S  → "alt+s"
-app.on_key(Key.ctrl("f"), find)     # Ctrl+F → the raw control byte "\x06"
-app.on_key(Key.F5, refresh)         # function keys
+app.on_key(Key.alt("s"), save)          # Alt+S   → "alt+s"
+app.on_key(Key.ctrl("f"), find)         # Ctrl+F  → the raw control byte "\x06"
+app.on_key(Key.F5, refresh)             # F5
+app.on_key(Key.ctrl(Key.F5), hard_refresh)  # Ctrl+F5 → "ctrl+F5"
 
 # Key.ALT == "alt" and Key.CTRL == "ctrl" are the underlying prefixes.
 ```
 
-`Key.alt(c)` returns `"alt+" + c` (matching what `read_key()` emits for `Alt+<char>`, including `Key.alt("backspace")`). `Key.ctrl(c)` returns the actual control byte the terminal sends, so `Key.ctrl("a") == Key.CTRL_A`.
+- `Key.alt(c)` → `"alt+" + c` (matches `read_key()` for `Alt+<char>`, e.g. `Key.alt("backspace")`).
+- `Key.ctrl(c)` → the actual control byte for a **letter** (`Key.ctrl("a") == Key.CTRL_A`), or a `"ctrl+<key>"` string otherwise (e.g. an F-key).
+- `Key.shift(c)` → `"shift+" + c` (used for F-keys).
+- **Modified F-keys** parse to canonical `"ctrl+F5"`, `"shift+F5"`, `"ctrl+shift+F12"` … The modifier order is always `ctrl`, `alt`, `shift`, and the helpers compose in that order — `Key.ctrl(Key.shift(Key.F5)) == "ctrl+shift+F5"`.
 
 ---
 
