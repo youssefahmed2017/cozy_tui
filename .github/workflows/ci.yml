@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+
+      - name: Import check (exercises the platform console backend)
+        run: python -c "import cozy_tui; from cozy_tui._console import IS_WINDOWS; print('imported; IS_WINDOWS =', IS_WINDOWS)"
+
+      - name: Run tests
+        run: python -m pytest -q
+
+  package:
+    name: packaging (pip install -e .)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Editable install with dev extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Verify installed metadata and py.typed marker
+        run: |
+          python -c "import importlib.metadata as m; print('version:', m.version('cozy-tui'))"
+          python -c "import importlib.util as u, pathlib; p = pathlib.Path(u.find_spec('cozy_tui').origin).parent / 'py.typed'; assert p.exists(), 'py.typed missing'; print('py.typed present')"
+
+      - name: Run tests against the installed package
+        run: python -m pytest -q
+
+  clipboard-x11:
+    name: clipboard (${{ matrix.backend }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [xclip, xsel]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the ${{ matrix.backend }} backend, Xvfb, and pytest
+        # Only the target tool is installed, so backend selection resolves to it.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ${{ matrix.backend }} xvfb
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+
+      - name: Assert the ${{ matrix.backend }} backend was selected
+        run: xvfb-run -a python -c "from cozy_tui import clipboard; assert clipboard.backend() == '${{ matrix.backend }}', clipboard.backend(); assert clipboard.available()"
+
+      - name: Run the clipboard round-trip under Xvfb
+        # xvfb-run gives the X11 tool a real display, so available() is True and
+        # the round-trip test actually executes instead of self-skipping.
+        run: xvfb-run -a python -m pytest -q tests/test_clipboard.py
+
+  clipboard-wayland:
+    name: clipboard (wl-clipboard)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install wl-clipboard, a headless sway compositor, and pytest
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wl-clipboard sway
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+
+      - name: Assert the wl-clipboard backend was selected
+        run: python -c "from cozy_tui import clipboard; assert clipboard.backend() == 'wl-clipboard', clipboard.backend()"
+
+      - name: Run the clipboard round-trip under headless sway (Wayland)
+        # wl-clipboard needs a Wayland compositor, which Xvfb (X11) can't provide.
+        # Run sway headlessly, wait for its socket, then exercise the round-trip.
+        run: |
+          export XDG_RUNTIME_DIR="$(mktemp -d)"
+          export WLR_BACKENDS=headless
+          export WLR_LIBINPUT_NO_DEVICES=1
+          export WAYLAND_DISPLAY=wayland-1
+          sway -c /dev/null &
+          SWAY_PID=$!
+          for _ in $(seq 1 40); do
+            [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] && break
+            sleep 0.25
+          done
+          test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" || { echo "sway socket never appeared"; exit 1; }
+          python -m pytest -q tests/test_clipboard.py
+          status=$?
+          kill "$SWAY_PID" 2>/dev/null || true
+          exit $status

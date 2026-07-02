@@ -54,6 +54,11 @@ class Widget:
     def natural_height(self, scale):
         return 1
 
+    def dock_resize(self, w, h, scale):
+        """Hook called by the dock layout with the (w, h) cell slice this widget
+        was assigned. Fixed-size widgets ignore it; containers that can fill a
+        rectangle override it to grow into their slice."""
+
     def contains(self, col: int, row: int) -> bool:
         return False
 

@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cozy-tui"
+version = "0.1.0"
+description = "A lightweight, dependency-light Python TUI library with a cell-grid renderer and VT input."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Youssef" }]
+keywords = ["tui", "terminal", "console", "ansi", "widgets", "ui"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Topic :: Software Development :: User Interfaces",
+    "Topic :: Terminals",
+]
+dependencies = [
+    "rich"
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/youssefahmed2017/cozy_tui"
+Repository = "https://github.com/youssefahmed2017/cozy_tui"
+
+[tool.setuptools.packages.find]
+include = ["cozy_tui*"]
+
+[tool.setuptools.package-data]
+cozy_tui = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,3 +1,4 @@
+from cozy_tui._width import text_width
 from cozy_tui.widget import Widget
 
 
@@ -8,7 +9,7 @@ class Label(Widget):
         self.laps = True
 
     def natural_width(self, scale):
-        return len(self.text)
+        return text_width(self.text)
 
     def natural_height(self, scale):
         if self._clip_width and self.text:

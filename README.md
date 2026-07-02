@@ -1,6 +1,8 @@
 # cozy_tui
 
-A lightweight Python TUI (Terminal User Interface) library for Windows. Build keyboard-driven terminal apps with widgets, focus management, mouse support, and smooth cursor blinking — all rendered through raw VT sequences.
+[![CI](https://github.com/youssefahmed2017/cozy_tui/actions/workflows/ci.yml/badge.svg)](https://github.com/youssefahmed2017/cozy_tui/actions/workflows/ci.yml)
+
+A lightweight, cross-platform Python TUI (Terminal User Interface) library. Build keyboard-driven terminal apps with widgets, focus management, mouse support, and smooth cursor blinking — all rendered through raw VT sequences. Runs on Windows (Console API) and POSIX (Linux/macOS via `termios`).
 
 ---
 
@@ -33,6 +35,8 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
   - [VBox](#vbox)
   - [HBox](#hbox)
   - [Grid](#grid)
+- [Dock Layout](#dock-layout)
+- [Overlays & Modals](#overlays--modals)
 - [Styling](#styling)
 - [Key Bindings](#key-bindings)
 - [Mouse Support](#mouse-support)
@@ -44,9 +48,14 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
 
 ## Features
 
-- **Very few dependencies** — almost pure Python, uses only two dependencies, `cozy-kit` and `pyperclip`, everything else is the standard library.
+- **Cross-platform** — runs on Windows (Console API) and POSIX (Linux/macOS via `termios`); the backend is chosen automatically.
+- **Very few dependencies** — almost pure Python. The clipboard is built in (no `pyperclip`); `rich` is the only third-party package, used for `Markdown`/`MarkdownInput` and imported defensively. Everything else is the standard library.
+- **Built-in clipboard** — `cozy_tui.clipboard.copy`/`paste` with native backends per platform (Win32 API, `pbcopy`/`pbpaste`, `wl-clipboard`/`xclip`/`xsel`, or OSC 52 fallback).
+- **Unicode-aware rendering** — a built-in `wcwidth`-style width layer keeps CJK/emoji (double-width) and combining marks (zero-width) aligned in the cell grid.
 - **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `AnimatedLabel`, `Text`, `Box`, `MarkdownInput`, `ListView`, `CheckList`, `Dropdown`, `ProgressBar`, `Table`, `Collapsible`, `Tree`
 - **Layouts**: `VBox`, `HBox`, `Grid` — auto-position children without manual x/y
+- **Dock layout**: `app.dock(widget, "top"/"bottom"/"left"/"right"/"fill")` — edge-anchored regions that re-flow on resize
+- **Overlays & modals**: `app.open_overlay(widget)` floats a widget above the UI, dims the background, and confines focus/input — the basis for dialogs, menus, and tooltips
 - **Multi-line Input**: Enter or Shift+Enter to insert newlines, UP/DOWN to navigate lines
 - **Markdown preview**: `MarkdownInput` renders live Rich Markdown when unfocused
 - **Focus system**: Tab / Shift+Tab to cycle focus, click to focus with mouse
@@ -61,17 +70,21 @@ A lightweight Python TUI (Terminal User Interface) library for Windows. Build ke
 ## Requirements
 
 - Python 3.10+
-- Windows (uses `msvcrt` and the Windows Console API for raw input mode)
+- A VT-capable terminal on **Windows** (Windows Console API) or **POSIX** (Linux/macOS, via `termios`/`tty`). The console backend is selected automatically at import.
 
 ---
 
 ## Installation
 
-Clone the repo and import directly — no package installation needed:
+Install from a checkout with pip (editable is handy for development):
 
 ```bash
 git clone https://github.com/youssefahmed2017/cozy_tui.git
+cd cozy_tui
+pip install -e .            # add [dev] for the test suite; pip install rich for MarkdownInput
 ```
+
+Or just clone and import directly — each example adds the project root to `sys.path`, so no install is strictly required.
 
 Then in your script:
 
@@ -153,6 +166,8 @@ App(full=True, size="800x600", style=Style(...))
 
 ```python
 app.add(widget)             # Add a top-level widget
+app.dock(widget, side)      # Dock a widget to "left"/"right"/"top"/"bottom"/"fill"
+                            # (see the Dock Layout section)
 app.focus(widget)           # Set the initially focused widget
 app.on_key(key, func)       # Register a global key handler
                             # Return "quit" from func to exit the app
@@ -173,10 +188,10 @@ app.run()
 
 ### `Box`
 
-A bordered container that holds other widgets. The border is highlighted when any child has focus.
+A bordered container that holds other widgets. Tab **dives into the box's first focusable child** rather than stopping on the box, so a box wrapping a form focuses the first field directly. Its border highlights whenever the box or any child has focus. A box is **not** itself a Tab stop by default — pass `focusable=True` to make an empty or decorative box selectable/clickable in its own right (diving into children still takes precedence when the box has focusable content).
 
 ```python
-Box(x, y, size, text="", border="single", style=None, title="")
+Box(x, y, size, text="", border="single", style=None, title="", focusable=False)
 ```
 
 | Parameter | Description |
@@ -187,11 +202,14 @@ Box(x, y, size, text="", border="single", style=None, title="")
 | `border` | Border style: `"single"`, `"double"`, `"rounded"`, `"bold"`, `"none"` |
 | `style` | Style for the box background and border |
 | `title` | Optional title shown in the top border |
+| `focusable` | Make the box itself a Tab stop / clickable (`False` by default). Tab dives into focusable children regardless of this flag. |
 
 **Methods:**
 
 ```python
-box.add(widget)   # Add a child widget (positions are relative to box interior)
+box.add(widget)              # Add a child widget (positions relative to box interior)
+box.dock(widget, side)       # Dock a child to an interior edge or "fill"
+                             # (see the Dock Layout section)
 ```
 
 **Border styles:**
@@ -479,7 +497,12 @@ box.add(cb)
 A multi-line text editor that renders its content as **live Markdown** using [Rich](https://github.com/Textualize/rich) when not focused. All editing behaviour is inherited from `Input` — only the rendering differs.
 
 > **Requires Rich:** `pip install rich`  
-> Falls back to plain `Input` rendering if Rich is not installed.
+> Falls back to plain `Input` rendering if Rich is not installed. Warnings are
+> **off by default** (`COZY_TUI_NO_WARNINGS` defaults to `1`). Opt in by setting
+> `COZY_TUI_NO_WARNINGS=0` (any of `0`/`false`/`no`/`off`); then, if Rich is
+> missing, `App.run()` prints a one-time warning to stderr **after it exits and
+> the screen is restored**:
+> `WARNING    Rich isn't installed so you won't get Markdown/MarkdownInput as real markdown.`
 
 ```python
 MarkdownInput(x, y, width, placeholder="", style=None, multiline=True, ...)
@@ -670,7 +693,9 @@ dd.on_change(func)   # called with value when confirmed (returns self)
 dd.on_select(func)   # alias — called on same event (returns self)
 ```
 
-**Key bindings:** Enter/Space/Down — open; Up/Down — navigate; Enter — confirm; Esc/Space — close without confirming.
+**Key bindings:** Enter/Space/Down — open; Up/Down — navigate; Enter or click a row — confirm; Esc or click outside — close without confirming.
+
+The open popup is rendered on the [overlay layer](#overlays--modals), so it **floats above every other widget** (never clipped or overpainted) and the header stays a single row — opening it no longer pushes surrounding widgets down.
 
 **Example:**
 
@@ -1087,6 +1112,120 @@ This renders as:
 
 ---
 
+## Dock Layout
+
+Instead of positioning widgets by hand, you can **dock** them to the edges of a container. Both `App` and `Box` have a `dock()` method:
+
+```python
+app.dock(widget, side, margin=0)   # dock to a screen edge
+box.dock(widget, side, margin=0)   # dock to a box interior edge
+```
+
+`side` is one of `"left"`, `"right"`, `"top"`, `"bottom"`, or `"fill"`.
+
+### How space is divided
+
+Docking works by consuming a **shrinking rectangle**. The container starts with its full area; each dock carves a band off one edge, and the next dock only sees what's left:
+
+- `top` / `bottom` → take a horizontal band; the widget **stretches across the remaining width**.
+- `left` / `right` → take a vertical band; the widget **stretches across the remaining height**.
+- `fill` → takes the **entire leftover rectangle** — this is who "gets the rest of the space."
+
+**Order matters.** Docks are applied in the order you add them, so the widget docked last sees the smallest rectangle:
+
+```python
+app.dock(header,  "top")     # full width, along the top
+app.dock(status,  "bottom")  # full width, along the bottom
+app.dock(sidebar, "left")    # spans only the band BETWEEN header and status
+app.dock(main,    "fill")    # everything that's left
+```
+
+```
++----------------------------------+
+| Header                           |
++------+---------------------------+
+| Side | Main (fill)               |
+| Bar  |                           |
++------+---------------------------+
+| Status                           |
++----------------------------------+
+```
+
+Had you docked the sidebar *before* the header and status, it would span the full terminal height instead.
+
+### Stretching and `margin`
+
+Whether a docked widget actually *fills* its band depends on the widget. A `Box` grows to fill the slice it's given (so a docked `Box` spans the full width/height of its band automatically); fixed-size widgets like `Label` simply anchor at the slice's top-left corner. `margin` insets the widget from the edge it docks against.
+
+### Reactive by design
+
+Docks are recomputed **every frame**, so the layout re-flows automatically when the terminal is resized — no manual repositioning needed. Docking returns the widget, so calls can be chained or captured:
+
+```python
+sidebar = app.dock(Box(0, 0, "180x10", title="Menu"), "left", margin=1)
+```
+
+> On non-`full` (scrollable) apps, docked widgets scroll with the content rather than staying pinned to the viewport. For the typical `full=True` app there is no scroll, so they stay anchored.
+
+See [`examples/dock_layout/dock_layout.py`](examples/dock_layout/dock_layout.py) for a complete header / sidebar / status / fill layout.
+
+---
+
+## Overlays & Modals
+
+Overlays draw a widget **above** the rest of the UI on a separate z-layer — the basis for dialogs, menus, and tooltips. Push one with `app.open_overlay(widget)` and remove it with `app.close_overlay()`.
+
+```python
+def confirm(_btn):
+    dialog = Box(0, 0, "520x180", title="Confirm", border="rounded")
+    dialog.add(Label(2, 1, "Delete everything?"))
+    dialog.add(Button(2, 4, "Cancel").on_click(lambda b: app.close_overlay(dialog)))
+    dialog.add(Button(14, 4, "Delete").on_click(lambda b: app.close_overlay(dialog)))
+    app.open_overlay(dialog, close_on_click_outside=True)
+```
+
+```python
+app.open_overlay(widget, *, modal=True, dim=True, center=True,
+                 close_on_escape=True, close_on_click_outside=False, on_close=None)
+app.close_overlay(widget=None)   # topmost, or the overlay wrapping `widget`
+```
+
+| Option | Meaning |
+|--------|---------|
+| `modal` | Confine keyboard focus and mouse input to the overlay (Tab cycles only inside it). Non-modal overlays are purely visual, e.g. tooltips. |
+| `dim` | Grey the background behind the overlay as a scrim. |
+| `center` | Re-centre the widget on screen every frame (survives resize). Set `False` to position it yourself via `x`/`y`. |
+| `close_on_escape` | Esc dismisses the topmost modal (default `True`). |
+| `close_on_click_outside` | A click outside the overlay dismisses it (default `False`). |
+| `on_close` | `func(widget)` called when the overlay closes. |
+
+**Behaviour:**
+
+- Overlays are **screen-fixed** — unaffected by scrolling — and stack (last opened is topmost).
+- Opening a modal moves focus to its first focusable child; closing restores the focus that was active before.
+- A `Box` is the natural overlay container (it gives the dialog a border, title, and hit-testing). Its border highlights while it holds focus.
+
+See [`examples/overlay/overlay.py`](examples/overlay/overlay.py) for a dismissable confirm dialog.
+
+### Text-entry prompt
+
+For the common case of "ask the user for a line of text", `app.prompt()` wraps the `PromptDialog` widget and the overlay plumbing into one call:
+
+```python
+app.prompt("Rename card", initial=card.text,
+           on_submit=lambda text: rename(card, text),   # Enter
+           on_cancel=lambda: None)                       # Esc / click outside
+```
+
+```python
+app.prompt(title, initial="", *, on_submit=None, on_cancel=None,
+           width=40, close_on_click_outside=True)   # returns the PromptDialog
+```
+
+Enter fires `on_submit(text)` and closes the dialog; Esc or a click outside fires `on_cancel()`. It's a centered, dimmed modal, so focus and input are confined to it. The underlying `PromptDialog` is also exported if you want to compose it yourself.
+
+---
+
 ## Styling
 
 Styles are created with the `Style` class:
@@ -1181,7 +1320,7 @@ No extra setup needed — mouse support is enabled automatically when `app.run()
 
 ## Focus System
 
-Focus determines which widget receives keyboard input. Only `focusable` widgets (`Input`, `Button`, `Checkbox`, `ListView`, `Dropdown`, `Table`, `Collapsible`, `Tree`) can hold focus.
+Focus determines which widget receives keyboard input. Only `focusable` widgets (`Input`, `Button`, `Checkbox`, `ListView`, `Dropdown`, `Table`, `Collapsible`, `Tree`) can hold focus. A **focusable container defers to its children**: Tab dives into a `Box`'s first focusable child instead of stopping on the box. A `Box` is not a Tab stop on its own unless you construct it with `Box(..., focusable=True)`, which is useful for empty or decorative boxes you still want selectable.
 
 ```python
 app.focus(widget)      # set initial focus manually
@@ -1227,6 +1366,46 @@ Demonstrates `Input`, `Button`, `Checkbox`, `ProgressBar`, `Dropdown`, `ListView
 
 ```bash
 python examples/timer_app/timer.py
+```
+
+### `examples/dock_layout/dock_layout.py` — Dock Layout
+
+Demonstrates `App.dock()` with a header (`top`), status bar (`bottom`), sidebar (`left`), and a `fill` main area that claims the remaining space. Resize the terminal to watch the layout re-flow.
+
+```bash
+python examples/dock_layout/dock_layout.py
+```
+
+### `examples/overlay/overlay.py` — Overlays / Modals
+
+A base screen with a button that opens a centered, dimmed modal dialog. Tab is confined to the dialog; Esc or a click outside dismisses it.
+
+```bash
+python examples/overlay/overlay.py
+```
+
+### `examples/command_palette/command_palette.py` — Command Palette
+
+A Spotlight/VS Code-style fuzzy command launcher in a modal overlay: a custom widget with its own text buffer and filtered result list. Press `p` to open, type to fuzzy-search, Enter/click to run. Includes a background-worker command that keeps the UI responsive.
+
+```bash
+python examples/command_palette/command_palette.py
+```
+
+### `examples/kanban/kanban.py` — Kanban Board
+
+A keyboard-driven To Do / Doing / Done board built from Boxes + ListViews. Tab switches columns, Up/Down selects, ←/→ moves a card between columns, `a`/`d` add/delete, `?` shows a help overlay, `c` opens a confirm-clear modal.
+
+```bash
+python examples/kanban/kanban.py
+```
+
+### `examples/snake/snake.py` — Snake
+
+A real-time Snake game: a fully custom drawing widget painting the field cell-by-cell, driven by `app.tick_interval` (game logic decoupled from render rate), with a "Game Over" modal offering Restart / Quit.
+
+```bash
+python examples/snake/snake.py
 ```
 
 ### `examples/calculator_app/calculator.py` — Calculator
