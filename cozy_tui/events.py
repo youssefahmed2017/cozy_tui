@@ -71,6 +71,35 @@ class Key:
     CTRL_U            = "\x15"
     CTRL_Y            = "\x19"
     INSERT            = "INSERT"
+
+    F1  = "F1"
+    F2  = "F2"
+    F3  = "F3"
+    F4  = "F4"
+    F5  = "F5"
+    F6  = "F6"
+    F7  = "F7"
+    F8  = "F8"
+    F9  = "F9"
+    F10 = "F10"
+    F11 = "F11"
+    F12 = "F12"
+
+    # Modifier prefixes. Terminals never send a lone Alt/Ctrl press — only in
+    # combination with another key — so these are used through the helpers below.
+    ALT  = "alt"
+    CTRL = "ctrl"
+
+    @staticmethod
+    def alt(ch: str) -> str:
+        """Key value for Alt+<ch>, e.g. Key.alt('s') == 'alt+s'."""
+        return "alt+" + ch
+
+    @staticmethod
+    def ctrl(ch: str) -> str:
+        r"""Key value for Ctrl+<letter> — the actual control byte a terminal
+        sends, so Key.ctrl('a') == '\x01' (== Key.CTRL_A)."""
+        return chr(ord(ch.lower()) & 0x1F)
 # fmt: on
 
 # Internal read buffer.  We bulk-read from stdin on every refill so that a full
@@ -125,6 +154,12 @@ _CSI_MAP = {
     "1;5D": Key.CTRL_LEFT,
     "1;6C": Key.CTRL_SHIFT_RIGHT,
     "1;6D": Key.CTRL_SHIFT_LEFT,
+    # Function keys. F5–F12 are always CSI "~" sequences; F1–F4 usually arrive as
+    # SS3 (see _read_ss3) but some terminals send the CSI forms below.
+    "11~": Key.F1, "12~": Key.F2, "13~": Key.F3, "14~": Key.F4,
+    "15~": Key.F5, "17~": Key.F6, "18~": Key.F7, "19~": Key.F8,
+    "20~": Key.F9, "21~": Key.F10, "23~": Key.F11, "24~": Key.F12,
+    "1P": Key.F1, "1Q": Key.F2, "1R": Key.F3, "1S": Key.F4,
     # Ctrl+Shift+Z via XTerm modifyOtherKeys level 1 (\033[>4;1m):
     # Z=90 or z=122, Ctrl+Shift modifier=6
     "90;6u": Key.CTRL_Y,
@@ -194,6 +229,9 @@ def _read_csi():
         # Covers a-z (97-122) and A-Z (65-90); cp % 32 gives 1-26.
         if mod in (5, 6) and (65 <= cp <= 90 or 97 <= cp <= 122):
             return chr(cp % 32)
+        # Alt (3) or Alt+Shift (4) + printable → "alt+<char>"
+        if mod in (3, 4) and cp >= 0x20:
+            return Key.alt(chr(cp))
         if mod == 1:
             return Key.BACKSPACE if cp == 127 else chr(cp)
         return None
@@ -225,6 +263,19 @@ def _read_csi():
     return _CSI_MAP.get(buf)
 
 
+# SS3 payload byte → Key. F1–F4, plus arrows/Home/End in application cursor mode.
+_SS3_MAP = {
+    "P": Key.F1, "Q": Key.F2, "R": Key.F3, "S": Key.F4,
+    "A": Key.UP, "B": Key.DOWN, "C": Key.RIGHT, "D": Key.LEFT,
+    "H": Key.HOME, "F": Key.END,
+}
+
+
+def _read_ss3():
+    """Classify an SS3 sequence (ESC O already consumed)."""
+    return _SS3_MAP.get(_read_char())
+
+
 def read_key():
     ch = _read_char()
     if ch == "\x7f":  # DEL char — Windows Terminal sends this for Backspace
@@ -237,10 +288,13 @@ def read_key():
         ch2 = _read_char()
         if ch2 == "[":
             return _read_csi()
-        if ch2 == "O":
-            _read_char()  # SS3 payload (F1–F4) — consume and ignore
-            return None
+        if ch2 == "O":  # SS3 — F1–F4 and application-mode cursor keys
+            return _read_ss3()
         if ch2 == "\r":  # Windows Terminal sends ESC+CR for Shift+Enter
             return Key.SHIFT_ENTER
+        if ch2 == "\x7f":  # ESC + DEL → Alt+Backspace
+            return Key.alt("backspace")
+        if len(ch2) == 1 and ch2.isprintable():
+            return Key.alt(ch2)  # ESC + <char> → Alt+<char>
         return Key.ESC
     return ch

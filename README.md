@@ -1300,8 +1300,23 @@ Available key constants in `cozy_tui.events.Key`:
 
 `ESC`, `ENTER`, `BACKSPACE`, `TAB`, `SHIFT_TAB`, `SHIFT_ENTER`,
 `UP`, `DOWN`, `LEFT`, `RIGHT`, `HOME`, `END`,
-`DELETE`, `PAGE_UP`, `PAGE_DOWN`,
-`CTRL_UP`, `CTRL_DOWN`, `CTRL_C`
+`DELETE`, `INSERT`, `PAGE_UP`, `PAGE_DOWN`,
+`CTRL_UP`, `CTRL_DOWN`, `CTRL_LEFT`, `CTRL_RIGHT`, `CTRL_C`,
+`F1`–`F12`
+
+**Modifier combos.** Terminals only send Alt/Ctrl combined with another key, so use the helpers:
+
+```python
+from cozy_tui.events import Key
+
+app.on_key(Key.alt("s"), save)      # Alt+S  → "alt+s"
+app.on_key(Key.ctrl("f"), find)     # Ctrl+F → the raw control byte "\x06"
+app.on_key(Key.F5, refresh)         # function keys
+
+# Key.ALT == "alt" and Key.CTRL == "ctrl" are the underlying prefixes.
+```
+
+`Key.alt(c)` returns `"alt+" + c` (matching what `read_key()` emits for `Alt+<char>`, including `Key.alt("backspace")`). `Key.ctrl(c)` returns the actual control byte the terminal sends, so `Key.ctrl("a") == Key.CTRL_A`.
 
 ---
 
