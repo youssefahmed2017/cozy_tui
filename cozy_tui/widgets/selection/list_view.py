@@ -101,6 +101,12 @@ class ListView(Widget):
         except ValueError:
             pass
 
+    def set_item(self, index: int, item) -> None:
+        """Replace the item at *index* in place, keeping selection and scroll."""
+        if 0 <= index < len(self._items):
+            self._items[index] = item
+            self._label_width_cache = None  # display width may have changed
+
     def clear(self) -> None:
         self._items.clear()
         self._index = 0

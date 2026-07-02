@@ -8,6 +8,7 @@ from cozy_tui.widgets.display.progress_bar import ProgressBar
 from cozy_tui.widgets.display.text import Text
 from cozy_tui.widgets.input.input import Input
 from cozy_tui.widgets.input.markdown_input import MarkdownInput
+from cozy_tui.widgets.input.prompt import PromptDialog
 from cozy_tui.widgets.layout.box import Box
 from cozy_tui.widgets.layout.collapsible import Collapsible
 from cozy_tui.widgets.layout.grid import Grid
@@ -39,6 +40,7 @@ __all__ = [
     "Grid",
     "Markdown",
     "MarkdownInput",
+    "PromptDialog",
     "ListView",
     "ListItem",
     "CheckList",

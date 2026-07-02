@@ -1,8 +1,6 @@
-import ctypes as _ct
 import os
 
-_k32 = _ct.windll.kernel32
-_h_stdin = _k32.GetStdHandle(_ct.c_ulong(-10))  # STD_INPUT_HANDLE
+from cozy_tui import _console
 
 # fmt: off
 class Paste:
@@ -75,21 +73,17 @@ class Key:
     INSERT            = "INSERT"
 # fmt: on
 
-# Internal read buffer.  os.read() reads the VT-processed byte stream while
-# msvcrt.kbhit() peeks the raw event queue — different buffers.  We do a
-# bulk read on every refill so that a full VT sequence (e.g. ESC [ A) lands
-# in _buf all at once, making the ESC-vs-sequence disambiguation reliable.
+# Internal read buffer.  We bulk-read from stdin on every refill so that a full
+# VT sequence (e.g. ESC [ A) lands in _buf all at once, making the ESC-vs-CSI
+# disambiguation reliable — separate from the OS-level input readiness that
+# _console.kbhit() reports.
 _buf: list[str] = []
 
 
 def kbhit() -> bool:
     if _buf:
         return True
-    # WaitForSingleObject with 0ms timeout: returns 0 (WAIT_OBJECT_0) when stdin
-    # has any pending input — keyboard, mouse clicks, or mouse scroll VT bytes.
-    # msvcrt.kbhit() only detects KEY_EVENT records and misses mouse scroll in
-    # Windows Terminal (ConPTY), where mouse events arrive as raw pipe bytes.
-    return _k32.WaitForSingleObject(_h_stdin, 0) == 0
+    return _console.kbhit()
 
 
 def _read_char() -> str:
