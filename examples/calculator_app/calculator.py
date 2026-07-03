@@ -10,7 +10,7 @@ from cozy_tui.events import Key
 
 # ── app ───────────────────────────────────────────────────────────────────────
 
-app = App(full=True, size=None, style=Style(fg="white", bg="black"))
+app = App(full=True, size=None, style=Style(fg="white", bg="black"), title="CALCULATOR")
 
 # ── state ─────────────────────────────────────────────────────────────────────
 

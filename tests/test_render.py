@@ -48,3 +48,20 @@ def test_render_runs_without_error():
     app = make_app()
     app.write(0, 0, "hello", app.style)
     app.render()  # exercises the diff/full render path against the buffer
+
+
+def test_full_render_uses_crlf_line_breaks():
+    # POSIX raw mode disables OPOST, so full-render lines must end with CR+LF or
+    # the screen stair-steps. Assert the serialized output has no bare LF.
+    import contextlib
+    import io
+
+    app = make_app()
+    app.write(0, 0, "ab", app.style)
+    app.write(0, 1, "cd", app.style)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        app._do_full_render()
+    out = buf.getvalue()
+    assert "\r\n" in out                       # rows separated by CRLF
+    assert "\n" not in out.replace("\r\n", "")  # and no lone LF anywhere

@@ -95,3 +95,25 @@ def test_lone_escape_still_escape():
 def test_plain_char_unchanged():
     assert feed("a") == "a"
     assert feed("\r") == Key.ENTER
+
+
+def test_key_label_named_and_arrows():
+    assert Key.label(Key.ESC) == "Esc"
+    assert Key.label(Key.ENTER) == "Enter"
+    assert Key.label(Key.UP) == "↑"
+    assert Key.label(Key.LEFT) == "←"
+    assert Key.label(Key.PAGE_DOWN) == "PgDn"
+    assert Key.label(Key.F5) == "F5"
+
+
+def test_key_label_modifiers():
+    assert Key.label(Key.ctrl("f")) == "Ctrl+F"      # control byte \x06
+    assert Key.label(Key.CTRL_C) == "Ctrl+C"
+    assert Key.label(Key.alt("s")) == "Alt+S"
+    assert Key.label("ctrl+shift+F12") == "Ctrl+Shift+F12"
+    assert Key.label(" ") == "Space"
+
+
+def test_key_label_plain_char_and_fallback():
+    assert Key.label("a") == "a"
+    assert Key.label("?") == "?"

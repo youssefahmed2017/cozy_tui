@@ -63,7 +63,7 @@ class App:
     BLINK_INTERVAL = 0.5
 
     def __init__(
-        self, style: Style = Style(bg="black", fg="white"), size=None, full=True
+        self, style: Style = Style(bg="black", fg="white"), size=None, full=True, title: str = "Cozy TUI App"
     ):
         self.style = style
         self.full = full
@@ -75,6 +75,10 @@ class App:
         self.widgets = []
         self.focused = None
         self._key_handlers = {}
+        # Bindings registered with a description, for the Bindings("auto") legend.
+        # key -> (description, section); ordered by first registration.
+        self._bindings: dict = {}
+        self._bindings_version = 0
         self._cursor_on = True
         self._last_cursor_esc = None  # track last-emitted cursor state
         self._should_quit = False
@@ -89,6 +93,7 @@ class App:
         self._scroll_active = True
         raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
         self._backdrop_style = Style(fg="bright_black", bg=raw_bg)
+        self.title = title
 
     def _init_size(self, size=None):
         if self.full:
@@ -300,8 +305,14 @@ class App:
         widget.x = max(0, (self.cols - w) // 2)
         widget.y = max(0, (self.rows - h) // 2)
 
-    def on_key(self, key, handler):
+    def on_key(self, key, handler, *, description=None, section=None):
+        """Register a global key handler. Provide a ``description`` (and optional
+        ``section``) to have it appear in a ``Bindings("auto")`` legend; without
+        one the binding still works but is omitted from the legend."""
         self._key_handlers[key] = handler
+        if description is not None:
+            self._bindings[key] = (description, section)
+            self._bindings_version += 1
 
     def focus(self, widget):
         self.focused = widget
@@ -490,7 +501,10 @@ class App:
             lines.append("".join(parts))
 
         cursor = self._cursor_esc()
-        sys.stdout.write("\033[H" + "\n".join(lines) + cursor)
+        # Join with CRLF, not bare LF: POSIX raw mode (tty.setraw) disables OPOST,
+        # so a lone "\n" moves down without returning to column 0 — which would
+        # stair-step the whole screen. The explicit "\r" is a no-op on Windows.
+        sys.stdout.write("\033[H" + "\r\n".join(lines) + cursor)
         sys.stdout.flush()
         self._last_cursor_esc = cursor
 
@@ -517,6 +531,10 @@ class App:
             sys.stdout.write("".join(out))
             sys.stdout.flush()
             self._last_cursor_esc = cursor
+
+    def set_title(self, title: str):
+        # OSC 0
+        self.title = title
 
     # ── hit testing ───────────────────────────────────────────────────────────
 
@@ -553,6 +571,10 @@ class App:
             if self.full
             else "\033[>4;0m\033[?2004l\033[?1006l\033[?1000l\033[?25h"
         )
+
+        sys.stdout.write(f"\033]0;{self.title}\007") # Update terminal tab title using OSC 0
+        sys.stdout.flush()
+
         sys.stdout.write(enter)
         sys.stdout.flush()
         raw_state = enable_raw()

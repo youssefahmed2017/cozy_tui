@@ -108,7 +108,47 @@ class Key:
         if len(key) == 1 and key.isalpha():
             return chr(ord(key.lower()) & 0x1F)
         return "ctrl+" + key
+
+    @staticmethod
+    def label(token: str) -> str:
+        r"""Human-readable label for a key token — the inverse of the constants
+        and helpers. E.g. Key.label(Key.ESC) == 'Esc', Key.label(Key.UP) == '↑',
+        Key.label(Key.ctrl('f')) == 'Ctrl+F', Key.label('alt+s') == 'Alt+S'."""
+        if token in _KEY_LABELS:
+            return _KEY_LABELS[token]
+        if "+" in token:  # modifier combos: alt+x, ctrl+F5, ctrl+shift+F12
+            *mods, key = token.split("+")
+            pretty = [m.capitalize() for m in mods]
+            pretty.append(key.upper() if len(key) == 1 else key.title())
+            return "+".join(pretty)
+        if len(token) == 1 and 1 <= ord(token) <= 26:  # Ctrl+<letter> control byte
+            return "Ctrl+" + chr(ord(token) + 64)
+        return token
 # fmt: on
+
+
+# Pretty labels for named / special key tokens (control bytes that would
+# otherwise become "Ctrl+X" are listed here so they read correctly).
+_KEY_LABELS = {
+    Key.ESC: "Esc",
+    Key.ENTER: "Enter",
+    Key.TAB: "Tab",
+    Key.BACKSPACE: "Backspace",
+    "\x7f": "Backspace",
+    " ": "Space",
+    Key.UP: "↑", Key.DOWN: "↓", Key.LEFT: "←", Key.RIGHT: "→",
+    Key.HOME: "Home", Key.END: "End",
+    Key.DELETE: "Del", Key.INSERT: "Ins",
+    Key.PAGE_UP: "PgUp", Key.PAGE_DOWN: "PgDn",
+    Key.SHIFT_TAB: "Shift+Tab", Key.SHIFT_ENTER: "Shift+Enter",
+    Key.SHIFT_LEFT: "Shift+←", Key.SHIFT_RIGHT: "Shift+→",
+    Key.SHIFT_UP: "Shift+↑", Key.SHIFT_DOWN: "Shift+↓",
+    Key.SHIFT_HOME: "Shift+Home", Key.SHIFT_END: "Shift+End",
+    Key.CTRL_UP: "Ctrl+↑", Key.CTRL_DOWN: "Ctrl+↓",
+    Key.CTRL_LEFT: "Ctrl+←", Key.CTRL_RIGHT: "Ctrl+→",
+    Key.CTRL_SHIFT_LEFT: "Ctrl+Shift+←", Key.CTRL_SHIFT_RIGHT: "Ctrl+Shift+→",
+    Key.SCROLL_UP: "Scroll↑", Key.SCROLL_DOWN: "Scroll↓",
+}
 
 # Internal read buffer.  We bulk-read from stdin on every refill so that a full
 # VT sequence (e.g. ESC [ A) lands in _buf all at once, making the ESC-vs-CSI

@@ -10,7 +10,7 @@ _PRESS_DURATION = 0.3
 class Button(Widget):
     focusable = True
 
-    def __init__(self, x, y, text, width=None, style=None):
+    def __init__(self, x, y, text, style=None, width=None):
         super().__init__(x, y, style)
         self.text = text
         self.width = width

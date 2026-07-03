@@ -2,6 +2,8 @@ from cozy_tui.app import App
 from cozy_tui.style import Style
 from cozy_tui.widgets.display.animated_label import (AnimatedLabel,
                                                      GlowAnimation)
+from cozy_tui.widgets.display.bindings import Bindings
+from cozy_tui.widgets.display.hyperlink import Hyperlink
 from cozy_tui.widgets.display.label import Label
 from cozy_tui.widgets.display.markdown import Markdown
 from cozy_tui.widgets.display.progress_bar import ProgressBar
@@ -28,8 +30,10 @@ __all__ = [
     "Style",
     "AnimatedLabel",
     "GlowAnimation",
+    "Bindings",
     "Box",
     "Collapsible",
+    "Hyperlink",
     "Label",
     "Input",
     "Button",

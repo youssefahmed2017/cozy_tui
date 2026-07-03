@@ -125,7 +125,7 @@ def main():
             app.close_overlay(dlg)
 
         dlg.add(Button(2, 3, "Cancel").on_click(lambda b: app.close_overlay(dlg)))
-        dlg.add(Button(13, 3, "Clear", Style(fg="white", bg="red")).on_click(do_clear))
+        dlg.add(Button(13, 3, "Clear", style=Style(fg="white", bg="red")).on_click(do_clear))
         app.open_overlay(dlg)
 
     for lv in lists:

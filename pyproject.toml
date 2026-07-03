@@ -9,7 +9,7 @@ description = "A lightweight, dependency-light Python TUI library with a cell-gr
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "Youssef" }]
+authors = [{ name = "Youssef", email="youssef.ahmed.29062017@gmail.com" }]
 keywords = ["tui", "terminal", "console", "ansi", "widgets", "ui"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -33,8 +33,7 @@ dependencies = [
 dev = ["pytest"]
 
 [project.urls]
-Homepage = "https://github.com/youssefahmed2017/cozy_tui"
-Repository = "https://github.com/youssefahmed2017/cozy_tui"
+GitHub = "https://github.com/youssefahmed2017/cozy_tui"
 
 [tool.setuptools.packages.find]
 include = ["cozy_tui*"]
