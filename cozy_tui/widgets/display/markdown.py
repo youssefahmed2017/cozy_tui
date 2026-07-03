@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
+from rich.color import ColorType
+from rich.console import Console
+from rich.markdown import Markdown as _RichMarkdown
+
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
-
-try:
-    from rich.color import ColorType
-    from rich.console import Console
-    from rich.markdown import Markdown as _RichMarkdown
-
-    _RICH_OK = True
-except ImportError:
-    _RICH_OK = False
 
 # ── Rich → cozy_tui colour mapping ───────────────────────────────────────────
 
@@ -206,20 +201,7 @@ class Markdown(Widget):
                 canvas.write(col, vy, " " * fill, self.style)
 
     def draw(self, canvas) -> None:
-        if _RICH_OK:
-            self._draw_markdown(canvas)
-        else:
-            # Plain-text fallback: render source line by line
-            w = self._clip_width or self.width
-            text = self.value or self.placeholder
-            if not text:
-                canvas.write(self.abs_x, self.abs_y, " " * w, self.style)
-                return
-            for row, line in enumerate(text.split("\n")):
-                vy = self.abs_y + row
-                if vy >= canvas.rows:
-                    break
-                canvas.write(self.abs_x, vy, line[:w].ljust(w), self.style)
+        self._draw_markdown(canvas)
 
     # ── layout ────────────────────────────────────────────────────────────────
 
@@ -227,11 +209,9 @@ class Markdown(Widget):
         return self.width
 
     def natural_height(self, scale) -> int:
-        if _RICH_OK and self.value:
+        if self.value:
             w = self._clip_width or self.width
             return max(1, len(self._rendered_lines(w)))
-        if self.value:
-            return max(1, self.value.count("\n") + 1)
         return 1
 
     def contains(self, col: int, row: int) -> bool:

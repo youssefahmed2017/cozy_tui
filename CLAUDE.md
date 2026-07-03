@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `cozy_tui` is a cross-platform Python TUI library. It renders terminal UIs by maintaining an in-memory cell grid, serializing changed cells to ANSI escape sequences, and writing them to stdout in one shot per frame. Raw input and terminal setup are abstracted in `cozy_tui/_console.py`, which picks a backend at import: Windows Console API (`ctypes.windll.kernel32`) or POSIX `termios`/`tty` + `select`. There is no ncurses dependency.
 
-Dependencies: `rich` (used by `Markdown`/`MarkdownInput`, but imported defensively — falls back to plain text if absent). The clipboard is built in (`cozy_tui/clipboard.py`, cross-platform), so there is **no `pyperclip`** dependency. Python 3.10+ required. Packaged via `pyproject.toml` (`pip install -e .`, `[dev]` extra for pytest); ships a `py.typed` marker. Tests live in `tests/` (`python -m pytest`).
+Dependencies: `rich` (required; used by `Markdown`/`MarkdownInput`). The clipboard is built in (`cozy_tui/clipboard.py`, cross-platform), so there is **no `pyperclip`** dependency. Python 3.10+ required. Packaged via `pyproject.toml` (`pip install -e .`, `[dev]` extra for pytest); ships a `py.typed` marker. Tests live in `tests/` (`python -m pytest`).
 
 ## Running examples
 

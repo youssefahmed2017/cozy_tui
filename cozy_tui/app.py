@@ -20,40 +20,6 @@ _UNSET = object()
 # large enough that an idle app isn't busy-spinning.
 _IDLE_POLL = 0.1
 
-_RICH_WARNING = (
-    "WARNING    Rich isn't installed so you won't get Markdown/MarkdownInput "
-    "as real markdown."
-)
-_rich_warning_shown = False
-
-
-def _warnings_suppressed() -> bool:
-    """Whether COZY_TUI_NO_WARNINGS silences warnings. It defaults to on ("1"),
-    so warnings are OFF by default; set it to a falsey value ("0", "false",
-    "no", "off") to opt IN to warnings."""
-    return os.environ.get("COZY_TUI_NO_WARNINGS", "1").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
-
-
-def _maybe_warn_rich() -> None:
-    """Print a one-time warning to stderr on exit if `rich` is unavailable, so
-    Markdown/MarkdownInput fall back to plain text silently-but-not-secretly.
-    Off by default; enable with COZY_TUI_NO_WARNINGS=0."""
-    global _rich_warning_shown
-    if _rich_warning_shown or _warnings_suppressed():
-        return
-    try:
-        from cozy_tui.widgets.display.markdown import _RICH_OK
-    except Exception:
-        _RICH_OK = False
-    if not _RICH_OK:
-        print(_RICH_WARNING, file=sys.stderr)
-        _rich_warning_shown = True
-
 
 class _Overlay:
     """A widget layered above the base UI. `modal` confines keyboard/mouse input
@@ -713,5 +679,3 @@ class App:
             restore(raw_state)
             sys.stdout.write(exit_)
             sys.stdout.flush()
-            # Warn after the screen is restored so it lands in normal scrollback.
-            _maybe_warn_rich()

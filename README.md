@@ -49,7 +49,7 @@ A lightweight, cross-platform Python TUI (Terminal User Interface) library. Buil
 ## Features
 
 - **Cross-platform** — runs on Windows (Console API) and POSIX (Linux/macOS via `termios`); the backend is chosen automatically.
-- **Very few dependencies** — almost pure Python. The clipboard is built in (no `pyperclip`); `rich` is the only third-party package, used for `Markdown`/`MarkdownInput` and imported defensively. Everything else is the standard library.
+- **Very few dependencies** — the clipboard is built in (no `pyperclip`); the only third-party dependency is `rich`, used to render `Markdown`/`MarkdownInput`. Everything else is the standard library.
 - **Built-in clipboard** — `cozy_tui.clipboard.copy`/`paste` with native backends per platform (Win32 API, `pbcopy`/`pbpaste`, `wl-clipboard`/`xclip`/`xsel`, or OSC 52 fallback).
 - **Unicode-aware rendering** — a built-in `wcwidth`-style width layer keeps CJK/emoji (double-width) and combining marks (zero-width) aligned in the cell grid.
 - **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `AnimatedLabel`, `Text`, `Box`, `MarkdownInput`, `ListView`, `CheckList`, `Dropdown`, `ProgressBar`, `Table`, `Collapsible`, `Tree`
@@ -496,13 +496,7 @@ box.add(cb)
 
 A multi-line text editor that renders its content as **live Markdown** using [Rich](https://github.com/Textualize/rich) when not focused. All editing behaviour is inherited from `Input` — only the rendering differs.
 
-> **Requires Rich:** `pip install rich`  
-> Falls back to plain `Input` rendering if Rich is not installed. Warnings are
-> **off by default** (`COZY_TUI_NO_WARNINGS` defaults to `1`). Opt in by setting
-> `COZY_TUI_NO_WARNINGS=0` (any of `0`/`false`/`no`/`off`); then, if Rich is
-> missing, `App.run()` prints a one-time warning to stderr **after it exits and
-> the screen is restored**:
-> `WARNING    Rich isn't installed so you won't get Markdown/MarkdownInput as real markdown.`
+> **Uses Rich.** `rich` is a required dependency of `cozy_tui` (installed automatically), so `Markdown`/`MarkdownInput` always render real Markdown.
 
 ```python
 MarkdownInput(x, y, width, placeholder="", style=None, multiline=True, ...)

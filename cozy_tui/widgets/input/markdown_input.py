@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from cozy_tui.widgets.display.markdown import _RICH_OK, Markdown
+from cozy_tui.widgets.display.markdown import Markdown
 from cozy_tui.widgets.input.input import Input
 
 
@@ -12,8 +12,7 @@ class MarkdownInput(Input, Markdown):
     - focused   → raw text with cursor  (standard Input rendering)
     - unfocused → Rich Markdown preview (Markdown rendering)
 
-    All editing behavior is inherited from Input unchanged.
-    Requires ``rich`` (``pip install rich``); falls back to plain Input if absent.
+    All editing behavior is inherited from Input unchanged. Requires ``rich``.
 
     MRO: MarkdownInput → Input → … mixins … → Markdown → Widget
     Input's ``value``, ``width``, ``placeholder``, and ``_placeholder_style``
@@ -27,14 +26,14 @@ class MarkdownInput(Input, Markdown):
         self.laps = True
 
     def draw(self, canvas) -> None:
-        if canvas.focused is self or not _RICH_OK:
+        if canvas.focused is self:
             Input.draw(self, canvas)
         else:
             self._draw_markdown(canvas)
 
     def natural_height(self, scale: int) -> int:
         input_h = Input.natural_height(self, scale)
-        if _RICH_OK and self.value:
+        if self.value:
             w = self._clip_width or self.width
             rich_h = max(1, len(self._rendered_lines(w)))
             return max(input_h, rich_h)
