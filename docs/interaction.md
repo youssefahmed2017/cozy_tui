@@ -83,6 +83,55 @@ Mouse clicks are handled automatically:
 
 No extra setup needed — mouse support is enabled automatically when `app.run()` starts.
 
+### Per-widget mouse callbacks
+
+Any widget can register callbacks for the different mouse gestures. `on_click`
+also fires on keyboard activation; the rest are mouse-only:
+
+```python
+widget.on_click(lambda w: ...)              # click or keyboard activation
+widget.on_double_click(lambda w: ...)       # two clicks within 0.4s
+widget.on_drag(lambda w, col, row: ...)     # motion while a button is held
+widget.on_release(lambda w, col, row: ...)  # button released
+widget.on_hover(lambda w, col, row: ...)    # motion with no button (see below)
+widget.on_enter(lambda w: ...)              # cursor entered the widget
+widget.on_leave(lambda w: ...)              # cursor left the widget
+```
+
+`col`/`row` are absolute terminal cells (already adjusted for scrolling). If you
+subclass a widget instead, override `on_mouse_click` / `on_mouse_double_click` /
+`on_mouse_drag` / `on_mouse_release` / `on_mouse_move` / `on_mouse_enter` /
+`on_mouse_leave` — the override replaces the default, so call the matching
+`_fire_*` if you still want the registered callback to run. A double-click with
+no `on_double_click` handler falls back to firing the normal click.
+
+### Hover / motion events
+
+Bare mouse motion (no button held) is **off by default** because any-motion
+tracking floods the input stream on every cursor move. Opt in when you need
+hover:
+
+```python
+app = App(mouse_moves=True)   # now on_hover / on_mouse_move / on_enter / on_leave fire
+```
+
+`on_enter` / `on_leave` fire once as the cursor crosses a widget's boundary (the
+app tracks which widget is hovered and dispatches the transitions), which is what
+drives, e.g., `Button`'s hover state.
+
+### Global mouse hook
+
+Register an app-wide hook to see every mouse event before it reaches a widget.
+Return `True` to consume the event and skip the default dispatch:
+
+```python
+def on_mouse(event):   # MouseClick | MouseDrag | MouseRelease | MouseMove
+    ...
+    return False       # let it through to the widget under the cursor
+
+app.on_mouse(on_mouse)
+```
+
 ---
 
 ## Focus System

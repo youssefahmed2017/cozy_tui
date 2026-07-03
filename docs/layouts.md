@@ -36,7 +36,8 @@ VBox(x, y, gap=0, style=None)
 **Example:**
 
 ```python
-from cozy_tui import VBox, Label, Button, Style
+from cozy_tui import Style
+from cozy_tui.widgets import VBox, Label, Button
 
 vbox = VBox(2, 2, gap=1)
 vbox.add(Label(0, 0, "Name:"))
@@ -65,7 +66,8 @@ HBox(x, y, gap=0, style=None)
 **Example:**
 
 ```python
-from cozy_tui import HBox, Button, Style
+from cozy_tui import Style
+from cozy_tui.widgets import HBox, Button
 
 hbox = HBox(2, 10, gap=2)
 hbox.add(Button(0, 0, "OK", width=10, style=Style(fg="white", bg="green")))
@@ -93,7 +95,7 @@ Grid(x, y, cols, gap_x=1, gap_y=0, style=None)
 **Example:**
 
 ```python
-from cozy_tui import Grid, Checkbox
+from cozy_tui.widgets import Grid, Checkbox
 
 grid = Grid(2, 2, cols=2, gap_x=4, gap_y=1)
 for option in ["Red", "Green", "Blue", "Yellow"]:

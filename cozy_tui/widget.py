@@ -12,6 +12,12 @@ class Widget:
         self._layout_y = 0
         self._clip_width = None
         self._click_handler = None
+        self._double_click_handler = None
+        self._drag_handler = None
+        self._release_handler = None
+        self._hover_handler = None
+        self._enter_handler = None
+        self._leave_handler = None
         self._change_handler = None
         self.laps = False
 
@@ -28,8 +34,45 @@ class Widget:
         return self.y + self._layout_y
 
     def on_click(self, func):
-        """Register a callback invoked when this widget is activated. Receives the widget as argument."""
+        """Register a callback invoked when this widget is activated (mouse click
+        or keyboard). Receives the widget as its only argument."""
         self._click_handler = func
+        return self
+
+    def on_double_click(self, func):
+        """Register a callback for a double-click. Receives the widget. If unset,
+        a double-click falls back to firing the normal click handler."""
+        self._double_click_handler = func
+        return self
+
+    def on_drag(self, func):
+        """Register a callback for mouse motion while a button is held over this
+        widget. Receives (widget, col, row) in absolute terminal cells."""
+        self._drag_handler = func
+        return self
+
+    def on_release(self, func):
+        """Register a callback for a mouse-button release. Receives
+        (widget, col, row) in absolute terminal cells."""
+        self._release_handler = func
+        return self
+
+    def on_hover(self, func):
+        """Register a callback for mouse motion with no button held over this
+        widget. Receives (widget, col, row). Requires App(mouse_moves=True)."""
+        self._hover_handler = func
+        return self
+
+    def on_enter(self, func):
+        """Register a callback fired when the cursor enters this widget. Receives
+        the widget. Requires App(mouse_moves=True)."""
+        self._enter_handler = func
+        return self
+
+    def on_leave(self, func):
+        """Register a callback fired when the cursor leaves this widget. Receives
+        the widget. Requires App(mouse_moves=True)."""
+        self._leave_handler = func
         return self
 
     def on_change(self, func):
@@ -41,12 +84,61 @@ class Widget:
         if self._click_handler:
             self._click_handler(self)
 
+    def _fire_double_click(self):
+        if self._double_click_handler:
+            self._double_click_handler(self)
+
+    def _fire_drag(self, col, row):
+        if self._drag_handler:
+            self._drag_handler(self, col, row)
+
+    def _fire_release(self, col, row):
+        if self._release_handler:
+            self._release_handler(self, col, row)
+
+    def _fire_hover(self, col, row):
+        if self._hover_handler:
+            self._hover_handler(self, col, row)
+
+    def _fire_enter(self):
+        if self._enter_handler:
+            self._enter_handler(self)
+
+    def _fire_leave(self):
+        if self._leave_handler:
+            self._leave_handler(self)
+
     def _fire_change(self, value):
         if self._change_handler:
             self._change_handler(value)
 
+    # Mouse handlers. The App loop calls these; the base implementations fire the
+    # registered callbacks. Subclasses may override for custom behavior (an
+    # override replaces the default, so call the matching _fire_* if you still
+    # want the registered callback to run).
     def on_mouse_click(self, col=None, row=None):
         self._fire_click()
+
+    def on_mouse_double_click(self, col=None, row=None):
+        if self._double_click_handler:
+            self._fire_double_click()
+        else:
+            self.on_mouse_click(col, row)  # fall back to a normal click
+
+    def on_mouse_drag(self, col=None, row=None):
+        self._fire_drag(col, row)
+
+    def on_mouse_release(self, col=None, row=None):
+        self._fire_release(col, row)
+
+    def on_mouse_move(self, col=None, row=None):
+        self._fire_hover(col, row)
+
+    def on_mouse_enter(self):
+        self._fire_enter()
+
+    def on_mouse_leave(self):
+        self._fire_leave()
 
     def natural_width(self, scale):
         return 0

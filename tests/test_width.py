@@ -10,7 +10,7 @@ def test_cjk_and_emoji_are_wide():
     assert char_width("あ") == 2  # Hiragana
     assert char_width("中") == 2  # CJK ideograph
     assert char_width("가") == 2  # Hangul syllable
-    assert char_width("\U0001F600") == 2  # emoji
+    assert char_width("\U0001f600") == 2  # emoji
 
 
 def test_combining_and_zero_width():

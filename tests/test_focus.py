@@ -1,4 +1,5 @@
-from cozy_tui import App, Box, Button, Input, Label, Style
+from cozy_tui import App, Style
+from cozy_tui.widgets import Box, Button, Input, Label
 
 
 def make_app():

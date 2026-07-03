@@ -34,7 +34,9 @@ class Bindings(Widget):
     def __init__(self, x, y, bindings, *, title=None, border="rounded", style=None):
         super().__init__(x, y, style)
         if border not in Box.BORDERS:
-            raise ValueError(f"border must be one of {list(Box.BORDERS)}, got {border!r}")
+            raise ValueError(
+                f"border must be one of {list(Box.BORDERS)}, got {border!r}"
+            )
         self.title = title
         self.border = border
 
@@ -81,7 +83,9 @@ class Bindings(Widget):
         ungrouped: dict = {}
         for key, (desc, section) in app._bindings.items():
             label = Key.label(key)
-            (ungrouped if section is None else groups.setdefault(section, {}))[label] = desc
+            (ungrouped if section is None else groups.setdefault(section, {}))[
+                label
+            ] = desc
         if not groups:
             return ungrouped
         source = {}
@@ -130,10 +134,9 @@ class Bindings(Widget):
         return len(self._rows) + 2  # + top/bottom border
 
     def contains(self, col: int, row: int) -> bool:
-        return (
-            self.abs_x <= col < self.abs_x + self.natural_width(1)
-            and self.abs_y <= row < self.abs_y + self.natural_height(1)
-        )
+        return self.abs_x <= col < self.abs_x + self.natural_width(
+            1
+        ) and self.abs_y <= row < self.abs_y + self.natural_height(1)
 
     # ── rendering ──────────────────────────────────────────────────────────────
 
@@ -167,6 +170,8 @@ class Bindings(Widget):
                 _, key, desc = row
                 canvas.write(cx, vy, key, self._key_style)
                 if desc:
-                    canvas.write(cx + self._key_w + self._GAP, vy, desc, self._desc_style)
+                    canvas.write(
+                        cx + self._key_w + self._GAP, vy, desc, self._desc_style
+                    )
 
         canvas.write(x, y + 1 + len(self._rows), bl + h * iw + br, bs)

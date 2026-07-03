@@ -15,7 +15,8 @@ from random import randrange
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from cozy_tui import App, Box, Button, Label, Style
+from cozy_tui import App, Style
+from cozy_tui.widgets import Box, Button, Label
 from cozy_tui.events import Key
 from cozy_tui.widget import Widget
 
@@ -65,7 +66,12 @@ class Snake(Widget):
     # ── input ─────────────────────────────────────────────────────────────────
 
     def on_key(self, key):
-        turns = {Key.UP: (0, -1), Key.DOWN: (0, 1), Key.LEFT: (-1, 0), Key.RIGHT: (1, 0)}
+        turns = {
+            Key.UP: (0, -1),
+            Key.DOWN: (0, 1),
+            Key.LEFT: (-1, 0),
+            Key.RIGHT: (1, 0),
+        }
         if key in turns:
             dx, dy = turns[key]
             # ignore a 180° reversal into your own neck
@@ -142,8 +148,14 @@ def main():
     gx = max(1, (app.cols - (w + 2)) // 2)
     gy = max(2, (app.rows - (h + 2)) // 2)
 
-    app.add(Label(2, 0, "SNAKE — arrow keys to steer, eat ●, avoid walls & yourself. Esc: quit",
-                  TITLE))
+    app.add(
+        Label(
+            2,
+            0,
+            "SNAKE — arrow keys to steer, eat ●, avoid walls & yourself. Esc: quit",
+            TITLE,
+        )
+    )
     game = Snake(app, gx, gy, w, h)
     app.add(game)
     app.focus(game)

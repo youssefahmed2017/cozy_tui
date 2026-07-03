@@ -1,5 +1,6 @@
 import cozy_tui.widgets.display.hyperlink as hl_mod
-from cozy_tui import App, Hyperlink, Style
+from cozy_tui import App, Style
+from cozy_tui.widgets import Hyperlink
 from cozy_tui.events import Key
 
 
@@ -30,7 +31,7 @@ def test_contains_hit_box():
     assert link.contains(2, 1) is True
     assert link.contains(9, 1) is True
     assert link.contains(10, 1) is False  # just past the end
-    assert link.contains(5, 2) is False   # wrong row
+    assert link.contains(5, 2) is False  # wrong row
 
 
 def test_enter_and_space_open_when_focused():

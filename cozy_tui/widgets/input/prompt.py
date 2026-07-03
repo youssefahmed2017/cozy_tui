@@ -25,10 +25,9 @@ class PromptDialog(Widget):
         return 5  # border(2) + title + input + hint
 
     def contains(self, col, row):
-        return (
-            self.abs_x <= col < self.abs_x + self.natural_width(1)
-            and self.abs_y <= row < self.abs_y + self.natural_height(1)
-        )
+        return self.abs_x <= col < self.abs_x + self.natural_width(
+            1
+        ) and self.abs_y <= row < self.abs_y + self.natural_height(1)
 
     def on_key(self, key):
         if key == Key.ENTER:
@@ -57,6 +56,6 @@ class PromptDialog(Widget):
             canvas.write(x + w + 1, y + 1 + i, "│", border)
         canvas.write(x + 1, y + 1, (" " + self.title).ljust(w)[:w], border)
         line = "> " + self.text
-        line = line[-(w - 2):] if len(line) > w - 2 else line
+        line = line[-(w - 2) :] if len(line) > w - 2 else line
         canvas.write(x + 1, y + 2, (" " + line + "▏").ljust(w)[:w], panel)
         canvas.write(x + 1, y + 3, "  Enter: save    Esc: cancel".ljust(w)[:w], dim)

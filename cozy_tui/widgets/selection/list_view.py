@@ -188,6 +188,15 @@ class ListView(Widget):
                     self._fire_change(self.selected)
         self._activate(from_click=True)
 
+    def on_mouse_move(self, col=None, row=None) -> None:
+        # Hover highlights the item under the cursor (like arrow-key movement),
+        # without activating it. Requires App(mouse_moves=True).
+        if row is not None and self._items:
+            idx = self._scroll_off + (row - self.abs_y)
+            if 0 <= idx < len(self._items) and idx != self._index:
+                self._move(idx)
+        self._fire_hover(col, row)
+
     def draw(self, canvas) -> None:
         is_focused = canvas.focused is self
         w = self.natural_width(1)

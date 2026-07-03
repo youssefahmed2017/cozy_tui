@@ -1,4 +1,5 @@
-from cozy_tui import App, Bindings, Style
+from cozy_tui import App, Style
+from cozy_tui.widgets import Bindings
 
 
 def make_app():
@@ -16,7 +17,9 @@ def rows_text(app, x, y, w, h):
 
 
 def test_flat_auto_sizes():
-    b = Bindings(0, 0, {"↑": "Move Up", "↓": "Move Down", "Enter": "Select", "Esc": "Quit"})
+    b = Bindings(
+        0, 0, {"↑": "Move Up", "↓": "Move Down", "Enter": "Select", "Esc": "Quit"}
+    )
     # keys: max width 5 ("Enter"); descs: max 9 ("Move Down"); gap 3
     assert b._content_w == 5 + 3 + 9
     assert b.natural_width(1) == b._content_w + 4
@@ -24,10 +27,14 @@ def test_flat_auto_sizes():
 
 
 def test_sectioned_layout_and_size():
-    b = Bindings(0, 0, {
-        "Movement": {"↑": "Move Up", "↓": "Move Down"},
-        "Actions": {"Enter": "Select", "Esc": "Quit"},
-    })
+    b = Bindings(
+        0,
+        0,
+        {
+            "Movement": {"↑": "Move Up", "↓": "Move Down"},
+            "Actions": {"Enter": "Select", "Esc": "Quit"},
+        },
+    )
     # rows: header, bind, bind, blank, header, bind, bind = 7
     assert b.natural_height(1) == 7 + 2
     # global key column width across all sections is 5 ("Enter")
@@ -46,7 +53,7 @@ def test_renders_keys_and_descriptions():
     render(app)
     lines = rows_text(app, b.abs_x, b.abs_y, b.natural_width(1), b.natural_height(1))
     joined = "\n".join(lines)
-    assert "Keys" in lines[0]            # title in the top border
+    assert "Keys" in lines[0]  # title in the top border
     assert "↑" in joined and "Move Up" in joined
     assert "Esc" in joined and "Quit" in joined
     # keys share a column: "Esc" and "↑" both start at the same x
@@ -88,11 +95,13 @@ def test_auto_relabels_keys_and_skips_undescribed():
     b = Bindings(1, 1, "auto")
     app.add(b)
     render(app)
-    joined = "\n".join(rows_text(app, b.abs_x, b.abs_y, b.natural_width(1), b.natural_height(1)))
+    joined = "\n".join(
+        rows_text(app, b.abs_x, b.abs_y, b.natural_width(1), b.natural_height(1))
+    )
     assert "Movement" in joined and "Actions" in joined
-    assert "↑" in joined and "Move Up" in joined     # Key.UP -> "↑"
-    assert "Esc" in joined and "Quit" in joined       # Key.ESC -> "Esc"
-    assert "F1" not in joined                          # no description -> not shown
+    assert "↑" in joined and "Move Up" in joined  # Key.UP -> "↑"
+    assert "Esc" in joined and "Quit" in joined  # Key.ESC -> "Esc"
+    assert "F1" not in joined  # no description -> not shown
 
 
 def test_auto_resyncs_when_bindings_change():

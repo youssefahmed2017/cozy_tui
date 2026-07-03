@@ -1,59 +1,15 @@
+from cozy_tui.ansi import get_color_depth, set_color_depth
 from cozy_tui.app import App
+from cozy_tui.events import Key
 from cozy_tui.style import Style
-from cozy_tui.widgets.display.animated_label import (AnimatedLabel,
-                                                     GlowAnimation)
-from cozy_tui.widgets.display.bindings import Bindings
-from cozy_tui.widgets.display.hyperlink import Hyperlink
-from cozy_tui.widgets.display.label import Label
-from cozy_tui.widgets.display.markdown import Markdown
-from cozy_tui.widgets.display.progress_bar import ProgressBar
-from cozy_tui.widgets.display.text import Text
-from cozy_tui.widgets.input.input import Input
-from cozy_tui.widgets.input.markdown_input import MarkdownInput
-from cozy_tui.widgets.input.prompt import PromptDialog
-from cozy_tui.widgets.layout.box import Box
-from cozy_tui.widgets.layout.collapsible import Collapsible
-from cozy_tui.widgets.layout.grid import Grid
-from cozy_tui.widgets.layout.hbox import HBox
-from cozy_tui.widgets.layout.layout import Layout
-from cozy_tui.widgets.layout.vbox import VBox
-from cozy_tui.widgets.selection.button import Button
-from cozy_tui.widgets.selection.check_list import CheckItem, CheckList
-from cozy_tui.widgets.selection.checkbox import Checkbox
-from cozy_tui.widgets.selection.dropdown import Dropdown
-from cozy_tui.widgets.selection.list_view import ListItem, ListView
-from cozy_tui.widgets.selection.table import Table, TableRow
-from cozy_tui.widgets.selection.tree import Tree, TreeNode
+
+# Widgets are intentionally NOT re-exported here — import them from the
+# cozy_tui.widgets subpackage, e.g. `from cozy_tui.widgets import Label`.
 
 __all__ = [
     "App",
+    "Key",
     "Style",
-    "AnimatedLabel",
-    "GlowAnimation",
-    "Bindings",
-    "Box",
-    "Collapsible",
-    "Hyperlink",
-    "Label",
-    "Input",
-    "Button",
-    "Checkbox",
-    "Layout",
-    "VBox",
-    "HBox",
-    "Grid",
-    "Markdown",
-    "MarkdownInput",
-    "PromptDialog",
-    "ListView",
-    "ListItem",
-    "CheckList",
-    "CheckItem",
-    "Dropdown",
-    "ProgressBar",
-    "Table",
-    "TableRow",
-    "Tree",
-    "TreeNode",
-    "Text",
+    "get_color_depth",
+    "set_color_depth",
 ]

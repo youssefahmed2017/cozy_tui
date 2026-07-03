@@ -6,5 +6,5 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-.claude\
+.claude/
 _internal/

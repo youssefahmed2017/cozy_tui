@@ -13,7 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from cozy_tui import App, Box, Button, Label, ListView, Style
+from cozy_tui import App, Style
+from cozy_tui.widgets import Box, Button, Label, ListView
 from cozy_tui.events import Key
 
 COLUMNS = ["To Do", "Doing", "Done"]
@@ -28,7 +29,8 @@ def main():
     app = App(full=True, style=Style(fg="white", bg="black"))
 
     header = Label(
-        2, 0,
+        2,
+        0,
         "KANBAN  Tab: column  ←/→: move  Enter/r: rename  a: add  d: delete  c: clear  ?: help  Esc: quit",
         Style(fg="bright_cyan", styles=["bold"]),
     )
@@ -112,7 +114,11 @@ def main():
         ]
         for r, text in enumerate(rows):
             panel.add(Label(2, 1 + r, text))
-        panel.add(Button(2, 2 + len(rows), "Close").on_click(lambda b: app.close_overlay(panel)))
+        panel.add(
+            Button(2, 2 + len(rows), "Close").on_click(
+                lambda b: app.close_overlay(panel)
+            )
+        )
         app.open_overlay(panel, close_on_click_outside=True)
 
     def confirm_clear():
@@ -125,7 +131,9 @@ def main():
             app.close_overlay(dlg)
 
         dlg.add(Button(2, 3, "Cancel").on_click(lambda b: app.close_overlay(dlg)))
-        dlg.add(Button(13, 3, "Clear", style=Style(fg="white", bg="red")).on_click(do_clear))
+        dlg.add(
+            Button(13, 3, "Clear", style=Style(fg="white", bg="red")).on_click(do_clear)
+        )
         app.open_overlay(dlg)
 
     for lv in lists:

@@ -80,9 +80,7 @@ def _cli_copier(cmd):
 
 def _cli_paster(cmd):
     def _paste() -> str:
-        out = subprocess.run(
-            cmd, capture_output=True, check=False
-        ).stdout
+        out = subprocess.run(cmd, capture_output=True, check=False).stdout
         return out.decode("utf-8", "replace")
 
     return _paste

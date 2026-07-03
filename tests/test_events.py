@@ -51,15 +51,15 @@ def test_csi_function_keys():
 
 
 def test_modified_function_keys_tilde():
-    assert feed("\x1b[15;5~") == "ctrl+F5"        # Ctrl+F5
-    assert feed("\x1b[15;2~") == "shift+F5"       # Shift+F5
-    assert feed("\x1b[15;3~") == "alt+F5"         # Alt+F5
+    assert feed("\x1b[15;5~") == "ctrl+F5"  # Ctrl+F5
+    assert feed("\x1b[15;2~") == "shift+F5"  # Shift+F5
+    assert feed("\x1b[15;3~") == "alt+F5"  # Alt+F5
     assert feed("\x1b[24;6~") == "ctrl+shift+F12"  # Ctrl+Shift+F12
-    assert feed("\x1b[15;7~") == "ctrl+alt+F5"    # Ctrl+Alt+F5
+    assert feed("\x1b[15;7~") == "ctrl+alt+F5"  # Ctrl+Alt+F5
 
 
 def test_modified_function_keys_ss3_form():
-    assert feed("\x1b[1;5P") == "ctrl+F1"   # Ctrl+F1 (xterm CSI form)
+    assert feed("\x1b[1;5P") == "ctrl+F1"  # Ctrl+F1 (xterm CSI form)
     assert feed("\x1b[1;2S") == "shift+F4"  # Shift+F4
 
 
@@ -107,7 +107,7 @@ def test_key_label_named_and_arrows():
 
 
 def test_key_label_modifiers():
-    assert Key.label(Key.ctrl("f")) == "Ctrl+F"      # control byte \x06
+    assert Key.label(Key.ctrl("f")) == "Ctrl+F"  # control byte \x06
     assert Key.label(Key.CTRL_C) == "Ctrl+C"
     assert Key.label(Key.alt("s")) == "Alt+S"
     assert Key.label("ctrl+shift+F12") == "Ctrl+Shift+F12"

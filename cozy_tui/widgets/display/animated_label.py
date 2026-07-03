@@ -1,10 +1,47 @@
+import colorsys
+import math
 import time
 
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
 
 
-class GlowAnimation:
+def _raw_bg(style) -> str | None:
+    """The style's background with the internal ``_bg`` suffix stripped, so a
+    fresh ``Style`` can re-apply it correctly."""
+    bg = style.bg
+    if bg and bg.endswith("_bg"):
+        return bg[:-3]
+    return bg
+
+
+class Animation:
+    """Base class for :class:`AnimatedLabel` animations.
+
+    An animation turns the label's text into a stream of positioned, styled
+    glyphs. Subclasses implement :meth:`cells`; the base provides frame timing.
+
+    ``vertical_span`` is how many extra rows below the baseline the effect can
+    occupy (0 for purely color animations), so the label can size itself.
+    """
+
+    vertical_span: int = 0
+
+    def __init__(self, speed: float = 0.06):
+        self.speed = speed
+        self._start = time.monotonic()
+
+    def frame(self) -> int:
+        """Current integer frame index, advancing by 1 every ``speed`` seconds."""
+        return int((time.monotonic() - self._start) / self.speed)
+
+    def cells(self, text: str, style: Style):
+        """Yield ``(dx, dy, char, cell_style)`` for each glyph of *text*, where
+        ``dx``/``dy`` are cell offsets from the label's top-left origin."""
+        raise NotImplementedError
+
+
+class GlowAnimation(Animation):
     """Cycles a color gradient across each character of an AnimatedLabel.
 
     Args:
@@ -144,24 +181,114 @@ class GlowAnimation:
         else:
             raise ValueError("Provide either colors or color_template.")
 
+        super().__init__(speed)
         self._colors: list[tuple[int, int, int]] = [
             c if isinstance(c, tuple) else self._hex_to_rgb(c) for c in hex_colors
         ]
-        self.speed = speed
-        self._start = time.monotonic()
 
     @property
     def colors(self) -> list[tuple[int, int, int]]:
         return self._colors
 
-    def frame(self) -> int:
-        """Current integer frame index, advancing by 1 every *speed* seconds."""
-        return int((time.monotonic() - self._start) / self.speed)
-
     @staticmethod
     def _hex_to_rgb(color: str) -> tuple[int, int, int]:
         h = color.lstrip("#")
         return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+    def cells(self, text, style):
+        colors = self._colors
+        n = len(colors)
+        frame = self.frame()
+        raw_bg = _raw_bg(style)
+        extra = list(style.styles)
+        for i, ch in enumerate(text):
+            r, g, b = colors[(frame + i) % n]
+            yield i, 0, ch, Style(fg=f"rgb({r},{g},{b})", bg=raw_bg, styles=extra)
+
+
+class RainbowAnimation(Animation):
+    """A full-spectrum hue that sweeps along the text and scrolls over time.
+
+    Unlike :class:`GlowAnimation` (a fixed palette cycled across the glyphs),
+    this walks the whole HSV colour wheel: adjacent characters are ``spread``
+    degrees apart in hue and the whole rainbow rotates ``6°`` per frame.
+
+    Args:
+        spread: Hue degrees between adjacent characters (wider = more colours
+            visible at once).
+        saturation, value: HSV saturation/brightness, ``0.0``–``1.0``.
+        speed: Seconds between frames.
+    """
+
+    def __init__(
+        self,
+        *,
+        spread: float = 18.0,
+        saturation: float = 1.0,
+        value: float = 1.0,
+        speed: float = 0.06,
+    ):
+        super().__init__(speed)
+        self.spread = spread
+        self.saturation = saturation
+        self.value = value
+
+    def cells(self, text, style):
+        frame = self.frame()
+        raw_bg = _raw_bg(style)
+        extra = list(style.styles)
+        for i, ch in enumerate(text):
+            hue = ((frame * 6) + i * self.spread) % 360
+            r, g, b = colorsys.hsv_to_rgb(hue / 360, self.saturation, self.value)
+            fg = f"rgb({int(r * 255)},{int(g * 255)},{int(b * 255)})"
+            yield i, 0, ch, Style(fg=fg, bg=raw_bg, styles=extra)
+
+
+class LevitateAnimation(Animation):
+    """A vertical bobbing effect — the text floats up and down on a sine wave.
+
+    Two modes:
+        ``"word"``  the whole text rises and falls as one block.
+        ``"char"``  each character is phase-shifted, giving a travelling wave.
+
+    Colour is left untouched (the label's own style is used), so this composes
+    with any foreground/background you set.
+
+    Args:
+        mode: ``"word"`` or ``"char"``.
+        amplitude: Peak rise in cells; the text travels ``0``–``2*amplitude``.
+        phase: Per-character phase shift in ``"char"`` mode (radians).
+        rate: Angular speed of the wave per frame.
+        speed: Seconds between frames.
+    """
+
+    def __init__(
+        self,
+        *,
+        mode: str = "char",
+        amplitude: int = 4,
+        phase: float = 0.6,
+        rate: float = 0.15,
+        speed: float = 0.03,
+    ):
+        if mode not in ("word", "char"):
+            raise ValueError(f"mode must be 'word' or 'char', got {mode!r}")
+        super().__init__(speed)
+        self.mode = mode
+        self.amplitude = amplitude
+        self.phase = phase
+        self.rate = rate
+        self.vertical_span = amplitude * 2  # travels 0..2*amplitude
+
+    def cells(self, text, style):
+        frame = self.frame()
+        for i, ch in enumerate(text):
+            if self.mode == "word":
+                offset = int((math.sin(frame * self.rate) + 1) * self.amplitude)
+            else:
+                angle = frame * self.rate + i * self.phase
+                offset = round((math.sin(angle) + 1) * self.amplitude)
+            yield i, offset, ch, style
 
 
 class AnimatedLabel(Widget):
@@ -176,7 +303,7 @@ class AnimatedLabel(Widget):
         app.tick_interval = 0.05  # refresh fast enough to see the animation
     """
 
-    def __init__(self, x, y, text: str, *, animation: GlowAnimation, style=None):
+    def __init__(self, x, y, text: str, *, animation: Animation, style=None):
         super().__init__(x, y, style)
         self.text = text
         self.animation = animation
@@ -184,21 +311,23 @@ class AnimatedLabel(Widget):
     def natural_width(self, scale) -> int:
         return len(self.text)
 
+    def natural_height(self, scale) -> int:
+        # Motion animations (e.g. Levitate) occupy extra rows below the baseline.
+        return 1 + self.animation.vertical_span
+
     def contains(self, col: int, row: int) -> bool:
-        return self.abs_x <= col < self.abs_x + len(self.text) and row == self.abs_y
+        h = self.natural_height(1)
+        return (
+            self.abs_x <= col < self.abs_x + len(self.text)
+            and self.abs_y <= row < self.abs_y + h
+        )
 
     def draw(self, canvas) -> None:
-        colors = self.animation.colors
-        frame = self.animation.frame()
-        n = len(colors)
-        # Preserve the widget's background; strip the _bg suffix so Style()
-        # can re-apply it correctly.
-        raw_bg = self.style.bg
-        if raw_bg and raw_bg.endswith("_bg"):
-            raw_bg = raw_bg[:-3]
-        extra_styles = list(self.style.styles)
+        for dx, dy, ch, style in self.animation.cells(self.text, self.style):
+            canvas.write(self.abs_x + dx, self.abs_y + dy, ch, style)
 
-        for i, ch in enumerate(self.text):
-            r, g, b = colors[(frame + i) % n]
-            style = Style(fg=f"rgb({r},{g},{b})", bg=raw_bg, styles=extra_styles)
-            canvas.write(self.abs_x + i, self.abs_y, ch, style)
+        # Keep the loop redrawing so the animation advances even without input
+        # and without the app configuring tick_interval.
+        request = getattr(canvas, "request_frame", None)
+        if request is not None:
+            request(self.animation.speed)

@@ -1,4 +1,5 @@
-from cozy_tui import App, Dropdown, ListItem, Style
+from cozy_tui import App, Style
+from cozy_tui.widgets import Dropdown, ListItem
 from cozy_tui.events import Key
 
 
@@ -33,12 +34,12 @@ def test_header_is_single_row_no_reflow():
 
 def test_enter_selects_confirms_and_restores_focus():
     app, dd = make_app_with_dropdown()
-    dd.on_key(Key.ENTER)              # open
-    app.focused.on_key(Key.DOWN)     # list moves to "B"
-    app.focused.on_key(Key.ENTER)    # confirm
+    dd.on_key(Key.ENTER)  # open
+    app.focused.on_key(Key.DOWN)  # list moves to "B"
+    app.focused.on_key(Key.ENTER)  # confirm
     assert not dd._open
     assert app._topmost_modal() is None
-    assert app.focused is dd          # focus restored to the dropdown
+    assert app.focused is dd  # focus restored to the dropdown
     assert dd.selected == "b"
 
 
@@ -56,11 +57,11 @@ def test_escape_cancels_without_changing_selection():
     app, dd = make_app_with_dropdown()
     dd.set("a")
     dd.on_key(Key.ENTER)
-    app.focused.on_key(Key.DOWN)      # highlight moves, but not confirmed
-    app.close_overlay(dd._lv)         # what App does on Esc / click-outside
+    app.focused.on_key(Key.DOWN)  # highlight moves, but not confirmed
+    app.close_overlay(dd._lv)  # what App does on Esc / click-outside
     assert not dd._open
     assert app.focused is dd
-    assert dd.selected == "a"          # unchanged
+    assert dd.selected == "a"  # unchanged
 
 
 def test_on_select_callback_fires_with_value():

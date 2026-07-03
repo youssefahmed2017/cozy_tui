@@ -15,7 +15,8 @@ from random import randint
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from cozy_tui import App, Box, Button, Label, Style
+from cozy_tui import App, Style
+from cozy_tui.widgets import Box, Button, Label
 from cozy_tui.events import Key
 from cozy_tui.widget import Widget
 
@@ -50,7 +51,7 @@ class Palette(Widget):
 
     def __init__(self, commands, on_run, *, width=52, rows=8):
         super().__init__(0, 0, PANEL)
-        self._commands = commands            # list of (label, action)
+        self._commands = commands  # list of (label, action)
         self._on_run = on_run
         self.width = width
         self.rows = rows
@@ -81,10 +82,9 @@ class Palette(Widget):
         return self.rows + 4  # border(2) + search(1) + separator(1) + rows
 
     def contains(self, col, row):
-        return (
-            self.abs_x <= col < self.abs_x + self.natural_width(1)
-            and self.abs_y <= row < self.abs_y + self.natural_height(1)
-        )
+        return self.abs_x <= col < self.abs_x + self.natural_width(
+            1
+        ) and self.abs_y <= row < self.abs_y + self.natural_height(1)
 
     def on_key(self, key):
         if key == Key.UP:
@@ -125,7 +125,7 @@ class Palette(Widget):
 
         # search line
         prompt = "> " + self.query
-        prompt = prompt[-(w - 2):] if len(prompt) > w - 2 else prompt
+        prompt = prompt[-(w - 2) :] if len(prompt) > w - 2 else prompt
         canvas.write(x + 1, y + 1, (" " + prompt + "▏").ljust(w)[:w], PANEL)
         # separator
         canvas.write(x + 1, y + 2, " " + "─" * (w - 2) + " ", DIM)
@@ -145,8 +145,15 @@ class Palette(Widget):
 def main():
     app = App(full=True, style=Style(fg="white", bg="black"))
 
-    title = Label(2, 1, "cozy_tui — Command Palette demo", Style(fg="bright_cyan", styles=["bold"]))
-    hint = Label(2, 3, "Press  p  or click the button below. Then type to fuzzy-search.")
+    title = Label(
+        2,
+        1,
+        "cozy_tui — Command Palette demo",
+        Style(fg="bright_cyan", styles=["bold"]),
+    )
+    hint = Label(
+        2, 3, "Press  p  or click the button below. Then type to fuzzy-search."
+    )
     status = Label(2, 7, "Ready.", Style(fg="bright_green"))
     open_btn = Button(2, 5, "Open palette")
 
@@ -161,13 +168,21 @@ def main():
     commands = [
         ("Say hello", lambda: set_status("Hello there! 👋")),
         ("Insert timestamp", lambda: set_status(datetime.now().strftime("%H:%M:%S"))),
-        ("Roll a die", lambda: set_status(f"You rolled a {randint(1, 6)} 🎲", "bright_yellow")),
+        (
+            "Roll a die",
+            lambda: set_status(f"You rolled a {randint(1, 6)} 🎲", "bright_yellow"),
+        ),
         ("Paint status red", lambda: set_status("Status is red now.", "bright_red")),
         ("Paint status cyan", lambda: set_status("Status is cyan now.", "bright_cyan")),
-        ("Fetch data (background)", lambda: (
-            set_status("Fetching… (UI stays responsive)", "bright_yellow"),
-            app.run_worker(fetch_data, on_result=lambda n: set_status(f"Fetched value: {n}")),
-        )),
+        (
+            "Fetch data (background)",
+            lambda: (
+                set_status("Fetching… (UI stays responsive)", "bright_yellow"),
+                app.run_worker(
+                    fetch_data, on_result=lambda n: set_status(f"Fetched value: {n}")
+                ),
+            ),
+        ),
         ("Clear status", lambda: set_status("")),
         ("Quit", app.quit),
     ]

@@ -31,7 +31,9 @@ class Hyperlink(Widget):
         return 1
 
     def contains(self, col: int, row: int) -> bool:
-        return self.abs_y == row and self.abs_x <= col < self.abs_x + text_width(self.text)
+        return self.abs_y == row and self.abs_x <= col < self.abs_x + text_width(
+            self.text
+        )
 
     def on_key(self, key) -> None:
         if key in (Key.ENTER, " "):
@@ -48,6 +50,8 @@ class Hyperlink(Widget):
         if self._clip_width:
             w = self._clip_width
             for i in range(0, max(1, len(self.text)), w):
-                canvas.write(self.abs_x, self.abs_y + i // w, self.text[i:i + w], style)
+                canvas.write(
+                    self.abs_x, self.abs_y + i // w, self.text[i : i + w], style
+                )
         else:
             canvas.write(self.abs_x, self.abs_y, self.text, style)

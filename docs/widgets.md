@@ -11,7 +11,7 @@ App(full=True, size="800x600", style=Style(...))
 | Parameter | Description                                                                   |
 |-----------|-------------------------------------------------------------------------------|
 | `full`    | `True` to use the full terminal size (recommended). `False` uses `size`.      |
-| `size`    | `"WxH"` string in virtual units when `full=False`. Each unit = 30 characters. |
+| `size`    | `"WxH"` string in virtual pixels when `full=False`; divide by `App.SCALE` (10) for characters. `"800x600"` = 80 cols × 60 rows. |
 | `style`   | Background style for the entire screen.                                       |
 | `title`   | Terminal Tab Title (defaulted to Cozy TUI App)                                |
 
@@ -50,7 +50,7 @@ Box(x, y, size, text="", border="single", style=None, title="", focusable=False)
 | Parameter | Description |
 |-----------|-------------|
 | `x`, `y` | Position in terminal characters |
-| `size` | `"WxH"` string in virtual pixels — divide by `30` to get character dimensions. `"900x600"` = 30 cols × 20 rows. |
+| `size` | `"WxH"` string in virtual pixels — divide by `App.SCALE` (10) to get the interior character dimensions. `"900x600"` = 90 cols × 60 rows. |
 | `text` | Optional centered text in the box interior |
 | `border` | Border style: `"single"`, `"double"`, `"rounded"`, `"bold"`, `"none"` |
 | `style` | Style for the box background and border |
@@ -127,7 +127,7 @@ Hyperlink(x, y, text, link, style=None)
 **Example:**
 
 ```python
-from cozy_tui import Hyperlink
+from cozy_tui.widgets import Hyperlink
 
 box.add(Hyperlink(2, 2, "cozy_tui on PyPI", "https://pypi.org/project/cozy-tui/"))
 ```
@@ -188,41 +188,69 @@ The key column width is shared across all sections, so everything stays aligned.
 
 ---
 
-### `AnimatedLabel` / `GlowAnimation`
+### `AnimatedLabel` + animations
 
-A label whose text is rendered with a per-character animated color wave. Useful for decorative headers or status lines.
+A label whose text is driven by an **animation** — a small object that turns the
+text into a stream of positioned, colored glyphs each frame. The label
+self-drives the frame loop (it calls `app.request_frame`), so you don't need to
+set `app.tick_interval`.
 
 ```python
 AnimatedLabel(x, y, text, *, animation, style=None)
-GlowAnimation(*, colors=None, color_template=None, speed=0.06)
 ```
+
+Three built-in animations (all keyword-only args):
+
+```python
+GlowAnimation(*, colors=None, color_template=None, speed=0.06)
+RainbowAnimation(*, spread=18, saturation=1.0, value=1.0, speed=0.06)
+LevitateAnimation(*, mode="char", amplitude=4, phase=0.6, rate=0.15, speed=0.03)
+```
+
+**`GlowAnimation`** — a fixed palette cycled across the characters as a color wave.
 
 | Parameter | Description |
 |-----------|-------------|
-| `text` | The text to animate |
-| `animation` | **Keyword-only.** A `GlowAnimation` instance |
-| `colors` | List of hex colors (`"#ff8c00"`) or `(r, g, b)` tuples cycled across the characters. Mutually exclusive with `color_template`. |
-| `color_template` | A built-in gradient instead of `colors`: one of `"orange"`, `"blue"`, `"green"`, `"red"`, `"purple"`. |
-| `speed` | Seconds between animation frames (default `0.06`; lower = faster) |
+| `colors` | List of hex colors (`"#ff8c00"`) or `(r, g, b)` tuples. Mutually exclusive with `color_template`. |
+| `color_template` | A built-in gradient: `"orange"`, `"blue"`, `"green"`, `"red"`, `"purple"`. |
+| `speed` | Seconds between frames (lower = faster). |
 
-> `GlowAnimation` uses **truecolor (RGB)**, so colors are hex/tuples, not the named palette. Set `app.tick_interval` (e.g. `0.05`) so the app re-renders often enough to animate.
+**`RainbowAnimation`** — sweeps the full HSV color wheel along the text and
+rotates it over time (`6°`/frame).
+
+| Parameter | Description |
+|-----------|-------------|
+| `spread` | Hue degrees between adjacent characters (wider = more colors on screen at once). |
+| `saturation`, `value` | HSV saturation / brightness, `0.0`–`1.0`. |
+| `speed` | Seconds between frames. |
+
+**`LevitateAnimation`** — bobs the text up and down on a sine wave (motion, not
+color; your own `style` is preserved).
+
+| Parameter | Description |
+|-----------|-------------|
+| `mode` | `"word"` (whole text rises/falls together) or `"char"` (each character phase-shifted → a traveling wave). |
+| `amplitude` | Peak rise in cells; text travels `0`–`2*amplitude` rows. The label sizes itself for this. |
+| `phase` | Per-character phase shift in `"char"` mode. |
+| `rate`, `speed` | Wave angular speed per frame / seconds between frames. |
+
+> Color animations use **truecolor (RGB)**. Because `LevitateAnimation` occupies
+> up to `2*amplitude` extra rows, `AnimatedLabel.natural_height` grows to match —
+> leave room below it in a layout.
 
 **Example:**
 
 ```python
-from cozy_tui import AnimatedLabel, GlowAnimation
+from cozy_tui.widgets import AnimatedLabel, GlowAnimation, RainbowAnimation, LevitateAnimation
 
-app.tick_interval = 0.05  # keep the frame loop running
-
-anim = GlowAnimation(color_template="blue", speed=0.08)
-lbl = AnimatedLabel(2, 2, "cozy_tui", animation=anim)
-app.add(lbl)
-
-# …or with custom colors:
-anim = GlowAnimation(colors=["#ff0000", "#ffff00", "#00ff00", "#00ffff"], speed=0.08)
+app.add(AnimatedLabel(2, 2, "cozy_tui", animation=GlowAnimation(color_template="blue")))
+app.add(AnimatedLabel(2, 4, "rainbow!", animation=RainbowAnimation(spread=25)))
+app.add(AnimatedLabel(2, 6, "floating", animation=LevitateAnimation(mode="char")))
 ```
 
-The wave shifts one character position each frame, producing a smooth color sweep across the text.
+Custom animations: subclass `Animation` and implement
+`cells(text, style) -> iterable of (dx, dy, char, cell_style)`; set
+`vertical_span` if your effect uses extra rows.
 
 ---
 
@@ -264,7 +292,8 @@ txt.set("Also works via set().")
 **Example:**
 
 ```python
-from cozy_tui import Text, Style
+from cozy_tui import Style
+from cozy_tui.widgets import Text
 
 txt = Text(2, 2, width=50, height=10, align="left", show_border=True,
            text="Lorem ipsum dolor sit amet, consectetur adipiscing elit.")
@@ -337,7 +366,7 @@ box.add(notes_input)
 A focusable button that executes a callback when activated. Activates on Enter, Space, or mouse click.
 
 ```python
-Button(x, y, text, style=None, width=None)
+Button(x, y, text, style=None, width=None, *, animation=None, active_effect_duration=0.2)
 ```
 
 | Parameter | Description |
@@ -346,20 +375,34 @@ Button(x, y, text, style=None, width=None)
 | `text` | Label shown on the button |
 | `width` | Total width in characters. Defaults to `len(text) + 4` (minimum 8). Set larger to add breathing room. |
 | `style` | `fg` = text color, `bg` = button background color |
+| `animation` | **Keyword-only.** A color animation (`GlowAnimation`/`RainbowAnimation`) applied to the label text while the button is focused or hovered. |
+| `active_effect_duration` | **Keyword-only.** Seconds the press "active" effect lasts (default `0.2`; `0` disables it). |
 
 **Methods:**
 
 ```python
 btn.on_click(func)   # Register a callback (receives the button as argument); returns self for chaining
+btn.on_enter(func)   # Cursor entered the button (requires App(mouse_moves=True))
+btn.on_leave(func)   # Cursor left the button
 ```
 
-**Visual states:**
+**Visual states** (least → most prominent):
 
 | State | Appearance |
 |-------|-----------|
 | Normal | Text centered on `bg` colored background |
+| Hovered | Bold (subtle lift); requires `App(mouse_moves=True)` |
 | Focused | Colors inverted (`fg` becomes background, `bg` becomes text), bold |
-| Pressed | Same as normal but dimmed, lasts ~0.3 seconds |
+| Active (pressed) | The whole button briefly **tints toward the screen background** (a "pressed-in" darkening), modelled on Textual's `-active` effect, for `active_effect_duration` seconds |
+
+With `animation=`, the label text comes alive (animated color) while focused or
+hovered — a Textual-style effect:
+
+```python
+from cozy_tui.widgets import Button, RainbowAnimation
+
+btn = Button(2, 6, "Launch", animation=RainbowAnimation(speed=0.05))
+```
 
 **Example:**
 
@@ -453,7 +496,8 @@ Tab cycles focus away; the preview appears instantly when another widget receive
 **Example:**
 
 ```python
-from cozy_tui import App, Box, Button, MarkdownInput, Style
+from cozy_tui import App, Style
+from cozy_tui.widgets import Box, Button, MarkdownInput
 
 editor = MarkdownInput(2, 2, 66, multiline=True,
                        placeholder="# Title\n\nStart writing **Markdown** here...")
@@ -505,10 +549,12 @@ lv.on_select(func)   # called with selected value when Enter is pressed or item 
 
 **Key bindings:** Up/Down — move, Home/End — first/last, Enter — confirm selection.
 
+**Mouse:** clicking an item moves the cursor to it and confirms it. With `App(mouse_moves=True)`, hovering over an item highlights it (moves the cursor) without confirming — like arrow-key navigation.
+
 **Example:**
 
 ```python
-from cozy_tui import ListView, ListItem
+from cozy_tui.widgets import ListView, ListItem
 
 lv = ListView(2, 2, [
     ListItem("Python",     "py"),
@@ -573,12 +619,13 @@ cl.on_toggle(func)   # func(value, checked) — called when an item is toggled b
 
 **Key bindings:** Up/Down — move cursor, Home/End — first/last, Enter/Space — toggle highlighted item.
 
-**Mouse:** clicking a row moves the cursor to it and toggles it immediately.
+**Mouse:** clicking a row moves the cursor to it and toggles it immediately. With `App(mouse_moves=True)`, hovering over a row highlights it (moves the cursor) without toggling.
 
 **Example:**
 
 ```python
-from cozy_tui import CheckList, CheckItem, Style
+from cozy_tui import Style
+from cozy_tui.widgets import CheckList, CheckItem
 
 cl = CheckList(2, 2, [
     CheckItem("Buy groceries"),
@@ -588,6 +635,61 @@ cl = CheckList(2, 2, [
 
 cl.on_toggle(lambda value, checked: print(f"{value}: {checked}"))
 box.add(cl)
+```
+
+---
+
+### `RadioSet` / `RadioItem`
+
+A single-select list of options — exactly one is chosen at a time. Navigation mirrors `CheckList`, but selecting an option clears the previous one. The chosen option is marked `(•)`; the cursor is marked with `>`.
+
+```python
+RadioSet(x, y, items=None, *, selected=0, width=None, height=None, style=None)
+RadioItem(text, value=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `items` | Initial list of strings or `RadioItem` objects |
+| `selected` | Index of the initially selected option (default `0`) |
+| `width` | Fixed width in chars. `None` = auto-sized from the widest item. |
+| `height` | Number of visible rows. `None` = show all items. |
+
+**Reading / setting the selection:**
+
+```python
+rs.selected        # value of the selected option
+rs.selected_index  # integer index of the selected option
+rs.selected_item   # the RadioItem object
+rs.select(value)   # select the option whose .value == value
+rs.select_index(i) # select by index
+```
+
+**Callbacks:**
+
+```python
+rs.on_change(func)   # func(value) — called when the selection changes (returns self)
+```
+
+**Key bindings:** Up/Down — move cursor, Home/End — first/last, Enter/Space — select the highlighted option.
+
+**Mouse:** clicking a row moves the cursor to it and selects it immediately. With `App(mouse_moves=True)`, hovering over a row highlights it (moves the cursor) without selecting.
+
+**Example:**
+
+```python
+from cozy_tui import Style
+from cozy_tui.widgets import RadioSet, RadioItem
+
+rs = RadioSet(2, 2, [
+    RadioItem("Small", value="s"),
+    RadioItem("Medium", value="m"),
+    RadioItem("Large", value="l"),
+], selected=1, style=Style(fg="white"))
+
+rs.on_change(lambda value: print("size:", value))
+box.add(rs)
 ```
 
 ---
@@ -631,7 +733,8 @@ The open popup is rendered on the [overlay layer](layouts.md#overlays--modals), 
 **Example:**
 
 ```python
-from cozy_tui import Dropdown, ListItem, Style
+from cozy_tui import Style
+from cozy_tui.widgets import Dropdown, ListItem
 
 dd = Dropdown(2, 2, [
     ListItem("Option A", "a"),
@@ -675,7 +778,8 @@ bar.on_change(func)      # called with new value whenever it changes
 **Example:**
 
 ```python
-from cozy_tui import ProgressBar, Style
+from cozy_tui import Style
+from cozy_tui.widgets import ProgressBar
 
 bar = ProgressBar(2, 5, fill="█", empty="░", width=30,
                   style=Style(fg="bright_green"))
@@ -743,7 +847,8 @@ tbl.on_select(func)   # func(row) — called on Enter or click
 **Example:**
 
 ```python
-from cozy_tui import Table, Style
+from cozy_tui import Style
+from cozy_tui.widgets import Table
 
 tbl = Table(2, 2, height=8, show_border=True)
 tbl.add_column("Name",  width=16)
@@ -813,7 +918,7 @@ coll.on_toggle(func)   # func(expanded) — fires when the section expands or co
 **Example:**
 
 ```python
-from cozy_tui import Collapsible, Checkbox, ListItem
+from cozy_tui.widgets import Collapsible, Checkbox, ListItem
 
 section = Collapsible(2, 2, title="Theme", expanded=True)
 section.add(ListItem("Dark",      "dark"))
@@ -882,7 +987,8 @@ tree.on_change(func)   # func(node) — fires when selection moves
 **Example (without connectors):**
 
 ```python
-from cozy_tui import App, Tree
+from cozy_tui import App
+from cozy_tui.widgets import Tree
 
 app = App()
 tree = Tree(2, 2)

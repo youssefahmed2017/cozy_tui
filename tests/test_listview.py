@@ -1,4 +1,4 @@
-from cozy_tui import ListView
+from cozy_tui.widgets import ListView
 
 
 def test_set_item_replaces_in_place_and_keeps_selection():

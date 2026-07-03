@@ -11,14 +11,14 @@ A lightweight, cross-platform Python TUI (Terminal User Interface) library. Buil
 
 ## Documentation
 
-Full documentation lives in [`docs/`](docs):
+Full documentation lives in [`docs/`](https://github.com/youssefahmed2017/cozy_tui/tree/master/docs) (GitHub) directory:
 
-- **[Core Concepts](docs/concepts.md)** — the render loop, coordinate system, and widget lifecycle.
-- **[Widgets](docs/widgets.md)** — every widget: `App`, `Box`, `Label`, `Hyperlink`, `Bindings`, `Text`, `Input`, `Button`, `Checkbox`, `MarkdownInput`, `ListView`, `CheckList`, `Dropdown`, `ProgressBar`, `Table`, `Collapsible`, `Tree`, `AnimatedLabel`.
-- **[Layouts, Dock & Overlays](docs/layouts.md)** — `VBox`/`HBox`/`Grid`, `app.dock(...)`, and the overlay/modal layer (`open_overlay`, `app.prompt`).
-- **[Styling](docs/styling.md)** — `Style`, colors, and text attributes.
-- **[Input & Interaction](docs/interaction.md)** — key bindings, mouse support, focus, and scrolling.
-- **[Examples](docs/examples.md)** — runnable demos in [`examples/`](examples).
+- **[Core Concepts](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/concepts.md)** — the render loop, coordinate system, and widget lifecycle.
+- **[Widgets](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/widgets.md)** — every widget: `App`, `Box`, `Label`, `Hyperlink`, `Bindings`, `Text`, `Input`, `Button`, `Checkbox`, `MarkdownInput`, `ListView`, `CheckList`, `RadioSet`, `Dropdown`, `ProgressBar`, `Table`, `Collapsible`, `Tree`, `AnimatedLabel`.
+- **[Layouts, Dock & Overlays](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/layouts.md)** — `VBox`/`HBox`/`Grid`, `app.dock(...)`, and the overlay/modal layer (`open_overlay`, `app.prompt`).
+- **[Styling](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/styling.md)** — `Style`, colors, and text attributes.
+- **[Input & Interaction](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/interaction.md)** — key bindings, mouse support, focus, and scrolling.
+- **[Examples](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/examples.md)** — runnable demos in [`examples/`](examples).
 
 ---
 
@@ -28,7 +28,7 @@ Full documentation lives in [`docs/`](docs):
 - **Very few dependencies** — the clipboard is built in (no `pyperclip`); the only third-party dependency is `rich`, used to render `Markdown`/`MarkdownInput`. Everything else is the standard library.
 - **Built-in clipboard** — `cozy_tui.clipboard.copy`/`paste` with native backends per platform (Win32 API, `pbcopy`/`pbpaste`, `wl-clipboard`/`xclip`/`xsel`, or OSC 52 fallback).
 - **Unicode-aware rendering** — a built-in `wcwidth`-style width layer keeps CJK/emoji (double-width) and combining marks (zero-width) aligned in the cell grid.
-- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Hyperlink`, `Bindings`, `AnimatedLabel`, `Text`, `Box`, `MarkdownInput`, `ListView`, `CheckList`, `Dropdown`, `ProgressBar`, `Table`, `Collapsible`, `Tree`
+- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Hyperlink`, `Bindings`, `AnimatedLabel`, `Text`, `Box`, `MarkdownInput`, `ListView`, `CheckList`, `RadioSet`, `Dropdown`, `ProgressBar`, `Table`, `Collapsible`, `Tree`
 - **Layouts**: `VBox`, `HBox`, `Grid` — auto-position children without manual x/y
 - **Dock layout**: `app.dock(widget, "top"/"bottom"/"left"/"right"/"fill")` — edge-anchored regions that re-flow on resize
 - **Overlays & modals**: `app.open_overlay(widget)` floats a widget above the UI, dims the background, and confines focus/input — the basis for dialogs, menus, and tooltips
@@ -71,7 +71,8 @@ python -m cozy_tui
 Then in your script:
 
 ```python
-from cozy_tui import App, Box, Label, Input, Button, Style
+from cozy_tui import App, Style
+from cozy_tui.widgets import Box, Label, Input, Button
 ```
 
 ### From source (for development)
@@ -89,13 +90,14 @@ pip install -e .            # add [dev] for the test suite (pytest)
 ## Quick Start
 
 ```python
-from cozy_tui import App, Box, Label, Input, Button, Checkbox, Style
+from cozy_tui import App, Style
+from cozy_tui.widgets import Box, Label, Input, Button, Checkbox
 from cozy_tui.events import Key
 
 app = App(full=True, size=None, style=Style(fg="white", bg="black"))
 
-# Box size = virtual pixels ÷ 30 → "1800x420" = 60 cols × 14 rows
-box = Box(2, 1, "1800x420", border="rounded", style=Style(fg="white", bg="black"), title="Sign Up")
+# Box size = virtual pixels ÷ App.SCALE (10) → "600x140" = 60 cols × 14 rows
+box = Box(2, 1, "600x140", border="rounded", style=Style(fg="white", bg="black"), title="Sign Up")
 
 box.add(Label(2, 2, "Username:"))
 box.add(Input(12, 2, 20, placeholder="Enter username"))

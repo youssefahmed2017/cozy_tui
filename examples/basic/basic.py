@@ -3,7 +3,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from cozy_tui import App, Box, Button, Label
+from cozy_tui import App
+from cozy_tui.widgets import Box, Button, Label
 
 app = App(full=True)
 

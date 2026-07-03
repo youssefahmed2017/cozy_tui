@@ -37,10 +37,8 @@ def test_roundtrip_when_backend_available():
 
 
 def test_widget_adapter_delegates():
-    from cozy_tui.widgets.input._input_clipboard import (
-        _clipboard_get,
-        _clipboard_set,
-    )
+    from cozy_tui.widgets.input._input_clipboard import (_clipboard_get,
+                                                         _clipboard_set)
 
     assert isinstance(_clipboard_get(), str)
     _clipboard_set("")  # empty is a no-op and must not raise

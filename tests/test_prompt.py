@@ -1,4 +1,5 @@
-from cozy_tui import App, PromptDialog, Style
+from cozy_tui import App, Style
+from cozy_tui.widgets import PromptDialog
 from cozy_tui.events import Key
 
 

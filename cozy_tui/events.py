@@ -2,6 +2,7 @@ import os
 
 from cozy_tui import _console
 
+
 # fmt: off
 class Paste:
     """All text from a single terminal bracketed-paste event (ESC[200~...ESC[201~)."""
@@ -32,6 +33,28 @@ class MouseDrag:
 
     def __repr__(self):
         return f"MouseDrag(col={self.col}, row={self.row}, btn={self.btn})"
+
+
+class MouseRelease:
+    """A mouse button release event with 0-indexed terminal coordinates."""
+    def __init__(self, col: int, row: int, btn: int):
+        self.col = col
+        self.row = row
+        self.btn = btn  # 0=left, 1=middle, 2=right
+
+    def __repr__(self):
+        return f"MouseRelease(col={self.col}, row={self.row}, btn={self.btn})"
+
+
+class MouseMove:
+    """Mouse motion with no button held (hover), with 0-indexed coordinates.
+    Only delivered when the App is created with mouse_moves=True."""
+    def __init__(self, col: int, row: int):
+        self.col = col
+        self.row = row
+
+    def __repr__(self):
+        return f"MouseMove(col={self.col}, row={self.row})"
 
 
 class Key:
@@ -136,18 +159,32 @@ _KEY_LABELS = {
     Key.BACKSPACE: "Backspace",
     "\x7f": "Backspace",
     " ": "Space",
-    Key.UP: "↑", Key.DOWN: "↓", Key.LEFT: "←", Key.RIGHT: "→",
-    Key.HOME: "Home", Key.END: "End",
-    Key.DELETE: "Del", Key.INSERT: "Ins",
-    Key.PAGE_UP: "PgUp", Key.PAGE_DOWN: "PgDn",
-    Key.SHIFT_TAB: "Shift+Tab", Key.SHIFT_ENTER: "Shift+Enter",
-    Key.SHIFT_LEFT: "Shift+←", Key.SHIFT_RIGHT: "Shift+→",
-    Key.SHIFT_UP: "Shift+↑", Key.SHIFT_DOWN: "Shift+↓",
-    Key.SHIFT_HOME: "Shift+Home", Key.SHIFT_END: "Shift+End",
-    Key.CTRL_UP: "Ctrl+↑", Key.CTRL_DOWN: "Ctrl+↓",
-    Key.CTRL_LEFT: "Ctrl+←", Key.CTRL_RIGHT: "Ctrl+→",
-    Key.CTRL_SHIFT_LEFT: "Ctrl+Shift+←", Key.CTRL_SHIFT_RIGHT: "Ctrl+Shift+→",
-    Key.SCROLL_UP: "Scroll↑", Key.SCROLL_DOWN: "Scroll↓",
+    Key.UP: "↑",
+    Key.DOWN: "↓",
+    Key.LEFT: "←",
+    Key.RIGHT: "→",
+    Key.HOME: "Home",
+    Key.END: "End",
+    Key.DELETE: "Del",
+    Key.INSERT: "Ins",
+    Key.PAGE_UP: "PgUp",
+    Key.PAGE_DOWN: "PgDn",
+    Key.SHIFT_TAB: "Shift+Tab",
+    Key.SHIFT_ENTER: "Shift+Enter",
+    Key.SHIFT_LEFT: "Shift+←",
+    Key.SHIFT_RIGHT: "Shift+→",
+    Key.SHIFT_UP: "Shift+↑",
+    Key.SHIFT_DOWN: "Shift+↓",
+    Key.SHIFT_HOME: "Shift+Home",
+    Key.SHIFT_END: "Shift+End",
+    Key.CTRL_UP: "Ctrl+↑",
+    Key.CTRL_DOWN: "Ctrl+↓",
+    Key.CTRL_LEFT: "Ctrl+←",
+    Key.CTRL_RIGHT: "Ctrl+→",
+    Key.CTRL_SHIFT_LEFT: "Ctrl+Shift+←",
+    Key.CTRL_SHIFT_RIGHT: "Ctrl+Shift+→",
+    Key.SCROLL_UP: "Scroll↑",
+    Key.SCROLL_DOWN: "Scroll↓",
 }
 
 # Internal read buffer.  We bulk-read from stdin on every refill so that a full
@@ -155,6 +192,11 @@ _KEY_LABELS = {
 # disambiguation reliable — separate from the OS-level input readiness that
 # _console.kbhit() reports.
 _buf: list[str] = []
+
+# How long read_key waits for a VT-sequence continuation before treating a
+# lone ESC (empty buffer) as the Escape key. Long enough to catch a sequence
+# split across a bulk read, short enough to feel instant for a real Escape.
+_ESC_TIMEOUT = 0.02
 
 
 def kbhit() -> bool:
@@ -204,10 +246,22 @@ _CSI_MAP = {
     "1;6D": Key.CTRL_SHIFT_LEFT,
     # Function keys. F5–F12 are always CSI "~" sequences; F1–F4 usually arrive as
     # SS3 (see _read_ss3) but some terminals send the CSI forms below.
-    "11~": Key.F1, "12~": Key.F2, "13~": Key.F3, "14~": Key.F4,
-    "15~": Key.F5, "17~": Key.F6, "18~": Key.F7, "19~": Key.F8,
-    "20~": Key.F9, "21~": Key.F10, "23~": Key.F11, "24~": Key.F12,
-    "1P": Key.F1, "1Q": Key.F2, "1R": Key.F3, "1S": Key.F4,
+    "11~": Key.F1,
+    "12~": Key.F2,
+    "13~": Key.F3,
+    "14~": Key.F4,
+    "15~": Key.F5,
+    "17~": Key.F6,
+    "18~": Key.F7,
+    "19~": Key.F8,
+    "20~": Key.F9,
+    "21~": Key.F10,
+    "23~": Key.F11,
+    "24~": Key.F12,
+    "1P": Key.F1,
+    "1Q": Key.F2,
+    "1R": Key.F3,
+    "1S": Key.F4,
     # Ctrl+Shift+Z via XTerm modifyOtherKeys level 1 (\033[>4;1m):
     # Z=90 or z=122, Ctrl+Shift modifier=6
     "90;6u": Key.CTRL_Y,
@@ -218,9 +272,18 @@ _CSI_MAP = {
 # Function-key codes used for *modified* forms (CSI <code> ; <mod> ~ and
 # CSI 1 ; <mod> P/Q/R/S). Unmodified forms live in _CSI_MAP above.
 _FKEY_TILDE = {
-    "11": Key.F1, "12": Key.F2, "13": Key.F3, "14": Key.F4,
-    "15": Key.F5, "17": Key.F6, "18": Key.F7, "19": Key.F8,
-    "20": Key.F9, "21": Key.F10, "23": Key.F11, "24": Key.F12,
+    "11": Key.F1,
+    "12": Key.F2,
+    "13": Key.F3,
+    "14": Key.F4,
+    "15": Key.F5,
+    "17": Key.F6,
+    "18": Key.F7,
+    "19": Key.F8,
+    "20": Key.F9,
+    "21": Key.F10,
+    "23": Key.F11,
+    "24": Key.F12,
 }
 _FKEY_SS3 = {"P": Key.F1, "Q": Key.F2, "R": Key.F3, "S": Key.F4}
 
@@ -259,13 +322,14 @@ def _read_csi():
             return Key.SCROLL_UP
         if btn == 65:
             return Key.SCROLL_DOWN
-        if btn & 32:  # motion with button held (drag); bit 32 is the motion flag
-            if pressed:
-                return MouseDrag(col - 1, row - 1, btn & 3)
-            return None
+        if btn & 32:  # motion; bit 32 is the motion flag. SGR is 1-indexed.
+            # Low 2 bits = held button, or 3 when no button is down (pure hover).
+            if btn & 3 == 3:
+                return MouseMove(col - 1, row - 1)
+            return MouseDrag(col - 1, row - 1, btn & 3)
         if pressed:
-            return MouseClick(col - 1, row - 1, btn)  # SGR is 1-indexed
-        return None
+            return MouseClick(col - 1, row - 1, btn & 3)
+        return MouseRelease(col - 1, row - 1, btn & 3)
 
     # X10 mouse:  ESC [ M <3 raw bytes>
     if buf == "M":
@@ -347,9 +411,16 @@ def _read_csi():
 
 # SS3 payload byte → Key. F1–F4, plus arrows/Home/End in application cursor mode.
 _SS3_MAP = {
-    "P": Key.F1, "Q": Key.F2, "R": Key.F3, "S": Key.F4,
-    "A": Key.UP, "B": Key.DOWN, "C": Key.RIGHT, "D": Key.LEFT,
-    "H": Key.HOME, "F": Key.END,
+    "P": Key.F1,
+    "Q": Key.F2,
+    "R": Key.F3,
+    "S": Key.F4,
+    "A": Key.UP,
+    "B": Key.DOWN,
+    "C": Key.RIGHT,
+    "D": Key.LEFT,
+    "H": Key.HOME,
+    "F": Key.END,
 }
 
 
@@ -363,9 +434,13 @@ def read_key():
     if ch == "\x7f":  # DEL char — Windows Terminal sends this for Backspace
         return Key.BACKSPACE
     if ch == "\x1b":
-        # After a bulk read, _buf will contain the rest of a VT sequence if
-        # one was present.  An empty _buf means a standalone ESC.
-        if not _buf:
+        # Distinguish a real Escape from the start of a VT sequence. Usually the
+        # bulk read already left the rest of the sequence in _buf. But a read can
+        # end exactly on the ESC that begins the *next* sequence (e.g. under a
+        # mouse-motion flood that crosses the read boundary) — so when _buf is
+        # empty, briefly wait for a continuation before concluding it's Escape.
+        # A genuine lone ESC has nothing pending and falls through after the wait.
+        if not _buf and not _console.wait_input(_ESC_TIMEOUT):
             return Key.ESC
         ch2 = _read_char()
         if ch2 == "[":

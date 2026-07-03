@@ -8,7 +8,15 @@ from cozy_tui._console import enable_raw, restore, wait_input
 from cozy_tui._dock import SIDES, dock_layout
 from cozy_tui._width import char_width
 from cozy_tui.ansi import style_esc
-from cozy_tui.events import Key, MouseClick, MouseDrag, kbhit, read_key
+from cozy_tui.events import (
+    Key,
+    MouseClick,
+    MouseDrag,
+    MouseMove,
+    MouseRelease,
+    kbhit,
+    read_key,
+)
 from cozy_tui.style import Cell, Style
 
 # Sentinel stored in _prev_cells to mark a cell that has never been rendered.
@@ -61,12 +69,23 @@ class _Overlay:
 class App:
     SCALE = 10
     BLINK_INTERVAL = 0.5
+    # Two clicks on the same widget within this window count as a double-click.
+    DOUBLE_CLICK_INTERVAL = 0.4
 
     def __init__(
-        self, style: Style = Style(bg="black", fg="white"), size=None, full=True, title: str = "Cozy TUI App"
+        self,
+        style: Style = Style(bg="black", fg="white"),
+        size=None,
+        full=True,
+        title: str = "Cozy TUI App",
+        mouse_moves: bool = False,
     ):
         self.style = style
         self.full = full
+        # Track bare mouse motion (hover) → MouseMove events. Off by default:
+        # any-motion tracking floods input on every cursor move, so only enable
+        # it when an app actually uses on_hover / on_mouse_move.
+        self.mouse_moves = mouse_moves
         self.scroll_y = 0
         self._content_rows = 0
 
@@ -75,6 +94,13 @@ class App:
         self.widgets = []
         self.focused = None
         self._key_handlers = {}
+        # Optional global mouse hook (see on_mouse); called with the raw event
+        # before per-widget dispatch and may consume it by returning True.
+        self._mouse_handler = None
+        # Last click for double-click detection: (monotonic time, target, btn).
+        self._last_click = (0.0, None, None)
+        # Widget the cursor is currently over, for enter/leave (mouse_moves).
+        self._hovered = None
         # Bindings registered with a description, for the Bindings("auto") legend.
         # key -> (description, section); ordered by first registration.
         self._bindings: dict = {}
@@ -83,6 +109,10 @@ class App:
         self._last_cursor_esc = None  # track last-emitted cursor state
         self._should_quit = False
         self.tick_interval: float | None = None  # set to e.g. 0.05 for animations
+        # Frame interval requested by animating widgets during draw (e.g.
+        # AnimatedLabel). Recomputed every render so animations self-drive the
+        # loop without the app having to set tick_interval.
+        self._anim_interval: float | None = None
         # Results from background workers, delivered to the main thread by the
         # event loop so callbacks never touch the UI from another thread.
         self._worker_results: deque = deque()
@@ -260,7 +290,9 @@ class App:
             if not state["submitted"] and on_cancel is not None:
                 on_cancel()
 
-        dialog = PromptDialog(title, initial, on_submit=_submit, width=width, style=self.style)
+        dialog = PromptDialog(
+            title, initial, on_submit=_submit, width=width, style=self.style
+        )
         self.open_overlay(
             dialog,
             modal=True,
@@ -313,6 +345,14 @@ class App:
         if description is not None:
             self._bindings[key] = (description, section)
             self._bindings_version += 1
+
+    def on_mouse(self, handler):
+        """Register a global mouse hook. ``handler(event)`` is called for every
+        mouse event (``MouseClick``, ``MouseDrag``, ``MouseRelease``,
+        ``MouseMove``) before it is dispatched to a widget, with coordinates
+        already adjusted for scrolling. Return ``True`` to consume the event and
+        skip the default per-widget dispatch."""
+        self._mouse_handler = handler
 
     def focus(self, widget):
         self.focused = widget
@@ -434,12 +474,36 @@ class App:
 
     # ── rendering ─────────────────────────────────────────────────────────────
 
-    def render(self):
+    def request_frame(self, interval: float) -> None:
+        """Ask the event loop to redraw again after ``interval`` seconds. Called
+        by animating widgets from their ``draw()`` so they keep moving without
+        the app setting ``tick_interval``. The smallest request for the frame
+        wins; it's cleared each render, so animation stops when nothing asks."""
+        if interval and interval > 0:
+            if self._anim_interval is None or interval < self._anim_interval:
+                self._anim_interval = interval
+
+    def _compose(self):
+        """Run the draw pass into the cell buffer without emitting to the
+        terminal. Shared by render() and snapshot()."""
+        self._anim_interval = None  # widgets re-request during draw() below
         self.clear()
         self._apply_docks()
         for widget in self.widgets:
             widget.draw(self)
         self._draw_overlays()
+
+    def snapshot(self) -> str:
+        """Compose the current UI into a plain string — one line per row, with
+        trailing blanks stripped — without touching the terminal. Intended for
+        headless testing of app layouts (build the UI, assert on snapshot())."""
+        self._compose()
+        return "\n".join(
+            "".join(cell.char for cell in row).rstrip() for row in self.buffer
+        )
+
+    def render(self):
+        self._compose()
 
         if self._full_render_pending:
             self._full_render_pending = False
@@ -533,8 +597,11 @@ class App:
             self._last_cursor_esc = cursor
 
     def set_title(self, title: str):
-        # OSC 0
+        """Set the terminal tab/window title. Emits the OSC 0 sequence
+        immediately so it takes effect mid-run, not just at startup."""
         self.title = title
+        sys.stdout.write(f"\033]0;{title}\007")
+        sys.stdout.flush()
 
     # ── hit testing ───────────────────────────────────────────────────────────
 
@@ -557,23 +624,90 @@ class App:
                 return result
         return None
 
+    # ── mouse dispatch ──────────────────────────────────────────────────────────
+
+    def _mouse_target(self, col, row, modal):
+        """Focusable widget under (col, row), confined to a modal overlay's
+        subtree when one is open (or None when the point misses it)."""
+        if modal is not None:
+            if not modal.widget.contains(col, row):
+                return None
+            return self._hit_widget(modal.widget, col, row)
+        return self._hit_test(col, row)
+
+    def _dispatch_mouse(self, event):
+        """Route a mouse event to the global hook then the widget under it.
+        Coordinates are adjusted for scroll (overlays are screen-fixed) before
+        either sees them."""
+        modal = self._topmost_modal()
+        event.row += 0 if modal else self.scroll_y
+        if self._mouse_handler is not None and self._mouse_handler(event):
+            return  # consumed by the global hook
+        if isinstance(event, MouseClick):
+            self._dispatch_click(event, modal)
+        elif isinstance(event, MouseDrag):
+            if self.focused is not None:
+                self.focused.on_mouse_drag(event.col, event.row)
+        elif isinstance(event, MouseRelease):
+            if self.focused is not None:
+                self.focused.on_mouse_release(event.col, event.row)
+        elif isinstance(event, MouseMove):
+            target = self._mouse_target(event.col, event.row, modal)
+            if target is not self._hovered:
+                if self._hovered is not None:
+                    self._hovered.on_mouse_leave()
+                self._hovered = target
+                if target is not None:
+                    target.on_mouse_enter()
+            if target is not None:
+                target.on_mouse_move(event.col, event.row)
+
+    def _dispatch_click(self, event, modal):
+        """Focus the clicked widget and fire click or double-click."""
+        if modal is not None and not modal.widget.contains(event.col, event.row):
+            if modal.close_on_click_outside:
+                self.close_overlay(modal.widget)
+            return  # clicks outside a modal are swallowed
+        target = self._mouse_target(event.col, event.row, modal)
+        if target is None:
+            return
+        # Clicking a container dives to its first child, matching Tab.
+        self.focused = self._first_focusable(target) or target
+        now = time.monotonic()
+        last_t, last_target, last_btn = self._last_click
+        double = (
+            target is last_target
+            and event.btn == last_btn
+            and now - last_t <= self.DOUBLE_CLICK_INTERVAL
+        )
+        if double:
+            target.on_mouse_double_click(event.col, event.row)
+            self._last_click = (0.0, None, None)  # reset so a 3rd click isn't a 2nd
+        else:
+            target.on_mouse_click(event.col, event.row)
+            self._last_click = (now, target, event.btn)
+
     def quit(self):
         self._should_quit = True
 
     def run(self):
+        # 1003 = any-motion tracking (needed for hover/MouseMove); 1002 =
+        # button-event tracking (motion only while a button is held, i.e. drag).
+        motion = "1003" if self.mouse_moves else "1002"
+        mouse_on = f"\033[?1000h\033[?{motion}h\033[?1006h"
+        mouse_off = f"\033[?1006l\033[?{motion}l\033[?1000l"
         enter = (
-            "\033[?1049h\033[2J\033[H\033[?25l\033[?1000h\033[?1002h\033[?1006h\033[?2004h\033[>4;1m"
+            f"\033[?1049h\033[2J\033[H\033[?25l{mouse_on}\033[?2004h\033[>4;1m"
             if self.full
-            else "\033[2J\033[H\033[?25l\033[?1000h\033[?1002h\033[?1006h\033[?2004h\033[>4;1m"
+            else f"\033[2J\033[H\033[?25l{mouse_on}\033[?2004h\033[>4;1m"
         )
         exit_ = (
-            "\033[>4;0m\033[?2004l\033[?1006l\033[?1002l\033[?1000l\033[?25h\033[?1049l"
+            f"\033[>4;0m\033[?2004l{mouse_off}\033[?25h\033[?1049l"
             if self.full
-            else "\033[>4;0m\033[?2004l\033[?1006l\033[?1000l\033[?25h"
+            else f"\033[>4;0m\033[?2004l{mouse_off}\033[?25h"
         )
 
-        sys.stdout.write(f"\033]0;{self.title}\007") # Update terminal tab title using OSC 0
-        sys.stdout.flush()
+        self.set_title(self.title)  # emit OSC 0 terminal tab title
 
         sys.stdout.write(enter)
         sys.stdout.flush()
@@ -588,6 +722,15 @@ class App:
                 last_tick = time.monotonic()
                 while not kbhit():
                     now = time.monotonic()
+                    # Effective tick = the app's tick_interval and/or the fastest
+                    # frame requested by an animating widget on the last render.
+                    tick = self.tick_interval
+                    if self._anim_interval is not None:
+                        tick = (
+                            self._anim_interval
+                            if tick is None
+                            else min(tick, self._anim_interval)
+                        )
                     if self._drain_workers():
                         self.render()
                         last_blink = last_tick = now
@@ -614,7 +757,7 @@ class App:
                             self.render()
                             last_tick = now
                         last_blink = now
-                    elif self.tick_interval and now - last_tick >= self.tick_interval:
+                    elif tick and now - last_tick >= tick:
                         self.render()
                         last_tick = now
                     # Block until input arrives or the next scheduled wake, rather
@@ -622,41 +765,16 @@ class App:
                     # results are still noticed promptly.
                     now = time.monotonic()
                     waits = [_IDLE_POLL, self.BLINK_INTERVAL - (now - last_blink)]
-                    if self.tick_interval:
-                        waits.append(self.tick_interval - (now - last_tick))
+                    if tick:
+                        waits.append(tick - (now - last_tick))
                     wait_input(max(0.0, min(waits)))
 
                 self._cursor_on = True
                 key = read_key()
                 if not key:  # None or "" from focus/resize console events
                     continue
-                if isinstance(key, MouseClick):
-                    modal = self._topmost_modal()
-                    if modal is not None:
-                        w = modal.widget
-                        # Overlays are screen-fixed, so no scroll offset here.
-                        inside = w.contains(key.col, key.row)
-                        if not inside:
-                            if modal.close_on_click_outside:
-                                self.close_overlay(w)
-                            continue  # clicks outside a modal are swallowed
-                        target = self._hit_widget(w, key.col, key.row)
-                        if target is not None:
-                            self.focused = self._first_focusable(target) or target
-                            if hasattr(target, "on_mouse_click"):
-                                target.on_mouse_click(key.col, key.row)
-                        continue
-                    target = self._hit_test(key.col, key.row + self.scroll_y)
-                    if target is not None:
-                        # Clicking a container dives to its first child, matching Tab.
-                        self.focused = self._first_focusable(target) or target
-                        if hasattr(target, "on_mouse_click"):
-                            target.on_mouse_click(key.col, key.row + self.scroll_y)
-                    continue
-                if isinstance(key, MouseDrag):
-                    scroll = 0 if self._topmost_modal() else self.scroll_y
-                    if self.focused and hasattr(self.focused, "on_mouse_drag"):
-                        self.focused.on_mouse_drag(key.col, key.row + scroll)
+                if isinstance(key, (MouseClick, MouseDrag, MouseRelease, MouseMove)):
+                    self._dispatch_mouse(key)
                     continue
                 modal = self._topmost_modal()
                 if modal is not None:

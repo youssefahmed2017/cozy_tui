@@ -13,8 +13,15 @@ class Box(Widget):
     }
 
     def __init__(
-        self, x, y, size, text: str = "", border: str = "single", style=None,
-        title="", focusable=False
+        self,
+        x,
+        y,
+        size,
+        text: str = "",
+        border: str = "single",
+        style=None,
+        title="",
+        focusable=False,
     ):
         super().__init__(x, y, style)
         self.text = text

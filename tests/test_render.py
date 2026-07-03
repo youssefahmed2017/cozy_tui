@@ -50,6 +50,42 @@ def test_render_runs_without_error():
     app.render()  # exercises the diff/full render path against the buffer
 
 
+def test_snapshot_returns_composed_text():
+    app = make_app()
+    from cozy_tui.widgets import Label
+
+    app.add(Label(0, 0, "hello"))
+    app.add(Label(0, 2, "world"))
+    snap = app.snapshot()
+    lines = snap.split("\n")
+    assert lines[0] == "hello"
+    assert lines[1] == ""  # blank row, trailing spaces stripped
+    assert lines[2] == "world"
+
+
+def test_snapshot_does_not_write_to_terminal():
+    import contextlib
+    import io
+
+    app = make_app()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        app.snapshot()
+    assert buf.getvalue() == ""
+
+
+def test_set_title_emits_osc_sequence():
+    import contextlib
+    import io
+
+    app = make_app()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        app.set_title("New Title")
+    assert buf.getvalue() == "\033]0;New Title\007"
+    assert app.title == "New Title"
+
+
 def test_full_render_uses_crlf_line_breaks():
     # POSIX raw mode disables OPOST, so full-render lines must end with CR+LF or
     # the screen stair-steps. Assert the serialized output has no bare LF.
@@ -63,5 +99,5 @@ def test_full_render_uses_crlf_line_breaks():
     with contextlib.redirect_stdout(buf):
         app._do_full_render()
     out = buf.getvalue()
-    assert "\r\n" in out                       # rows separated by CRLF
+    assert "\r\n" in out  # rows separated by CRLF
     assert "\n" not in out.replace("\r\n", "")  # and no lone LF anywhere
