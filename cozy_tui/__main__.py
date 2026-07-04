@@ -225,6 +225,11 @@ def main() -> None:
 
     sidebar = Box(0, 0, "170x10", title="❯ menu", border="rounded")
     nav = ListView(1, 1, [name for name, _ in PAGES], width=15, height=len(PAGES))
+    # The sidebar live-switches pages via on_change, and hover-highlight fires
+    # on_change just like arrow keys — so in terminals that report bare motion
+    # (e.g. PyCharm's) merely sweeping the mouse over the sidebar would flip
+    # pages. Opt the sidebar out of hover; keyboard and click still navigate.
+    nav.mouse_moves = False
     sidebar.add(nav)
     app.dock(sidebar, "left")
 
