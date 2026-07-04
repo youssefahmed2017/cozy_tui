@@ -105,7 +105,7 @@ def test_glow_still_works_via_cells():
 
 
 def test_button_hover_enter_and_leave():
-    app = make_app(mouse_moves=True)
+    app = make_app()  # Button opts into mouse_moves itself
     b1 = Button(0, 0, "One")
     b2 = Button(0, 2, "Two")
     entered, left = [], []

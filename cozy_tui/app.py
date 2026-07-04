@@ -78,14 +78,16 @@ class App:
         size=None,
         full=True,
         title: str = "Cozy TUI App",
-        mouse_moves: bool = False,
     ):
         self.style = style
         self.full = full
-        # Track bare mouse motion (hover) → MouseMove events. Off by default:
-        # any-motion tracking floods input on every cursor move, so only enable
-        # it when an app actually uses on_hover / on_mouse_move.
-        self.mouse_moves = mouse_moves
+        # Whether any-motion tracking (?1003h, needed for hover/MouseMove) is
+        # currently enabled at the terminal. Driven by per-widget mouse_moves:
+        # the App turns it on when a live widget wants motion and never floods
+        # the input stream otherwise. _running gates the live upgrade to when
+        # the loop owns the terminal.
+        self._motion_on = False
+        self._running = False
         self.scroll_y = 0
         self._content_rows = 0
 
@@ -183,6 +185,33 @@ class App:
 
     def add(self, widget):
         self.widgets.append(widget)
+        self._ensure_motion_mode()
+
+    # ── mouse-motion tracking ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _subtree_wants_motion(widget) -> bool:
+        if getattr(widget, "mouse_moves", False):
+            return True
+        return any(
+            App._subtree_wants_motion(c) for c in getattr(widget, "children", ())
+        )
+
+    def _wants_motion(self) -> bool:
+        """True if any live widget (base or overlay) opted into mouse motion."""
+        if any(self._subtree_wants_motion(w) for w in self.widgets):
+            return True
+        return any(self._subtree_wants_motion(e.widget) for e in self._overlays)
+
+    def _ensure_motion_mode(self) -> None:
+        """Upgrade the terminal to any-motion tracking (?1003h) the moment a
+        widget that wants hover becomes live. Only ever upgrades from the
+        drag-only ?1002h baseline — never downgrades — which keeps it flicker-
+        free and cheap to call on every add()/open_overlay()."""
+        if self._running and not self._motion_on and self._wants_motion():
+            sys.stdout.write("\033[?1002l\033[?1003h")
+            sys.stdout.flush()
+            self._motion_on = True
 
     def dock(self, widget, side, margin=0):
         """Dock `widget` to an edge of the screen.
@@ -246,6 +275,7 @@ class App:
         self._overlays.append(entry)
         if modal:
             self.focused = self._first_focusable(widget)
+        self._ensure_motion_mode()  # an overlay (e.g. a menu) may want hover
         self.invalidate()
         return widget
 
@@ -664,6 +694,9 @@ class App:
                 self.focused.on_mouse_release(event.col, event.row)
         elif isinstance(event, MouseMove):
             target = self._mouse_target(event.col, event.row, modal)
+            # Only widgets that opted into motion receive hover/enter/leave.
+            if target is not None and not target.mouse_moves:
+                target = None
             if target is not self._hovered:
                 if self._hovered is not None:
                     self._hovered.on_mouse_leave()
@@ -727,9 +760,14 @@ class App:
         """
         # 1003 = any-motion tracking (needed for hover/MouseMove); 1002 =
         # button-event tracking (motion only while a button is held, i.e. drag).
-        motion = "1003" if self.mouse_moves else "1002"
+        # Start in 1003 only if a widget already wants hover; otherwise stay on
+        # the cheap 1002 baseline and let _ensure_motion_mode() upgrade later.
+        self._motion_on = self._wants_motion()
+        motion = "1003" if self._motion_on else "1002"
         mouse_on = f"\033[?1000h\033[?{motion}h\033[?1006h"
-        mouse_off = f"\033[?1006l\033[?{motion}l\033[?1000l"
+        # Disable both motion modes on exit regardless of which we ended on (a
+        # dynamic upgrade may have switched us to 1003 after setup).
+        mouse_off = "\033[?1006l\033[?1003l\033[?1002l\033[?1000l"
         enter = (
             f"\033[?1049h\033[2J\033[H\033[?25l\033[?7l{mouse_on}\033[?2004h\033[>4;1m"
             if self.full
@@ -750,6 +788,7 @@ class App:
         sys.stdout.write(enter)
         sys.stdout.flush()
         raw_state = enable_raw()
+        self._running = True
         try:
             while not self._should_quit:
                 if self._check_resize():
@@ -854,6 +893,7 @@ class App:
         except KeyboardInterrupt:
             pass
         finally:
+            self._running = False
             restore(raw_state)
             sys.stdout.write(exit_)
             sys.stdout.flush()

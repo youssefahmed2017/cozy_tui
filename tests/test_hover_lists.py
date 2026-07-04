@@ -7,8 +7,9 @@ from cozy_tui.widgets import CheckList, ListView, RadioSet
 
 
 def make_app():
-    return App(full=False, size="600x200", style=Style(fg="white", bg="black"),
-               mouse_moves=True)
+    # The list widgets (ListView/CheckList/RadioSet) opt into mouse_moves
+    # themselves, so the App no longer needs a global flag.
+    return App(full=False, size="600x200", style=Style(fg="white", bg="black"))
 
 
 def _hover_row(app, widget, row_index):

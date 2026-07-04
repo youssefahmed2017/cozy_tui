@@ -111,3 +111,17 @@ def test_setup_disables_and_restores_autowrap():
         enter, exit_ = app._setup_sequences()
         assert "\033[?7l" in enter  # autowrap disabled on entry
         assert "\033[?7h" in exit_  # and restored on exit
+
+
+def test_setup_picks_motion_mode_from_widgets():
+    from cozy_tui.widgets import Button, Label
+
+    plain = App(full=False, size="400x200", style=Style(fg="white", bg="black"))
+    plain.add(Label(0, 0, "hi"))
+    enter, _ = plain._setup_sequences()
+    assert "\033[?1002h" in enter and "\033[?1003h" not in enter  # drag-only
+
+    hovering = App(full=False, size="400x200", style=Style(fg="white", bg="black"))
+    hovering.add(Button(0, 0, "Go"))  # Button opts into mouse_moves
+    enter, _ = hovering._setup_sequences()
+    assert "\033[?1003h" in enter  # any-motion tracking for hover

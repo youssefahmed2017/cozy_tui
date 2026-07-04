@@ -163,6 +163,37 @@ def test_hover_dispatched_without_changing_focus():
     assert app.focused is None  # hover must not steal focus
 
 
+def test_on_hover_opts_widget_into_mouse_moves():
+    w = Recorder(0, 0, 10, 5)
+    assert w.mouse_moves is False  # off until a motion callback is registered
+    w.on_hover(lambda widget, c, r: None)
+    assert w.mouse_moves is True
+
+
+def test_widget_without_mouse_moves_gets_no_hover():
+    app = make_app()
+    w = Recorder(0, 0, 10, 5)
+    moves = []
+    w.on_mouse_move = lambda c=None, r=None: moves.append((c, r))
+    app.add(w)  # never opted in (no on_hover / mouse_moves)
+
+    app._dispatch_mouse(MouseMove(4, 2))
+    assert moves == []          # gated out
+    assert app._hovered is None
+
+
+def test_app_enables_motion_only_when_a_widget_wants_it():
+    plain = make_app()
+    plain.add(Recorder(0, 0, 4, 4))  # no motion opt-in
+    assert plain._wants_motion() is False
+
+    wanting = make_app()
+    w = Recorder(0, 0, 4, 4)
+    w.on_enter(lambda widget: None)  # opts in
+    wanting.add(w)
+    assert wanting._wants_motion() is True
+
+
 def test_global_mouse_hook_can_consume():
     app = make_app()
     w = Recorder(0, 0, 10, 5)

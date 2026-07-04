@@ -48,7 +48,7 @@ class MouseRelease:
 
 class MouseMove:
     """Mouse motion with no button held (hover), with 0-indexed coordinates.
-    Only delivered when the App is created with mouse_moves=True."""
+    Only delivered while a widget with mouse_moves=True is live."""
     def __init__(self, col: int, row: int):
         self.col = col
         self.row = row

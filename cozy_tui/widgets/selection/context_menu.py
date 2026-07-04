@@ -58,7 +58,7 @@ class RightClickMenu(Widget):
     _V = "│"
 
     def __init__(self, items, *, style=None):
-        super().__init__(0, 0, style)
+        super().__init__(0, 0, style, mouse_moves=True)  # hover-to-highlight
         self._items: list[MenuItem] = [self._coerce(it) for it in (items or [])]
         self._index: int = self._first_selectable(0, 1)
         self._app = None  # set by open_at, used to close on selection

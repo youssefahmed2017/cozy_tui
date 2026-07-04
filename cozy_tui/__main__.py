@@ -199,7 +199,6 @@ def main() -> None:
         full=True,
         style=Style(fg="white", bg="black"),
         title="Cozy TUI Demo",
-        mouse_moves=True,  # enables hover states (incl. the right-click menu)
     )
     app.tick_interval = 0.06  # keep the animated header running
 

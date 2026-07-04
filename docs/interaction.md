@@ -138,12 +138,24 @@ app.on_right_click(lambda col, row, w: menu.open_at(app, col, row))
 ### Hover / motion events
 
 Bare mouse motion (no button held) is **off by default** because any-motion
-tracking floods the input stream on every cursor move. Opt in when you need
-hover:
+tracking floods the input stream on every cursor move. It's opt-in **per
+widget**, not app-wide: a widget receives `on_hover` / `on_mouse_move` /
+`on_enter` / `on_leave` only when its `mouse_moves` flag is set.
 
 ```python
-app = App(mouse_moves=True)   # now on_hover / on_mouse_move / on_enter / on_leave fire
+w = MyWidget(..., mouse_moves=True)   # subclasses can pass it through to Widget
+w.on_hover(lambda widget, col, row: ...)  # registering also flips mouse_moves on
 ```
+
+Registering any of `on_hover` / `on_enter` / `on_leave` sets `mouse_moves`
+automatically, so most code never touches the flag directly. Built-in
+interactive widgets that use hover — `Button`, `ListView`, `CheckList`,
+`RadioSet`, `RightClickMenu` — opt in themselves.
+
+The App enables terminal-level motion tracking (`?1003h`) automatically whenever
+at least one live widget wants it — including overlays opened mid-run, like a
+`RightClickMenu` — and stays on the cheaper drag-only mode otherwise. There is no
+app-wide `mouse_moves` switch.
 
 `on_enter` / `on_leave` fire once as the cursor crosses a widget's boundary (the
 app tracks which widget is hovered and dispatches the transitions), which is what

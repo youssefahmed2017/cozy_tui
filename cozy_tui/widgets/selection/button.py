@@ -10,7 +10,8 @@ class Button(Widget):
     """A clickable button.
 
     Visual states, from least to most prominent: idle → hovered → focused →
-    active. Hover requires ``App(mouse_moves=True)``. On activation the button
+    active. The button opts into mouse-motion tracking itself, so hover works
+    without any app-level flag. On activation the button
     plays a brief **active effect** — modelled on Textual's ``-active`` state:
     the whole button tints toward the screen background for
     ``active_effect_duration`` seconds, giving a "pressed-in" flash — then
@@ -37,7 +38,7 @@ class Button(Widget):
         animation=None,
         active_effect_duration: float = 0.2,
     ):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, mouse_moves=True)  # hover state
         self.text = text
         self.width = width
         self.animation = animation

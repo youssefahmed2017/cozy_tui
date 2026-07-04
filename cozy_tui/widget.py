@@ -4,11 +4,17 @@ from cozy_tui.style import Style
 class Widget:
     focusable = False
 
-    def __init__(self, x=0, y=0, style=None):
+    def __init__(self, x=0, y=0, style=None, *, mouse_moves=False):
         self.x = x
         self.y = y
         self.parent = None
         self.style = style or Style()
+        # Opt this widget into bare mouse-motion events (hover / enter / leave /
+        # on_mouse_move). Off by default because any-motion tracking floods the
+        # input stream; the App turns the terminal-level tracking on only while
+        # at least one live widget wants it. Registering an on_hover/on_enter/
+        # on_leave callback flips this on automatically.
+        self.mouse_moves = mouse_moves
         self._layout_y = 0
         self._clip_width = None
         self._click_handler = None
@@ -67,20 +73,24 @@ class Widget:
 
     def on_hover(self, func):
         """Register a callback for mouse motion with no button held over this
-        widget. Receives (widget, col, row). Requires App(mouse_moves=True)."""
+        widget. Receives (widget, col, row). Enables ``mouse_moves`` on this
+        widget so the App starts tracking motion."""
         self._hover_handler = func
+        self.mouse_moves = True
         return self
 
     def on_enter(self, func):
         """Register a callback fired when the cursor enters this widget. Receives
-        the widget. Requires App(mouse_moves=True)."""
+        the widget. Enables ``mouse_moves`` on this widget."""
         self._enter_handler = func
+        self.mouse_moves = True
         return self
 
     def on_leave(self, func):
         """Register a callback fired when the cursor leaves this widget. Receives
-        the widget. Requires App(mouse_moves=True)."""
+        the widget. Enables ``mouse_moves`` on this widget."""
         self._leave_handler = func
+        self.mouse_moves = True
         return self
 
     def on_change(self, func):
