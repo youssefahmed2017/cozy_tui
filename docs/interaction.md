@@ -135,6 +135,16 @@ menu = RightClickMenu([
 app.on_right_click(lambda col, row, w: menu.open_at(app, col, row))
 ```
 
+> **Terminal caveat:** right-click only reaches the app in **standalone**
+> terminals (Windows Terminal, gnome-terminal, kitty, iTerm2, …). **Embedded /
+> IDE terminals** (VS Code, JetBrains, …) bind the right button to their *own*
+> context menu and swallow it before it hits the app's mouse-reporting stream,
+> so `on_right_click` never fires there. Motion and left-click still come
+> through, so hover and normal clicks work regardless. Some IDE terminals
+> forward the button on **Shift+right-click**, but that's terminal-dependent and
+> outside the library's control — if you need a menu everywhere, also expose a
+> keyboard or button trigger that calls `menu.open_at(...)`.
+
 ### Hover / motion events
 
 Bare mouse motion (no button held) is **off by default** because any-motion
