@@ -12,6 +12,7 @@ class Widget:
         self._layout_y = 0
         self._clip_width = None
         self._click_handler = None
+        self._right_click_handler = None
         self._double_click_handler = None
         self._drag_handler = None
         self._release_handler = None
@@ -37,6 +38,13 @@ class Widget:
         """Register a callback invoked when this widget is activated (mouse click
         or keyboard). Receives the widget as its only argument."""
         self._click_handler = func
+        return self
+
+    def on_right_click(self, func):
+        """Register a callback for a right-click (button 2) on this widget.
+        Receives (widget, col, row). A right-click never moves focus or fires the
+        normal click handler."""
+        self._right_click_handler = func
         return self
 
     def on_double_click(self, func):
@@ -84,6 +92,10 @@ class Widget:
         if self._click_handler:
             self._click_handler(self)
 
+    def _fire_right_click(self, col, row):
+        if self._right_click_handler:
+            self._right_click_handler(self, col, row)
+
     def _fire_double_click(self):
         if self._double_click_handler:
             self._double_click_handler(self)
@@ -118,6 +130,9 @@ class Widget:
     # want the registered callback to run).
     def on_mouse_click(self, col=None, row=None):
         self._fire_click()
+
+    def on_mouse_right_click(self, col=None, row=None):
+        self._fire_right_click(col, row)
 
     def on_mouse_double_click(self, col=None, row=None):
         if self._double_click_handler:

@@ -101,3 +101,13 @@ def test_full_render_uses_crlf_line_breaks():
     out = buf.getvalue()
     assert "\r\n" in out  # rows separated by CRLF
     assert "\n" not in out.replace("\r\n", "")  # and no lone LF anywhere
+
+
+def test_setup_disables_and_restores_autowrap():
+    # Autowrap (DECAWM) must be off during the run or VTE terminals scroll the
+    # screen when the bottom-right cell is written, duplicating the top row.
+    for full in (True, False):
+        app = App(full=full, size="400x200", style=Style(fg="white", bg="black"))
+        enter, exit_ = app._setup_sequences()
+        assert "\033[?7l" in enter  # autowrap disabled on entry
+        assert "\033[?7h" in exit_  # and restored on exit

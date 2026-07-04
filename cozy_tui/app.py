@@ -97,6 +97,9 @@ class App:
         # Optional global mouse hook (see on_mouse); called with the raw event
         # before per-widget dispatch and may consume it by returning True.
         self._mouse_handler = None
+        # Optional global right-click hook (see on_right_click); fired with
+        # (col, row, widget_under_cursor) and may consume by returning True.
+        self._right_click_handler = None
         # Last click for double-click detection: (monotonic time, target, btn).
         self._last_click = (0.0, None, None)
         # Widget the cursor is currently over, for enter/leave (mouse_moves).
@@ -353,6 +356,14 @@ class App:
         already adjusted for scrolling. Return ``True`` to consume the event and
         skip the default per-widget dispatch."""
         self._mouse_handler = handler
+
+    def on_right_click(self, handler):
+        """Register a global right-click hook. ``handler(col, row, widget)`` is
+        called when the right mouse button is pressed, with the focusable widget
+        under the cursor (or ``None`` over empty space). Return ``True`` to
+        consume it. A right-click never moves focus or activates a widget — this
+        hook is the intended way to pop up a ``RightClickMenu``."""
+        self._right_click_handler = handler
 
     def focus(self, widget):
         self.focused = widget
@@ -669,6 +680,12 @@ class App:
                 self.close_overlay(modal.widget)
             return  # clicks outside a modal are swallowed
         target = self._mouse_target(event.col, event.row, modal)
+        if event.btn == 2:
+            # Right-click takes its own path: it never steals focus or activates
+            # the widget. The global hook (over empty space too) is the way to
+            # pop up a context menu; per-widget on_mouse_right_click still fires.
+            self._dispatch_right_click(event.col, event.row, target, modal)
+            return
         if target is None:
             return
         # Clicking a container dives to its first child, matching Tab.
@@ -687,25 +704,46 @@ class App:
             target.on_mouse_click(event.col, event.row)
             self._last_click = (now, target, event.btn)
 
+    def _dispatch_right_click(self, col, row, target, modal):
+        """Fire the global right-click hook (only when no modal is up, so a menu
+        doesn't retrigger itself) then the widget's own right-click handler."""
+        if modal is None and self._right_click_handler is not None:
+            if self._right_click_handler(col, row, target):
+                return
+        if target is not None:
+            target.on_mouse_right_click(col, row)
+
     def quit(self):
         self._should_quit = True
 
-    def run(self):
+    def _setup_sequences(self) -> tuple[str, str]:
+        """Build the (enter, exit) VT escape sequences for the run loop.
+
+        ``?7l`` disables autowrap (DECAWM). Without it, writing the bottom-right
+        cell makes VTE-based terminals (gnome-terminal, Konsole) scroll the whole
+        screen up, duplicating the top row; Windows Terminal defers the wrap so
+        the bug stays hidden there. Every full-screen TUI turns this off (curses,
+        Textual do too); ``?7h`` restores it on exit.
+        """
         # 1003 = any-motion tracking (needed for hover/MouseMove); 1002 =
         # button-event tracking (motion only while a button is held, i.e. drag).
         motion = "1003" if self.mouse_moves else "1002"
         mouse_on = f"\033[?1000h\033[?{motion}h\033[?1006h"
         mouse_off = f"\033[?1006l\033[?{motion}l\033[?1000l"
         enter = (
-            f"\033[?1049h\033[2J\033[H\033[?25l{mouse_on}\033[?2004h\033[>4;1m"
+            f"\033[?1049h\033[2J\033[H\033[?25l\033[?7l{mouse_on}\033[?2004h\033[>4;1m"
             if self.full
-            else f"\033[2J\033[H\033[?25l{mouse_on}\033[?2004h\033[>4;1m"
+            else f"\033[2J\033[H\033[?25l\033[?7l{mouse_on}\033[?2004h\033[>4;1m"
         )
         exit_ = (
-            f"\033[>4;0m\033[?2004l{mouse_off}\033[?25h\033[?1049l"
+            f"\033[>4;0m\033[?2004l{mouse_off}\033[?7h\033[?25h\033[?1049l"
             if self.full
-            else f"\033[>4;0m\033[?2004l{mouse_off}\033[?25h"
+            else f"\033[>4;0m\033[?2004l{mouse_off}\033[?7h\033[?25h"
         )
+        return enter, exit_
+
+    def run(self):
+        enter, exit_ = self._setup_sequences()
 
         self.set_title(self.title)  # emit OSC 0 terminal tab title
 

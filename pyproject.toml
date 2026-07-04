@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cozy-tui"
-version = "0.2.0"
+version = "0.3.0"
 description = "A lightweight, dependency-light Python TUI library with a cell-grid renderer and VT input."
 readme = "README.md"
 requires-python = ">=3.10"

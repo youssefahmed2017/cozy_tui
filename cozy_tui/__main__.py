@@ -38,7 +38,7 @@ def page_welcome(app, box):
     )
     box.add(Label(2, 6, "Use ↑/↓ in the sidebar to explore. Tab dives into a page."))
     box.add(Hyperlink(2, 8, "★ Star on GitHub", GITHUB))
-    box.add(Hyperlink(24, 8, "cozy-tui on PyPI", PYPI))
+    box.add(Hyperlink(24, 8, "Cozy TUI on PyPI", PYPI))
     box.add(Label(2, 10, f"version {_VERSION}", MUTED))
     box.add(
         Bindings(
@@ -126,9 +126,9 @@ def page_data(app, box):
     tbl.add_column("Package", width=12)
     tbl.add_column("Kind", width=8)
     tbl.add_column("Stars", width=7, align="right")
-    tbl.add_row("cozy-tui", "TUI", "★★★★")
-    tbl.add_row("rich", "render", "★★★★★")
-    tbl.add_row("textual", "TUI", "★★★★★")
+    tbl.add_row("Cozy TUI", "TUI", "★★★★")
+    tbl.add_row("Rich", "render", "★★★★★")
+    tbl.add_row("Textual", "TUI", "★★★★★")
     box.add(tbl)
 
     box.add(Label(2, 9, "Tree:", ACCENT))

@@ -694,6 +694,43 @@ box.add(rs)
 
 ---
 
+### `RightClickMenu` / `MenuItem` / `MenuSeparator`
+
+A floating context menu popped up at the cursor by a right-click. You don't
+`add()` it to a container — you build it once and open it from a right-click
+hook with `menu.open_at(app, col, row)`, which places it as a modal overlay
+(flipping left/up near screen edges).
+
+```python
+RightClickMenu(items, *, style=None)
+MenuItem(text, on_select=None, *, value=None, enabled=True)
+MenuSeparator()
+```
+
+- **`open_at(app, col, row)`** — open the menu with its top-left at `(col, row)`.
+- Up/Down move the cursor (skipping separators and disabled items), Enter or a
+  click selects, Esc or a click outside dismisses. Selecting closes the menu and
+  calls the item's `on_select(item)`.
+- Disabled items (`enabled=False`) are dimmed and unselectable.
+
+Pair it with [`app.on_right_click`](interaction.md#right-click--context-menus):
+
+```python
+from cozy_tui.widgets import RightClickMenu, MenuItem, MenuSeparator
+
+menu = RightClickMenu([
+    MenuItem("Copy",   on_select=lambda i: do_copy()),
+    MenuItem("Paste",  on_select=lambda i: do_paste()),
+    MenuSeparator(),
+    MenuItem("Delete", on_select=lambda i: do_delete(), enabled=can_delete),
+])
+
+# Right-click anywhere pops the menu up at the cursor.
+app.on_right_click(lambda col, row, widget: menu.open_at(app, col, row))
+```
+
+---
+
 ### `Dropdown`
 
 A collapsed header that opens a `ListView` popup when activated. Only one row tall when closed; expands downward when open.

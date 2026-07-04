@@ -90,6 +90,7 @@ also fires on keyboard activation; the rest are mouse-only:
 
 ```python
 widget.on_click(lambda w: ...)              # click or keyboard activation
+widget.on_right_click(lambda w, col, row: ...)  # right button (see below)
 widget.on_double_click(lambda w: ...)       # two clicks within 0.4s
 widget.on_drag(lambda w, col, row: ...)     # motion while a button is held
 widget.on_release(lambda w, col, row: ...)  # button released
@@ -99,11 +100,40 @@ widget.on_leave(lambda w: ...)              # cursor left the widget
 ```
 
 `col`/`row` are absolute terminal cells (already adjusted for scrolling). If you
-subclass a widget instead, override `on_mouse_click` / `on_mouse_double_click` /
-`on_mouse_drag` / `on_mouse_release` / `on_mouse_move` / `on_mouse_enter` /
-`on_mouse_leave` — the override replaces the default, so call the matching
-`_fire_*` if you still want the registered callback to run. A double-click with
-no `on_double_click` handler falls back to firing the normal click.
+subclass a widget instead, override `on_mouse_click` / `on_mouse_right_click` /
+`on_mouse_double_click` / `on_mouse_drag` / `on_mouse_release` / `on_mouse_move` /
+`on_mouse_enter` / `on_mouse_leave` — the override replaces the default, so call
+the matching `_fire_*` if you still want the registered callback to run. A
+double-click with no `on_double_click` handler falls back to firing the normal
+click.
+
+### Right-click / context menus
+
+A right-click (button 2) is routed on its own path: it **never** moves focus or
+fires the normal `on_click`, so right-clicking a button doesn't press it. Two
+ways to handle it:
+
+```python
+# Global — fires with the widget under the cursor, or None over empty space.
+app.on_right_click(lambda col, row, widget: ...)   # return True to consume
+
+# Per-widget — only when the right-click lands on that widget.
+widget.on_right_click(lambda w, col, row: ...)
+```
+
+The global hook runs first; if it returns `True` the per-widget handler is
+skipped. This is the intended way to pop up a
+[`RightClickMenu`](widgets.md#rightclickmenu--menuitem--menuseparator):
+
+```python
+from cozy_tui.widgets import RightClickMenu, MenuItem
+
+menu = RightClickMenu([
+    MenuItem("Copy",  on_select=lambda i: do_copy()),
+    MenuItem("Paste", on_select=lambda i: do_paste()),
+])
+app.on_right_click(lambda col, row, w: menu.open_at(app, col, row))
+```
 
 ### Hover / motion events
 

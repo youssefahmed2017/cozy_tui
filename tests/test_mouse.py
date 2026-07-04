@@ -147,7 +147,7 @@ def test_double_click_requires_same_button_and_target():
     app.add(w)
 
     app._dispatch_mouse(MouseClick(2, 1, 0))  # left
-    app._dispatch_mouse(MouseClick(2, 1, 2))  # right → not a double
+    app._dispatch_mouse(MouseClick(2, 1, 1))  # middle → different button, not a double
     assert seen == ["click", "click"]
 
 
