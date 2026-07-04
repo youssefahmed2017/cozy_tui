@@ -703,15 +703,30 @@ hook with `menu.open_at(app, col, row)`, which places it as a modal overlay
 
 ```python
 RightClickMenu(items, *, style=None)
-MenuItem(text, on_select=None, *, value=None, enabled=True)
+MenuItem(text, on_select=None, *, value=None, enabled=True,
+         icon=None, shortcut=None, submenu=None)
 MenuSeparator()
 ```
 
-- **`open_at(app, col, row)`** — open the menu with its top-left at `(col, row)`.
-- Up/Down move the cursor (skipping separators and disabled items), Enter or a
-  click selects, Esc or a click outside dismisses. Selecting closes the menu and
-  calls the item's `on_select(item)`.
-- Disabled items (`enabled=False`) are dimmed and unselectable.
+| `MenuItem` arg | Description |
+|----------------|-------------|
+| `text` | The label. |
+| `on_select` | Called with the `MenuItem` when chosen (ignored if it has a `submenu`). |
+| `value` | Optional payload (defaults to `text`). |
+| `enabled` | `False` dims the item and skips it during navigation. |
+| `icon` | Glyph shown before the label, e.g. `"📋"`. Same as embedding it in `text`. |
+| `shortcut` | Accelerator label, right-aligned (e.g. `"Ctrl+C"`). **Display only** — a hint; wire the real key with `app.on_key(...)`. |
+| `submenu` | List of `MenuItem`s shown as a nested menu; the item is marked `▶`. |
+
+- **`open_at(app, col, row)`** — open the menu with its top-left at `(col, row)`,
+  as a modal overlay (flipping left/up near screen edges).
+- Up/Down move the cursor (skipping separators and disabled items). Enter, a
+  click, or Right selects; Esc, Left, or a click outside dismisses.
+- Selecting a **leaf** closes the whole menu chain and calls its `on_select`.
+  Selecting an item with a **`submenu`** opens the submenu to the side (Left/Esc
+  returns to the parent).
+- Icons and shortcuts are aligned by **display width**, so double-width emoji
+  don't break the columns.
 
 Pair it with [`app.on_right_click`](interaction.md#right-click--context-menus):
 
@@ -719,14 +734,30 @@ Pair it with [`app.on_right_click`](interaction.md#right-click--context-menus):
 from cozy_tui.widgets import RightClickMenu, MenuItem, MenuSeparator
 
 menu = RightClickMenu([
-    MenuItem("Copy",   on_select=lambda i: do_copy()),
-    MenuItem("Paste",  on_select=lambda i: do_paste()),
+    MenuItem("Copy",  icon="📋", shortcut="Ctrl+C", on_select=do_copy),
+    MenuItem("Paste", icon="📄", shortcut="Ctrl+V", on_select=do_paste),
     MenuSeparator(),
-    MenuItem("Delete", on_select=lambda i: do_delete(), enabled=can_delete),
+    MenuItem("Theme", submenu=[
+        MenuItem("Dark",  on_select=lambda i: set_theme("dark")),
+        MenuItem("Light", on_select=lambda i: set_theme("light")),
+    ]),
+    MenuItem("Delete", icon="🗑", shortcut="Del", on_select=do_delete),
 ])
 
 # Right-click anywhere pops the menu up at the cursor.
 app.on_right_click(lambda col, row, widget: menu.open_at(app, col, row))
+```
+
+renders roughly as (borders drawn with box-drawing glyphs):
+
+```
++--------------------+
+| 📋 Copy    Ctrl+C  |
+| 📄 Paste   Ctrl+V  |
++--------------------+
+| Theme            ▶ |
+| 🗑 Delete     Del  |
++--------------------+
 ```
 
 ---

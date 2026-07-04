@@ -13,6 +13,13 @@ def test_cjk_and_emoji_are_wide():
     assert char_width("\U0001f600") == 2  # emoji
 
 
+def test_transport_and_extended_emoji_are_wide():
+    # Blocks the table used to miss, causing off-by-one alignment (e.g. menu icons).
+    assert char_width("🚪") == 2  # U+1F6AA door — Transport & Map Symbols
+    assert char_width("🚀") == 2  # U+1F680 rocket
+    assert char_width("🩹") == 2  # U+1FA79 bandage — Symbols & Pictographs Extended-A
+
+
 def test_combining_and_zero_width():
     assert char_width("́") == 0  # combining acute accent
     assert char_width("​") == 0  # zero-width space

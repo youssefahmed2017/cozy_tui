@@ -1,7 +1,7 @@
 """Right-click routing and the RightClickMenu widget."""
 
 from cozy_tui import App, Style
-from cozy_tui.events import MouseClick
+from cozy_tui.events import Key, MouseClick
 from cozy_tui.widgets import Button, MenuItem, MenuSeparator, RightClickMenu
 
 
@@ -159,3 +159,107 @@ def test_hover_highlights_item_without_selecting():
     menu.x, menu.y = 0, 0
     menu.on_mouse_move(3, menu.abs_y + 2)  # hover the Paste row
     assert menu.selected_index == 1
+
+
+# ── icons ───────────────────────────────────────────────────────────────────────
+
+
+def test_icon_param_matches_inline_icon():
+    m1 = RightClickMenu([MenuItem("Copy", icon="📋")])
+    m2 = RightClickMenu([MenuItem("📋 Copy")])
+    assert m1._left_text(m1._items[0]) == "📋 Copy" == m2._left_text(m2._items[0])
+    assert m1.natural_width(10) == m2.natural_width(10)
+
+
+def test_double_width_icon_widens_menu_by_two():
+    plain = RightClickMenu([MenuItem("Copy")])
+    iconed = RightClickMenu([MenuItem("Copy", icon="📋")])
+    # "📋 " adds a 2-col glyph + a space = 3 columns.
+    assert iconed.natural_width(10) == plain.natural_width(10) + 3
+
+
+# ── shortcuts ────────────────────────────────────────────────────────────────────
+
+
+def test_shortcut_is_rendered_right_aligned():
+    app = make_app()
+    menu = RightClickMenu(
+        [MenuItem("Copy", shortcut="Ctrl+C"), MenuItem("Paste", shortcut="Ctrl+V")]
+    )
+    menu.open_at(app, 0, 0)
+    app._compose()
+    row = "".join(c.char for c in app.buffer[menu.abs_y + 1]).rstrip()
+    assert row.startswith("│ Copy")
+    assert row.rstrip("│ ").endswith("Ctrl+C")  # shortcut pushed to the right
+
+
+def test_shortcut_widens_menu():
+    plain = RightClickMenu([MenuItem("Copy")])
+    withsc = RightClickMenu([MenuItem("Copy", shortcut="Ctrl+C")])
+    assert withsc.natural_width(10) > plain.natural_width(10)
+
+
+# ── submenus ─────────────────────────────────────────────────────────────────────
+
+
+def test_submenu_item_flags_and_marker():
+    menu = RightClickMenu([MenuItem("Theme", submenu=[MenuItem("Dark")])])
+    item = menu._items[0]
+    assert item.has_submenu
+    assert menu._right_text(item) == RightClickMenu._SUBMENU_ARROW
+
+
+def test_right_opens_submenu_and_left_closes_it():
+    app = make_app()
+    menu = RightClickMenu(
+        [MenuItem("Theme", submenu=[MenuItem("Dark"), MenuItem("Light")])]
+    )
+    menu.open_at(app, 2, 2)
+    menu._index = 0
+    menu.on_key(Key.RIGHT)
+    sub = app._overlays[-1].widget
+    assert sub is not menu and [i.text for i in sub._items] == ["Dark", "Light"]
+    assert sub._parent_menu is menu
+    sub.on_key(Key.LEFT)  # step back
+    assert app._overlays[-1].widget is menu  # submenu closed, parent remains
+
+
+def test_enter_does_not_fire_on_submenu_parent():
+    app = make_app()
+    fired = []
+    menu = RightClickMenu(
+        [MenuItem("Theme", on_select=lambda i: fired.append(1),
+                  submenu=[MenuItem("Dark")])]
+    )
+    menu.open_at(app, 2, 2)
+    menu.on_key(Key.ENTER)  # opens submenu, does NOT fire the parent's on_select
+    assert fired == []
+    assert len(app._overlays) == 2  # parent + submenu
+
+
+def test_selecting_submenu_leaf_closes_whole_chain():
+    app = make_app()
+    picked = []
+    menu = RightClickMenu(
+        [MenuItem("Theme", submenu=[
+            MenuItem("Dark", on_select=lambda i: picked.append("dark")),
+            MenuItem("Light", on_select=lambda i: picked.append("light")),
+        ])]
+    )
+    menu.open_at(app, 2, 2)
+    menu.on_key(Key.RIGHT)
+    sub = app._overlays[-1].widget
+    sub.on_key(Key.DOWN)   # -> Light
+    sub.on_key(Key.ENTER)
+    assert picked == ["light"]
+    assert app._overlays == []  # both menus closed
+
+
+def test_click_on_submenu_parent_opens_it():
+    app = make_app()
+    menu = RightClickMenu(
+        [MenuItem("Theme", submenu=[MenuItem("Dark")])]
+    )
+    menu.open_at(app, 0, 0)
+    menu.on_mouse_click(2, menu.abs_y + 1)  # click the Theme row
+    assert len(app._overlays) == 2  # submenu opened, chain not collapsed

@@ -1,3 +1,4 @@
+from cozy_tui._width import text_width
 from cozy_tui.events import Key
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
@@ -8,18 +9,44 @@ class MenuItem:
 
     Args:
         text: The label shown in the menu.
-        on_select: Called with this ``MenuItem`` when the entry is chosen.
+        on_select: Called with this ``MenuItem`` when the entry is chosen. Ignored
+            when the item has a *submenu* (choosing it opens the submenu instead).
         value: Optional payload (defaults to *text*).
         enabled: A disabled item is dimmed and skipped by cursor navigation.
+        icon: Optional glyph shown before the label, e.g. ``"📋"``. Equivalent to
+            embedding it in *text* yourself — ``MenuItem("Copy", icon="📋")`` and
+            ``MenuItem("📋 Copy")`` render the same.
+        shortcut: Optional accelerator label shown right-aligned, e.g. ``"Ctrl+C"``.
+            Display only — it's a hint; wire the real key binding with
+            ``app.on_key(...)`` yourself.
+        submenu: Optional list of ``MenuItem`` shown as a nested menu. The item is
+            marked with ``▶``; Right/Enter/click opens it, Left/Esc closes it.
     """
 
     separator = False
 
-    def __init__(self, text, on_select=None, *, value=None, enabled=True):
+    def __init__(
+        self,
+        text,
+        on_select=None,
+        *,
+        value=None,
+        enabled=True,
+        icon=None,
+        shortcut=None,
+        submenu=None,
+    ):
         self.text = text
         self.on_select = on_select
         self.value = value if value is not None else text
         self.enabled = enabled
+        self.icon = icon
+        self.shortcut = shortcut
+        self.submenu = list(submenu) if submenu else None
+
+    @property
+    def has_submenu(self) -> bool:
+        return bool(self.submenu)
 
     def __repr__(self):
         return f"MenuItem({self.text!r}, enabled={self.enabled})"
@@ -40,28 +67,35 @@ class RightClickMenu(Widget):
     Pair it with :meth:`App.on_right_click`::
 
         menu = RightClickMenu([
-            MenuItem("Copy",  on_select=lambda i: do_copy()),
-            MenuItem("Paste", on_select=lambda i: do_paste()),
+            MenuItem("Copy",  icon="📋", shortcut="Ctrl+C", on_select=do_copy),
+            MenuItem("Paste", icon="📄", shortcut="Ctrl+V", on_select=do_paste),
             MenuSeparator(),
-            MenuItem("Delete", on_select=lambda i: do_delete(), enabled=can_delete),
+            MenuItem("Theme", submenu=[MenuItem("Dark"), MenuItem("Light")]),
+            MenuItem("Delete", icon="🗑", shortcut="Del", on_select=do_delete),
         ])
         app.on_right_click(lambda col, row, w: menu.open_at(app, col, row))
 
-    Up/Down move the cursor (skipping separators and disabled items), Enter or
-    a click selects, and Esc or a click outside dismisses it. Selecting an item
-    closes the menu and calls its ``on_select``.
+    Up/Down move the cursor (skipping separators and disabled items); Enter, a
+    click, or Right selects. Selecting a leaf closes the whole menu chain and
+    calls its ``on_select``; selecting an item with a ``submenu`` opens the
+    submenu to the side. Left/Esc closes the current (sub)menu; a click outside
+    dismisses it.
     """
 
     focusable = True
     _CORNERS = "╭╮╰╯"
     _H = "─"
     _V = "│"
+    _SUBMENU_ARROW = "▶"
+    GAP = 2  # minimum columns between the label and its shortcut/arrow column
 
     def __init__(self, items, *, style=None):
         super().__init__(0, 0, style, mouse_moves=True)  # hover-to-highlight
         self._items: list[MenuItem] = [self._coerce(it) for it in (items or [])]
         self._index: int = self._first_selectable(0, 1)
         self._app = None  # set by open_at, used to close on selection
+        self._parent_menu = None  # set when opened as a submenu
+        self._open_sub = None  # currently-open child submenu, if any
 
     # ── construction ──────────────────────────────────────────────────────────
 
@@ -118,20 +152,53 @@ class RightClickMenu(Widget):
         )
         return self
 
+    def _open_submenu(self, item: MenuItem) -> None:
+        if self._app is None or not item.has_submenu:
+            return
+        sub = RightClickMenu(item.submenu, style=self.style)
+        sub._parent_menu = self
+        self._open_sub = sub
+        width = self.natural_width(self._app.SCALE)
+        # Place the submenu just right of this item, its first row aligned with
+        # the parent item (top border sits one row above).
+        sub.open_at(self._app, self.x + width, self.abs_y + self._index)
+
+    def _close_chain(self) -> None:
+        """Close this menu and every ancestor, unwinding the whole chain."""
+        menu = self
+        while menu is not None:
+            parent = menu._parent_menu
+            if menu._app is not None:
+                menu._app.close_overlay(menu)
+            menu = parent
+
     def _activate(self) -> None:
         if not self._selectable(self._index):
             return
         item = self._items[self._index]
-        if self._app is not None:
-            self._app.close_overlay(self)
+        if item.has_submenu:
+            self._open_submenu(item)
+            return
+        self._close_chain()
         if item.on_select is not None:
             item.on_select(item)
 
     # ── Widget interface ────────────────────────────────────────────────────────
 
+    def _left_text(self, item: MenuItem) -> str:
+        return f"{item.icon} {item.text}" if item.icon else item.text
+
+    def _right_text(self, item: MenuItem) -> str:
+        if item.has_submenu:
+            return self._SUBMENU_ARROW
+        return item.shortcut or ""
+
     def _content_width(self) -> int:
-        widths = [len(it.text) for it in self._items if not it.separator]
-        return (max(widths) if widths else 4) + 2  # one space of padding each side
+        entries = [it for it in self._items if not it.separator]
+        left_w = max((text_width(self._left_text(it)) for it in entries), default=4)
+        right_w = max((text_width(self._right_text(it)) for it in entries), default=0)
+        gap = self.GAP if right_w else 0
+        return 1 + left_w + gap + right_w + 1  # 1 leading + 1 trailing pad
 
     def natural_width(self, scale) -> int:
         return self._content_width() + 2  # + left/right border
@@ -148,6 +215,12 @@ class RightClickMenu(Widget):
         idx = row - self.abs_y - 1  # -1 for the top border
         return idx if 0 <= idx < len(self._items) else None
 
+    def _row_text(self, item: MenuItem, inner: int) -> str:
+        left = self._left_text(item)
+        right = self._right_text(item)
+        gap = max(1, inner - 2 - text_width(left) - text_width(right))
+        return " " + left + " " * gap + right + " "
+
     def on_key(self, key) -> None:
         if key == Key.UP:
             self._move(-1)
@@ -157,8 +230,16 @@ class RightClickMenu(Widget):
             self._index = self._first_selectable(0, 1)
         elif key == Key.END:
             self._index = self._first_selectable(len(self._items) - 1, -1)
-        elif key in (Key.ENTER, " "):
-            self._activate()
+        elif key in (Key.ENTER, " ", Key.RIGHT):
+            # Right only acts on submenu items; Enter/Space activate anything.
+            if key != Key.RIGHT or (
+                self._selectable(self._index)
+                and self._items[self._index].has_submenu
+            ):
+                self._activate()
+        elif key == Key.LEFT and self._parent_menu is not None:
+            if self._app is not None:
+                self._app.close_overlay(self)  # step back to the parent menu
 
     def on_mouse_click(self, col=None, row=None) -> None:
         if row is None:
@@ -191,7 +272,6 @@ class RightClickMenu(Widget):
                 canvas.write(x, vy, "├" + self._H * inner + "┤", border)
                 continue
 
-            label = (" " + item.text).ljust(inner)[:inner]
             if row == self._index:
                 st = Style(fg="black", bg="white", styles=["bold"])
             elif not item.enabled:
@@ -200,7 +280,7 @@ class RightClickMenu(Widget):
                 st = self.style
 
             canvas.write(x, vy, self._V, border)
-            canvas.write(x + 1, vy, label, st)
+            canvas.write(x + 1, vy, self._row_text(item, inner), st)
             canvas.write(x + inner + 1, vy, self._V, border)
 
         canvas.write(x, y + 1 + len(self._items), bl + self._H * inner + br, border)

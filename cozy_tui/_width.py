@@ -57,7 +57,9 @@ _WIDE = [
     (0xFF00, 0xFF60),
     (0xFFE0, 0xFFE6),
     (0x1F300, 0x1F64F),
+    (0x1F680, 0x1F6FF),  # Transport & Map Symbols (🚪 🚀 …)
     (0x1F900, 0x1F9FF),
+    (0x1FA70, 0x1FAFF),  # Symbols & Pictographs Extended-A (🩹 🪑 …)
     (0x20000, 0x3FFFD),
 ]
 

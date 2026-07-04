@@ -256,14 +256,21 @@ def main() -> None:
 
     show("Welcome")
 
-    # A right-click anywhere pops up a context menu that jumps between pages.
+    # A right-click anywhere pops up a context menu — with icons, a shortcut
+    # hint, and a nested submenu for page navigation.
     menu = RightClickMenu(
         [
-            MenuItem("Go to Welcome", on_select=lambda i: goto("Welcome")),
-            MenuItem("Go to Selection", on_select=lambda i: goto("Selection")),
-            MenuItem("Go to About", on_select=lambda i: goto("About")),
+            MenuItem(
+                "Go to",
+                icon="📄",
+                submenu=[
+                    MenuItem("Welcome", on_select=lambda i: goto("Welcome"), icon="👋"),
+                    MenuItem("Selection", on_select=lambda i: goto("Selection"), icon=""),
+                    MenuItem("About", on_select=lambda i: goto("About")),
+                ],
+            ),
             MenuSeparator(),
-            MenuItem("Quit", on_select=lambda i: app.quit()),
+            MenuItem("Quit", icon="🚪", shortcut="Esc", on_select=lambda i: app.quit()),
         ]
     )
     app.on_right_click(lambda col, row, w: menu.open_at(app, col, row))
