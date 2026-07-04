@@ -6,7 +6,7 @@ Enter/Space activate the focused control, and Esc quits.
 """
 
 from cozy_tui import App, Style
-from cozy_tui.widgets import AnimatedLabel, Bindings, Box, Button, Checkbox, CheckItem, CheckList, RadioSet, RadioItem, Dropdown, GlowAnimation, Hyperlink, Input, Label, ListItem, ListView, Table, Tree
+from cozy_tui.widgets import AnimatedLabel, Bindings, Box, Button, Checkbox, CheckItem, CheckList, RadioSet, RadioItem, Dropdown, GlowAnimation, Hyperlink, Input, Label, ListItem, ListView, MenuItem, MenuSeparator, RightClickMenu, Table, Tree
 from cozy_tui.events import Key
 
 try:
@@ -195,7 +195,12 @@ PAGES = [
 
 
 def main() -> None:
-    app = App(full=True, style=Style(fg="white", bg="black"), title="Cozy TUI Demo")
+    app = App(
+        full=True,
+        style=Style(fg="white", bg="black"),
+        title="Cozy TUI Demo",
+        mouse_moves=True,  # enables hover states (incl. the right-click menu)
+    )
     app.tick_interval = 0.06  # keep the animated header running
 
     header = Box(0, 0, "10x10", title="✨ Cozy TUI", border="rounded")
@@ -231,12 +236,29 @@ def main() -> None:
         builders[page](app, content)
         hint.text = (
             f"  {page}     ↑/↓ switch page    Tab: into page    "
-            "Enter/Space: activate    Esc: quit"
+            "Right-click: menu    Enter/Space: activate    Esc: quit"
         )
         app.invalidate()
 
     nav.on_change(show)  # live-switch as the sidebar selection moves
+
+    def goto(page):
+        nav.set(page)  # keep the sidebar highlight in sync
+        show(page)
+
     show("Welcome")
+
+    # A right-click anywhere pops up a context menu that jumps between pages.
+    menu = RightClickMenu(
+        [
+            MenuItem("Go to Welcome", on_select=lambda i: goto("Welcome")),
+            MenuItem("Go to Selection", on_select=lambda i: goto("Selection")),
+            MenuItem("Go to About", on_select=lambda i: goto("About")),
+            MenuSeparator(),
+            MenuItem("Quit", on_select=lambda i: app.quit()),
+        ]
+    )
+    app.on_right_click(lambda col, row, w: menu.open_at(app, col, row))
 
     app.focus(nav)
     app.on_key(Key.ESC, lambda: "quit")
