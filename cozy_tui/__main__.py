@@ -63,12 +63,16 @@ def page_inputs(app, box):
     box.add(Checkbox(2, 7, "Subscribe to updates"))
     box.add(Checkbox(2, 8, "Enable telemetry"))
     out = Label(2, 11, "", OK)
-    box.add(
-        Button(2, 10, "Greet").on_click(
-            lambda b: setattr(out, "text", f"Hi, {name.value or 'friend'}! 👋")
-        )
-    )
+    # Hover reacts per-widget: on_enter/on_leave opt just this button into
+    # mouse-motion tracking — no app-wide flag needed.
+    hover_note = Label(2, 13, "· hover the Greet button ·", MUTED)
+    greet = Button(2, 10, "Greet")
+    greet.on_click(lambda b: setattr(out, "text", f"Hi, {name.value or 'friend'}! 👋"))
+    greet.on_enter(lambda b: setattr(hover_note, "text", "· hovering (per-widget mouse_moves) ·"))
+    greet.on_leave(lambda b: setattr(hover_note, "text", "· hover the Greet button ·"))
+    box.add(greet)
     box.add(out)
+    box.add(hover_note)
 
 
 def page_selection(app, box):
