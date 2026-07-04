@@ -239,7 +239,7 @@ def main() -> None:
         builders[page](app, content)
         hint.text = (
             f"  {page}     ↑/↓ switch page    Tab: into page    "
-            "F2 / right-click: menu    Enter/Space: activate    Esc: quit"
+            "Right-click: menu    Enter/Space: activate    Esc: quit"
         )
         app.invalidate()
 
@@ -262,10 +262,6 @@ def main() -> None:
         ]
     )
     app.on_right_click(lambda col, row, w: menu.open_at(app, col, row))
-    # Many terminals reserve the right mouse button for their own context menu
-    # and never forward it to the app, so F2 opens the same menu — a keyboard
-    # trigger works everywhere.
-    app.on_key(Key.F2, lambda: menu.open_at(app, 24, 6))
 
     app.focus(nav)
     app.on_key(Key.ESC, lambda: "quit")
