@@ -58,6 +58,14 @@ A real-time Snake game: a fully custom drawing widget painting the field cell-by
 python examples/snake/snake.py
 ```
 
+### `examples/game_2048/game_2048.py` — 2048
+
+The classic slide-and-merge puzzle. A custom widget paints a colored tile grid with truecolor styling (that auto-downgrades on 16/256-color terminals); arrow keys / WASD / hjkl slide, a mouse **drag** swipes, and a modal overlay handles the win / game-over screens. The game logic is pure and unit-tested (`tests/test_game_2048.py`).
+
+```bash
+python examples/game_2048/game_2048.py
+```
+
 ### `examples/calculator_app/calculator.py` — Calculator
 
 A fully keyboard-driven calculator supporting `+`, `-`, `×`, `÷`, `**` (exponent), `√` (square root), and `!` (factorial).
