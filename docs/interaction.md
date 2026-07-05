@@ -157,6 +157,16 @@ app.on_right_click(lambda col, row, w: menu.open_at(app, col, row))
 > outside the library's control — if you need a menu everywhere, also expose a
 > keyboard or button trigger that calls `menu.open_at(...)`.
 
+> **File-drop caveat:** the same standalone-vs-embedded split applies to
+> `DropFilesArea`. A terminal delivers a drag-and-drop by feeding the file's
+> **path** into the app's input stream — **standalone** terminals (Windows
+> Terminal, gnome-terminal, …) do this, but **IDE terminals** (JetBrains /
+> PyCharm, VS Code, …) intercept the drop for their own editor and send the app
+> **nothing** — not even Shift+drop helps. There is no library-side workaround;
+> the path never reaches the process. `DropFilesArea` also accepts a path typed
+> or pasted with the keyboard (Enter to file it), which works in any terminal, so
+> use that as the universal fallback.
+
 ### Hover / motion events
 
 Bare mouse motion (no button held) is **off by default** — for every widget —

@@ -196,7 +196,7 @@ def page_about(app, box):
     box.add(Hyperlink(2, 7, "Documentation", GITHUB + "#readme"))
     box.add(Hyperlink(2, 8, "GitHub", GITHUB))
     box.add(Hyperlink(2, 9, "PyPI", PYPI))
-    box.add(Label(2, 11, f"Made with Cozy TUI {_VERSION} 💜", MUTED))
+    box.add(Label(2, 11, f"Made with Cozy TUI {_VERSION}", MUTED))
 
 
 PAGES = [

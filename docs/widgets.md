@@ -507,6 +507,46 @@ app.focus(editor)
 
 ---
 
+### `DropFilesArea`
+
+A focusable drop zone: drag a file onto the terminal (while the zone has focus) and it is filed into `storage_location`. Pasting or typing a file path and pressing **Enter** does the same thing.
+
+```python
+DropFilesArea(x, y, storage_location, size, *, move=False, hint=None,
+              on_drop=None, style=None, accent="bright_cyan")
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position in terminal characters |
+| `storage_location` | Directory dropped files are placed in (created if missing) |
+| `size` | `"WxH"` string in virtual pixels — divide by `App.SCALE` (10) for characters. A docked `DropFilesArea` fills its slice instead. |
+| `move` | `False` (default) **copies** the dropped file; `True` **moves** it (removes the source). |
+| `hint` | Prompt text shown in the zone (defaults to "Drop files here"). |
+| `on_drop` | Callback fired after a drop with the list of stored `Path`s. Also settable via `drop.on_drop(func)`. |
+| `accent` | Border/icon color when focused. |
+
+A name clash **never overwrites** — the copy auto-renames to `name (1)`. File I/O runs on a background worker so a large copy won't block the UI.
+
+> **A terminal "drop" is a *path*, not a file transfer.** Terminal emulators deliver a drag-and-drop by typing the file's **path** into the input stream. `DropFilesArea` resolves that path on the **local** filesystem — the machine running the *process*. So a file dropped in a local session works, but a path dropped over an **SSH** session points at the *terminal's* machine, not the remote process, and surfaces as a friendly "not found on this machine" rather than a silent failure.
+>
+> Most terminals wrap the dropped path in a **bracketed paste**, which files it instantly. Some instead **type the path as raw characters** — those are buffered and filed when you press **Enter** (the zone shows the path with an "⏎ Enter to file it" prompt). `file://` URIs and quoted/escaped spaces are parsed either way.
+>
+> **IDE terminals swallow drops.** Embedded terminals (JetBrains/PyCharm, VS Code, …) intercept a file drop for their own editor and forward the app *nothing* — a drop won't register there (not even Shift+drop). Use a **standalone** terminal (Windows Terminal, gnome-terminal, iTerm2, …), or type/paste the path and press Enter, which works anywhere. See [interaction.md](interaction.md).
+
+**Example:**
+
+```python
+from cozy_tui.widgets import DropFilesArea
+
+drop = DropFilesArea(2, 2, "uploads/", "400x120")
+drop.on_drop(lambda paths: status.set(f"stored {len(paths)} file(s)"))
+app.add(drop)
+app.focus(drop)
+```
+
+---
+
 ### `ListView` / `ListItem`
 
 A scrollable, keyboard-navigable list of items. Items can be plain strings or `ListItem(text, value)` objects to separate display text from the returned value.
@@ -853,6 +893,59 @@ bar = ProgressBar(2, 5, fill="█", empty="░", width=30,
                   style=Style(fg="bright_green"))
 bar.set(42)
 box.add(bar)
+```
+
+---
+
+### `Spinner`
+
+A small animated activity indicator — the idiomatic "working…" companion to `run_worker`. Non-focusable; show one while a background task runs and remove it in the worker's `on_result`. It animates smoothly on its own (via `request_frame`), so the app does **not** need `tick_interval` set.
+
+```python
+Spinner(x, y, *, frames=None, speed=0.08, label="", style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `frames` | Iterable of frame strings. Defaults to `Spinner.DOTS`. Presets: `Spinner.DOTS`, `LINE`, `BAR`, `MOON`, `ARROW`. |
+| `speed` | Seconds per frame. |
+| `label` | Optional text drawn after the spinner glyph. |
+
+**Example:**
+
+```python
+from cozy_tui.widgets import Spinner
+
+spinner = Spinner(2, 2, label="Loading…")
+box.add(spinner)
+app.run_worker(fetch, on_result=lambda data: box.children.remove(spinner))
+```
+
+---
+
+### `Toast` / `app.toast`
+
+A transient notification that pops in a screen corner, stacks with other toasts, and auto-dismisses on a timer. Usually created via **`app.toast(...)`** rather than constructed directly — it's non-modal, so it never steals focus or blocks input.
+
+```python
+app.toast(message, *, level="info", duration=3.0, icon=None, corner="bottom-right")
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `message` | Text shown in the toast. |
+| `level` | `"info"` / `"success"` / `"warning"` / `"error"` — sets the accent color and a default icon (ℹ / ✓ / ⚠ / ✗). |
+| `duration` | Seconds before it auto-dismisses. `0` makes it sticky (no timer). |
+| `icon` | Override the level's default icon. |
+| `corner` | `"bottom-right"` (default), `"bottom-left"`, `"top-right"`, `"top-left"`. |
+
+Auto-dismissal is driven by the App's timer primitives (`app.after` / `app.every`), which the event loop fires on the main thread — see [concepts.md](concepts.md).
+
+**Example:**
+
+```python
+app.toast("Saved successfully.", level="success")
+app.toast("Upload failed.", level="error", duration=5.0)
 ```
 
 ---

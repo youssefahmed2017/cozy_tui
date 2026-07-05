@@ -8,15 +8,8 @@ from cozy_tui._console import enable_raw, restore, wait_input
 from cozy_tui._dock import SIDES, dock_layout
 from cozy_tui._width import char_width
 from cozy_tui.ansi import style_esc
-from cozy_tui.events import (
-    Key,
-    MouseClick,
-    MouseDrag,
-    MouseMove,
-    MouseRelease,
-    kbhit,
-    read_key,
-)
+from cozy_tui.events import (Key, MouseClick, MouseDrag, MouseMove,
+                             MouseRelease, kbhit, read_key)
 from cozy_tui.style import Cell, Style
 
 # Sentinel stored in _prev_cells to mark a cell that has never been rendered.
@@ -27,6 +20,20 @@ _UNSET = object()
 # results, even when nothing else is due. Small enough to feel responsive,
 # large enough that an idle app isn't busy-spinning.
 _IDLE_POLL = 0.1
+
+
+class _Timer:
+    """A scheduled callback fired by the event loop on the main thread. `interval`
+    is ``None`` for a one-shot (``app.after``) or the repeat period (``app.every``);
+    `deadline` is the next ``time.monotonic()`` at which it should fire."""
+
+    __slots__ = ("deadline", "callback", "interval", "alive")
+
+    def __init__(self, deadline, callback, interval):
+        self.deadline = deadline
+        self.callback = callback
+        self.interval = interval
+        self.alive = True
 
 
 class _Overlay:
@@ -121,6 +128,10 @@ class App:
         # Results from background workers, delivered to the main thread by the
         # event loop so callbacks never touch the UI from another thread.
         self._worker_results: deque = deque()
+        # Scheduled callbacks (app.after / app.every), fired from the loop.
+        self._timers: list[_Timer] = []
+        # Active toast notifications, drawn stacked in a screen corner.
+        self._toasts: list = []
         # Overlay/z-layer stack drawn above the base widgets (last == topmost).
         self._overlays: list[_Overlay] = []
         # write() honours scroll_y normally; overlays are screen-fixed, so it is
@@ -337,6 +348,27 @@ class App:
         )
         return dialog
 
+    def toast(self, message, *, level="info", duration=3.0, icon=None, corner="bottom-right"):
+        """Pop a transient notification that auto-dismisses after ``duration``
+        seconds. ``level`` is ``"info"``/``"success"``/``"warning"``/``"error"``
+        (sets color + default icon). Stacks with other toasts in ``corner``.
+        Returns the :class:`Toast` widget."""
+        from cozy_tui.widgets.display.toast import Toast
+
+        toast = Toast(message, level=level, icon=icon, corner=corner)
+        self._toasts.append(toast)
+        self.open_overlay(
+            toast, modal=False, dim=False, center=False, close_on_escape=False
+        )
+        if duration and duration > 0:
+            self.after(duration, lambda: self._dismiss_toast(toast))
+        return toast
+
+    def _dismiss_toast(self, toast):
+        if toast in self._toasts:
+            self._toasts.remove(toast)
+            self.close_overlay(toast)
+
     def _topmost_modal(self):
         for entry in reversed(self._overlays):
             if entry.modal:
@@ -428,6 +460,51 @@ class App:
             if callback is not None:
                 callback(payload)
             fired = True
+        return fired
+
+    # ── timers ────────────────────────────────────────────────────────────────
+
+    def after(self, delay, callback):
+        """Call ``callback()`` once, ``delay`` seconds from now, on the main
+        thread from the event loop. Returns a handle for :meth:`cancel`."""
+        timer = _Timer(time.monotonic() + delay, callback, None)
+        self._timers.append(timer)
+        return timer
+
+    def every(self, interval, callback):
+        """Call ``callback()`` every ``interval`` seconds on the main thread until
+        cancelled. Returns a handle for :meth:`cancel`."""
+        timer = _Timer(time.monotonic() + interval, callback, interval)
+        self._timers.append(timer)
+        return timer
+
+    def cancel(self, timer):
+        """Cancel a timer returned by :meth:`after` / :meth:`every`."""
+        if timer is not None:
+            timer.alive = False
+
+    def _next_timer_deadline(self, now):
+        """Seconds until the soonest live timer fires, or ``None`` if none."""
+        deadlines = [t.deadline - now for t in self._timers if t.alive]
+        return min(deadlines) if deadlines else None
+
+    def _drain_timers(self, now):
+        """Fire every timer whose deadline has passed; reschedule repeats and drop
+        spent/cancelled ones. Returns True if any fired (so the caller re-renders)."""
+        fired = False
+        for timer in self._timers:
+            if timer.alive and now >= timer.deadline:
+                timer.callback()
+                fired = True
+                if timer.interval is not None:
+                    # keep periodic timers on a fixed cadence, skipping missed slots
+                    timer.deadline += timer.interval
+                    if timer.deadline <= now:
+                        timer.deadline = now + timer.interval
+                else:
+                    timer.alive = False
+        if any(not t.alive for t in self._timers):
+            self._timers = [t for t in self._timers if t.alive]
         return fired
 
     def _collect_focusables(self):
@@ -815,7 +892,10 @@ class App:
                             if tick is None
                             else min(tick, self._anim_interval)
                         )
-                    if self._drain_workers():
+                    fired = self._drain_workers()
+                    if self._drain_timers(now):
+                        fired = True
+                    if fired:
                         self.render()
                         last_blink = last_tick = now
                     elif self._check_resize():
@@ -851,6 +931,9 @@ class App:
                     waits = [_IDLE_POLL, self.BLINK_INTERVAL - (now - last_blink)]
                     if tick:
                         waits.append(tick - (now - last_tick))
+                    timer_wait = self._next_timer_deadline(now)
+                    if timer_wait is not None:
+                        waits.append(timer_wait)
                     wait_input(max(0.0, min(waits)))
 
                 self._cursor_on = True

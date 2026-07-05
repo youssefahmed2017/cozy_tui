@@ -16,4 +16,16 @@ When a widget is inside a `Box`, its `x` and `y` are **relative to the box's int
 2. You add them to a `Box` (or directly to `App`).
 3. `App.run()` starts the event loop, which repeatedly calls `render()` → each widget's `draw()` → input handling.
 
+### Background work & timers
+
+`app.run_worker(func, on_result=, on_error=)` runs `func` on a daemon thread; its callbacks fire on the **main thread** from the event loop, so they can safely touch the UI.
+
+For time-based work, the App schedules callbacks that the loop fires on the main thread (it wakes precisely when the next one is due — no busy-waiting):
+
+- `app.after(delay, callback)` — call `callback()` once, `delay` seconds from now. Returns a handle.
+- `app.every(interval, callback)` — call `callback()` repeatedly every `interval` seconds. Returns a handle.
+- `app.cancel(handle)` — cancel a scheduled `after` / `every`.
+
+These power `app.toast(...)`'s auto-dismiss. (Animating widgets like `Spinner` / `AnimatedLabel` don't need a timer — they call `canvas.request_frame(interval)` from `draw()` to keep the loop redrawing.)
+
 ---

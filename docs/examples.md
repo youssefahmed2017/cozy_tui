@@ -51,6 +51,22 @@ A Spotlight/VS Code-style fuzzy command launcher in a modal overlay: a custom wi
 python examples/command_palette/command_palette.py
 ```
 
+### `examples/toasts/toasts.py` — Toasts & Spinner
+
+Buttons that raise info / success / warning / error **toasts** (they stack in the corner and auto-dismiss on a timer), plus a "Load data" button that shows a **`Spinner`** while a background `run_worker` runs and fires a success toast when it finishes — the idiomatic async-feedback loop. Built on the App's `after` / `every` timers.
+
+```bash
+python examples/toasts/toasts.py
+```
+
+### `examples/drop_area/drop_area.py` — Drop Files Area
+
+A `DropFilesArea` that files whatever you drag onto the terminal (or paste the path of) into a `dropped/` folder next to the script. Demonstrates that a terminal delivers a drag-and-drop as the file's *path text* (a bracketed paste), which the widget resolves on the local filesystem and copies — never overwriting. A path dropped over SSH surfaces as a friendly "not found here".
+
+```bash
+python examples/drop_area/drop_area.py
+```
+
 ### `examples/tabs/tabs.py` — Tabbed Container
 
 A `Tabs` widget with Files / Settings / About panels. Focus lands on the tab strip (←/→ or Home/End to switch, click a title), and Tab dives into the active panel's controls. Only the active panel is drawn and focusable.
