@@ -8,8 +8,12 @@ Enter/Space activate the focused control, and Esc quits.
 
 from cozy_tui import App, Style
 from cozy_tui import __version__ as _VERSION
-from cozy_tui.widgets import AnimatedLabel, Bindings, Box, Button, Checkbox, CheckItem, CheckList, RadioSet, RadioItem, Dropdown, GlowAnimation, Hyperlink, Input, Label, ListItem, ListView, MenuItem, MenuSeparator, RightClickMenu, Table, Tree
 from cozy_tui.events import Key
+from cozy_tui.widgets import (AnimatedLabel, Bindings, Box, Button, Checkbox,
+                              CheckItem, CheckList, Dropdown, GlowAnimation,
+                              Hyperlink, Input, Label, ListItem, ListView,
+                              MenuItem, MenuSeparator, RadioItem, RadioSet,
+                              RightClickMenu, Table, Tabs, Tree)
 
 GITHUB = "https://github.com/youssefahmed2017/cozy_tui"
 PYPI = "https://pypi.org/project/cozy-tui/"
@@ -63,7 +67,9 @@ def page_inputs(app, box):
     hover_note = Label(2, 13, "· hover the Greet button ·", MUTED)
     greet = Button(2, 10, "Greet")
     greet.on_click(lambda b: setattr(out, "text", f"Hi, {name.value or 'friend'}! 👋"))
-    greet.on_enter(lambda b: setattr(hover_note, "text", "· hovering (per-widget mouse_moves) ·"))
+    greet.on_enter(
+        lambda b: setattr(hover_note, "text", "· hovering (per-widget mouse_moves) ·")
+    )
     greet.on_leave(lambda b: setattr(hover_note, "text", "· hover the Greet button ·"))
     box.add(greet)
     box.add(out)
@@ -116,7 +122,17 @@ def page_selection(app, box):
 
     box.add(Label(30, 7, "Question/Answer (RadioSet):", ACCENT))
     box.add(Label(30, 8, text="What is 5 x 5?"))
-    box.add(RadioSet(items=[RadioItem(text="4", value=4), RadioItem(text="5", value=5), RadioItem(text="25", value=25)], x=30, y=9))
+    box.add(
+        RadioSet(
+            items=[
+                RadioItem(text="4", value=4),
+                RadioItem(text="5", value=5),
+                RadioItem(text="25", value=25),
+            ],
+            x=30,
+            y=9,
+        )
+    )
 
 
 def page_data(app, box):
@@ -218,53 +234,30 @@ def main() -> None:
     footer.add(hint)
     app.dock(footer, "bottom")
 
-    sidebar = Box(0, 0, "170x10", title="❯ menu", border="rounded")
-    nav = ListView(1, 1, [name for name, _ in PAGES], width=15, height=len(PAGES))
-    # The sidebar live-switches pages via on_change, and hover-highlight fires
-    # on_change just like arrow keys — so in terminals that report bare motion
-    # (e.g. PyCharm's) merely sweeping the mouse over the sidebar would flip
-    # pages. Opt the sidebar out of hover; keyboard and click still navigate.
-    nav.mouse_moves = False
-    sidebar.add(nav)
-    app.dock(sidebar, "left")
+    # Each page is a tab; only the active panel is drawn, focusable, and clickable.
+    tabs = Tabs(0, 0, "10x10", accent="bright_cyan")
+    for name, builder in PAGES:
+        builder(app, tabs.add_tab(name))
+    app.dock(tabs, "fill")
 
-    content = Box(0, 0, "10x10", title="Welcome", border="rounded")
-    app.dock(content, "fill")
-
-    builders = dict(PAGES)
-
-    def show(page):
-        content.children.clear()
-        content.title = page
-        builders[page](app, content)
+    def on_tab(index):
         hint.text = (
-            f"  {page}     ↑/↓ switch page    Tab: into page    "
+            f"  {PAGES[index][0]}     ←/→ or click: switch tab    Tab: into panel    "
             "Right-click: menu    Enter/Space: activate    Esc: quit"
         )
-        app.invalidate()
 
-    nav.on_change(show)  # live-switch as the sidebar selection moves
+    tabs.on_change(on_tab)
+    on_tab(0)
 
-    def goto(page):
-        nav.set(page)  # keep the sidebar highlight in sync
-        show(page)
-
-    show("Welcome")
-
-    # A right-click anywhere pops up a context menu — with icons, a shortcut
-    # hint, and a nested submenu for page navigation.
+    # A right-click anywhere pops up a context menu whose submenu jumps to a tab.
     menu = RightClickMenu(
         [
             MenuItem(
-                "Pages",
+                "Go to tab",
                 icon="📄",
                 submenu=[
-                    MenuItem("Welcome", on_select=lambda _: goto("Welcome")),
-                    MenuItem("Inputs", on_select=lambda _: goto("Inputs")),
-                    MenuItem("Selection", on_select=lambda _: goto("Selection")),
-                    MenuItem("Data", on_select=lambda _: goto("Data")),
-                    MenuItem("Overlays", on_select=lambda _: goto("Overlays")),
-                    MenuItem("About", on_select=lambda _: goto("About")),
+                    MenuItem(name, on_select=lambda i, n=idx: tabs.select(n))
+                    for idx, (name, _) in enumerate(PAGES)
                 ],
             ),
             MenuSeparator(),
@@ -273,7 +266,7 @@ def main() -> None:
     )
     app.on_right_click(lambda col, row, w: menu.open_at(app, col, row))
 
-    app.focus(nav)
+    app.focus(tabs.bar)
     app.on_key(Key.ESC, lambda: "quit")
     app.run()
 
