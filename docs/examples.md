@@ -10,6 +10,15 @@ Minimal app with a label and a quit button. Good starting point.
 python examples/basic/basic.py
 ```
 
+### `examples/file_manager/file_manager.py` — cozy-files (file manager)
+
+A mouse-and-keyboard TUI file manager and the broadest showcase in the repo: a custom widget draws a header breadcrumb, a scrolling directory listing (icons, sizes, dates, hover highlight), and a status bar. **Right-click** anywhere for a context menu with icons, shortcut hints, disabled items and a `New ▸ File/Folder` submenu — Open, Copy path (to the system clipboard), Copy/Cut/Paste, Rename…, Delete. Rename/new use `app.prompt`; deletes use a confirm modal; directory loads and copy/move/delete run on background `run_worker` threads. Deletes are confirmed and a paste never overwrites (it auto-renames). Pass a start directory as an argument.
+
+```bash
+python examples/file_manager/file_manager.py          # start in the current directory
+python examples/file_manager/file_manager.py ~/projects
+```
+
 ### `examples/timer_app/timer.py` — Timer / Forms
 
 Demonstrates `Input`, `Button`, `Checkbox`, `ProgressBar`, `Dropdown`, `ListView`, `VBox`, `HBox`, and `Grid` in a single app.
