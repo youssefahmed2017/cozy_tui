@@ -2,8 +2,7 @@
 
 import pytest
 
-from cozy_tui import __version__
-from cozy_tui import cli
+from cozy_tui import __version__, cli
 
 
 def test_version_flag_prints_version_and_exits(capsys):

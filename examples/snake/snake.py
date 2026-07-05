@@ -16,9 +16,9 @@ from random import randrange
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from cozy_tui import App, Style
-from cozy_tui.widgets import Box, Button, Label
 from cozy_tui.events import Key
 from cozy_tui.widget import Widget
+from cozy_tui.widgets import Box, Button, Label
 
 WALL = Style(fg="bright_black")
 BODY = Style(fg="green")

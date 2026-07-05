@@ -1,6 +1,6 @@
 from cozy_tui import App, Style
-from cozy_tui.widgets import Dropdown, ListItem
 from cozy_tui.events import Key
+from cozy_tui.widgets import Dropdown, ListItem
 
 
 def make_app_with_dropdown():

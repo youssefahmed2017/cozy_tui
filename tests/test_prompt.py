@@ -1,6 +1,6 @@
 from cozy_tui import App, Style
-from cozy_tui.widgets import PromptDialog
 from cozy_tui.events import Key
+from cozy_tui.widgets import PromptDialog
 
 
 def make_app():

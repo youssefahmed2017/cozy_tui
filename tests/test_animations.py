@@ -2,13 +2,8 @@ import re
 
 from cozy_tui import App, Style
 from cozy_tui.events import MouseMove
-from cozy_tui.widgets import (
-    AnimatedLabel,
-    Button,
-    GlowAnimation,
-    LevitateAnimation,
-    RainbowAnimation,
-)
+from cozy_tui.widgets import (AnimatedLabel, Button, GlowAnimation,
+                              LevitateAnimation, RainbowAnimation)
 
 
 def make_app(**kw):
@@ -35,7 +30,7 @@ def test_rainbow_adjacent_chars_differ_in_hue():
 
 def test_rainbow_preserves_background():
     anim = RainbowAnimation()
-    (_, _, _, style), = list(anim.cells("x", Style(bg="blue")))
+    ((_, _, _, style),) = list(anim.cells("x", Style(bg="blue")))
     assert style.bg == "blue_bg"
 
 
@@ -75,7 +70,7 @@ def test_levitate_rejects_bad_mode():
 def test_levitate_leaves_color_alone():
     anim = LevitateAnimation()
     base = Style(fg="cyan", bg="black")
-    (_, _, _, style), = list(anim.cells("z", base))
+    ((_, _, _, style),) = list(anim.cells("z", base))
     assert style is base  # untouched style passed straight through
 
 
@@ -115,9 +110,9 @@ def test_button_hover_enter_and_leave():
     app.add(b1)
     app.add(b2)
 
-    app._dispatch_mouse(MouseMove(1, 0))   # over b1
+    app._dispatch_mouse(MouseMove(1, 0))  # over b1
     assert b1._hovered and entered == ["b1"]
-    app._dispatch_mouse(MouseMove(1, 2))   # move to b2 -> b1 leaves
+    app._dispatch_mouse(MouseMove(1, 2))  # move to b2 -> b1 leaves
     assert not b1._hovered and left == ["b1"]
     assert b2._hovered
 
@@ -150,7 +145,7 @@ def test_button_active_effect_tints_toward_background():
     app._compose()
     active_bg = app.buffer[0][0].style.bg
     assert b._active
-    assert active_bg.startswith("rgb(")     # tinted, not a plain named color
+    assert active_bg.startswith("rgb(")  # tinted, not a plain named color
     assert active_bg != idle_bg
     # The button keeps the loop alive so the effect can revert on its own.
     assert app._anim_interval == b.active_effect_duration

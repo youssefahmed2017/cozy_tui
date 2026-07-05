@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from cozy_tui import App, Style
 from cozy_tui.events import Key
 from cozy_tui.widget import Widget
-from cozy_tui.widgets import Box, Button, Label
+from cozy_tui.widgets import Box, Button, Label, Bindings
 
 SIZE = 4
 
@@ -298,8 +298,10 @@ def main():
     app.add(game)
     app.focus(game)
     app.on_key(Key.ESC, lambda: "quit")
-    app.on_key("n", game.reset)
-    app.on_key("r", game.reset)
+    app.on_key("n", game.reset, description="New Game")
+    app.on_key("r", game.reset, description="Reset")
+    bindings = Bindings(0, 0, "auto")
+    app.dock(bindings, "bottom")
     app.run()
 
 

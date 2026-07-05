@@ -1,7 +1,7 @@
 import cozy_tui.widgets.display.hyperlink as hl_mod
 from cozy_tui import App, Style
-from cozy_tui.widgets import Hyperlink
 from cozy_tui.events import Key
+from cozy_tui.widgets import Hyperlink
 
 
 def make_app():

@@ -72,9 +72,9 @@ def test_radioset_hover_moves_cursor_without_selecting():
     rs.on_change(changes.append)
     app.add(rs)
     _hover_row(app, rs, 2)
-    assert rs._index == 2           # cursor highlight moved
-    assert rs.selected == "Small"   # selection unchanged
-    assert changes == []            # no on_change on hover
+    assert rs._index == 2  # cursor highlight moved
+    assert rs.selected == "Small"  # selection unchanged
+    assert changes == []  # no on_change on hover
 
 
 def test_radioset_hover_then_click_selects_hovered():

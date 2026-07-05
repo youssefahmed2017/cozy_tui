@@ -37,7 +37,7 @@ def test_right_click_does_not_focus_or_activate_widget():
     app.add(btn)
     app._dispatch_mouse(MouseClick(1, 0, 2))
     assert app.focused is None  # right-click never steals focus
-    assert activated == []      # nor activates
+    assert activated == []  # nor activates
 
 
 def test_left_click_still_focuses_and_activates():
@@ -132,8 +132,10 @@ def test_click_on_item_selects_it():
     app = make_app()
     chosen = []
     menu = RightClickMenu(
-        [MenuItem("Copy", on_select=lambda i: chosen.append("copy")),
-         MenuItem("Paste", on_select=lambda i: chosen.append("paste"))]
+        [
+            MenuItem("Copy", on_select=lambda i: chosen.append("copy")),
+            MenuItem("Paste", on_select=lambda i: chosen.append("paste")),
+        ]
     )
     menu.open_at(app, 0, 0)
     # Row layout: border(0), Copy(1), Paste(2). Click the Paste row.
@@ -145,8 +147,10 @@ def test_click_on_disabled_item_does_nothing():
     app = make_app()
     chosen = []
     menu = RightClickMenu(
-        [MenuItem("Copy", on_select=lambda i: chosen.append("copy")),
-         MenuItem("Nope", on_select=lambda i: chosen.append("nope"), enabled=False)]
+        [
+            MenuItem("Copy", on_select=lambda i: chosen.append("copy")),
+            MenuItem("Nope", on_select=lambda i: chosen.append("nope"), enabled=False),
+        ]
     )
     menu.open_at(app, 0, 0)
     menu.on_mouse_click(2, menu.abs_y + 2)  # the disabled row
@@ -228,8 +232,11 @@ def test_enter_does_not_fire_on_submenu_parent():
     app = make_app()
     fired = []
     menu = RightClickMenu(
-        [MenuItem("Theme", on_select=lambda i: fired.append(1),
-                  submenu=[MenuItem("Dark")])]
+        [
+            MenuItem(
+                "Theme", on_select=lambda i: fired.append(1), submenu=[MenuItem("Dark")]
+            )
+        ]
     )
     menu.open_at(app, 2, 2)
     menu.on_key(Key.ENTER)  # opens submenu, does NOT fire the parent's on_select
@@ -241,15 +248,20 @@ def test_selecting_submenu_leaf_closes_whole_chain():
     app = make_app()
     picked = []
     menu = RightClickMenu(
-        [MenuItem("Theme", submenu=[
-            MenuItem("Dark", on_select=lambda i: picked.append("dark")),
-            MenuItem("Light", on_select=lambda i: picked.append("light")),
-        ])]
+        [
+            MenuItem(
+                "Theme",
+                submenu=[
+                    MenuItem("Dark", on_select=lambda i: picked.append("dark")),
+                    MenuItem("Light", on_select=lambda i: picked.append("light")),
+                ],
+            )
+        ]
     )
     menu.open_at(app, 2, 2)
     menu.on_key(Key.RIGHT)
     sub = app._overlays[-1].widget
-    sub.on_key(Key.DOWN)   # -> Light
+    sub.on_key(Key.DOWN)  # -> Light
     sub.on_key(Key.ENTER)
     assert picked == ["light"]
     assert app._overlays == []  # both menus closed
@@ -257,9 +269,7 @@ def test_selecting_submenu_leaf_closes_whole_chain():
 
 def test_click_on_submenu_parent_opens_it():
     app = make_app()
-    menu = RightClickMenu(
-        [MenuItem("Theme", submenu=[MenuItem("Dark")])]
-    )
+    menu = RightClickMenu([MenuItem("Theme", submenu=[MenuItem("Dark")])])
     menu.open_at(app, 0, 0)
     menu.on_mouse_click(2, menu.abs_y + 1)  # click the Theme row
     assert len(app._overlays) == 2  # submenu opened, chain not collapsed

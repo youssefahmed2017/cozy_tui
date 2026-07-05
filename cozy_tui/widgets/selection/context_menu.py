@@ -228,8 +228,7 @@ class RightClickMenu(Widget):
         elif key in (Key.ENTER, " ", Key.RIGHT):
             # Right only acts on submenu items; Enter/Space activate anything.
             if key != Key.RIGHT or (
-                self._selectable(self._index)
-                and self._items[self._index].has_submenu
+                self._selectable(self._index) and self._items[self._index].has_submenu
             ):
                 self._activate()
         elif key == Key.LEFT and self._parent_menu is not None:

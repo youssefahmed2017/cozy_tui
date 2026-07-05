@@ -39,9 +39,9 @@ def test_request_frame_keeps_smallest_and_ignores_nonpositive():
     app = make_app()
     app._anim_interval = None
     app.request_frame(0.1)
-    app.request_frame(0.05)   # faster wins
-    app.request_frame(0.2)    # slower ignored
-    app.request_frame(0)      # non-positive ignored
+    app.request_frame(0.05)  # faster wins
+    app.request_frame(0.2)  # slower ignored
+    app.request_frame(0)  # non-positive ignored
     assert app._anim_interval == 0.05
 
 

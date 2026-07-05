@@ -81,7 +81,10 @@ class Button(Widget):
 
     def draw(self, canvas):
         # Retire the active effect once its duration has elapsed.
-        if self._active and time.monotonic() - self._active_time >= self.active_effect_duration:
+        if (
+            self._active
+            and time.monotonic() - self._active_time >= self.active_effect_duration
+        ):
             self._active = False
 
         is_focused = canvas.focused is self
@@ -107,7 +110,9 @@ class Button(Widget):
             fg_c = tint(fg_c, screen_bg, self.ACTIVE_TINT)
             bg_c = tint(bg_c, screen_bg, self.ACTIVE_TINT) if bg_c else bg_c
 
-        canvas.write(self.abs_x, self.abs_y, label, Style(fg=fg_c, bg=bg_c, styles=styles))
+        canvas.write(
+            self.abs_x, self.abs_y, label, Style(fg=fg_c, bg=bg_c, styles=styles)
+        )
 
         # While the active effect plays, keep redrawing so it reverts on its own
         # even without other input.
@@ -117,7 +122,11 @@ class Button(Widget):
                 request(self.active_effect_duration)
 
         # Animate the label text while active-idle (focused/hovered, not pressed).
-        if self.animation is not None and (is_focused or self._hovered) and not self._active:
+        if (
+            self.animation is not None
+            and (is_focused or self._hovered)
+            and not self._active
+        ):
             start = self.abs_x + (w - len(self.text)) // 2
             base = Style(fg=fg, bg=raw_bg, styles=list(styles))
             for dx, _dy, ch, cell_style in self.animation.cells(self.text, base):

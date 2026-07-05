@@ -1,5 +1,5 @@
-from cozy_tui.widgets import RadioItem, RadioSet
 from cozy_tui.events import Key
+from cozy_tui.widgets import RadioItem, RadioSet
 
 
 def make():

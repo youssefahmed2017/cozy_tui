@@ -11,8 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from cozy_tui import App, Style
-from cozy_tui.widgets import Box, Button, Label
 from cozy_tui.events import Key
+from cozy_tui.widgets import Box, Button, Label
 
 app = App(full=True, style=Style(fg="white", bg="black"))
 

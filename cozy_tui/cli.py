@@ -55,8 +55,9 @@ def gather_checks(check_pypi: bool = True):
         checks.append(("import cozy_tui", str(exc), False))
 
     try:
-        import rich  # noqa: F401
         from importlib.metadata import version as _pkg_version
+
+        import rich  # noqa: F401
 
         checks.append(("rich available", _pkg_version("rich"), True))
     except Exception as exc:
@@ -107,7 +108,11 @@ def _cmd_doctor(args) -> int:
     table.add_column("Check", style="cyan", justify="left")
     table.add_column("Result", justify="left")
 
-    marks = {True: "[green]✓[/green]", False: "[red]✗[/red]", None: "[yellow]![/yellow]"}
+    marks = {
+        True: "[green]✓[/green]",
+        False: "[red]✗[/red]",
+        None: "[yellow]![/yellow]",
+    }
     failed = False
     for name, detail, status in gather_checks(check_pypi=not args.offline):
         if status is False:

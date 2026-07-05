@@ -1,12 +1,6 @@
 import cozy_tui.events as ev
 from cozy_tui import App, Style
-from cozy_tui.events import (
-    Key,
-    MouseClick,
-    MouseDrag,
-    MouseMove,
-    MouseRelease,
-)
+from cozy_tui.events import Key, MouseClick, MouseDrag, MouseMove, MouseRelease
 from cozy_tui.widget import Widget
 
 
@@ -71,10 +65,10 @@ def test_sequence_split_on_esc_is_not_misread_as_escape():
     # instead of firing Key.ESC (which, bound to quit, closed apps instantly).
     orig_read, orig_wait = ev.os.read, ev._console.wait_input
     try:
-        ev._buf = list("\x1b")           # chunk ended right on the ESC
-        rest = list("[<35;5;3M")         # continuation: a MouseMove
+        ev._buf = list("\x1b")  # chunk ended right on the ESC
+        rest = list("[<35;5;3M")  # continuation: a MouseMove
         ev.os.read = lambda fd, n: ("".join(rest), rest.clear())[0].encode()
-        ev._console.wait_input = lambda t: True   # continuation is pending
+        ev._console.wait_input = lambda t: True  # continuation is pending
         e = ev.read_key()
         assert isinstance(e, MouseMove)
         assert (e.col, e.row) == (4, 2)
@@ -195,7 +189,7 @@ def test_widget_without_mouse_moves_gets_no_hover():
     app.add(w)  # never opted in (no on_hover / mouse_moves)
 
     app._dispatch_mouse(MouseMove(4, 2))
-    assert moves == []          # gated out
+    assert moves == []  # gated out
     assert app._hovered is None
 
 
