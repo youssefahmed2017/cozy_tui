@@ -407,8 +407,8 @@ btn = Button(2, 6, "Launch", animation=RainbowAnimation(speed=0.05))
 **Example:**
 
 ```python
-btn = Button(2, 6, "Submit", size=20, style=Style(fg="white", bg="blue"))
-btn.on_click(lambda: print("Submitted!"))
+btn = Button(2, 6, "Submit", width=20, style=Style(fg="white", bg="blue"))
+btn.on_click(lambda b: print("Submitted!"))
 box.add(btn)
 app.focus(btn)
 ```

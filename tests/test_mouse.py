@@ -194,6 +194,30 @@ def test_app_enables_motion_only_when_a_widget_wants_it():
     assert wanting._wants_motion() is True
 
 
+def test_render_upgrades_motion_for_hover_widget_added_to_container():
+    # A hover widget added to a container mid-run (whose add() the App can't
+    # intercept) must still upgrade the terminal to any-motion tracking; render()
+    # is the safety net. Regression: without it the widget's hover silently died.
+    import contextlib
+    import io
+
+    from cozy_tui.widgets import Box, Button
+
+    app = make_app()
+    box = Box(0, 0, "200x100")
+    app.add(box)
+    app._setup_sequences()
+    assert app._motion_on is False  # nothing wants motion yet
+
+    app._running = True
+    box.add(Button(0, 0, "Hi"))  # hover widget added to a container, not the App
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        app.render()
+    assert app._motion_on is True
+    assert "\033[?1003h" in buf.getvalue()
+
+
 def test_global_mouse_hook_can_consume():
     app = make_app()
     w = Recorder(0, 0, 10, 5)

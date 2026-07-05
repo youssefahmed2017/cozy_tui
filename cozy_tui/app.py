@@ -546,6 +546,13 @@ class App:
     def render(self):
         self._compose()
 
+        # Safety net: a hover widget may have been added to a container (whose
+        # add() the App can't intercept) or swapped in with a new page. Re-check
+        # once per frame until motion is on; the guard makes this O(1) after the
+        # first hover widget appears.
+        if not self._motion_on:
+            self._ensure_motion_mode()
+
         if self._full_render_pending:
             self._full_render_pending = False
             self._do_full_render()

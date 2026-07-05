@@ -38,8 +38,11 @@ _BG = {
 }
 _ST = {"bold": "1", "dim": "2", "italic": "3", "underline": "4", "blink": "5"}
 
-# Cache: (fg, bg, styles_tuple) → ANSI escape string
+# Cache: (fg, bg, styles_tuple) → ANSI escape string. Bounded so an app that
+# animates through unbounded distinct truecolor values can't grow it forever;
+# entries are cheap to recompute, so a full clear on overflow is fine.
 _ESC_CACHE: dict = {}
+_ESC_CACHE_MAX = 4096
 
 # Output color depth. Truecolor/256 colors are downgraded to fit; "none"
 # suppresses color entirely (text attributes like bold are still emitted).
@@ -217,5 +220,7 @@ def style_esc(fg, bg, styles) -> str:
         if s in _ST:
             codes.append(_ST[s])
     esc = f"\033[0;{';'.join(codes)}m" if codes else "\033[0m"
+    if len(_ESC_CACHE) >= _ESC_CACHE_MAX:
+        _ESC_CACHE.clear()
     _ESC_CACHE[key] = esc
     return esc

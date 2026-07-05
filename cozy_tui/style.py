@@ -1,6 +1,14 @@
 import sys
 
-sys.stdout.reconfigure(encoding="utf-8")
+# Best-effort UTF-8 output. Guarded because sys.stdout may be None (pythonw.exe)
+# or a stream without .reconfigure (already-wrapped / redirected), in which case
+# importing cozy_tui must not crash.
+_reconfigure = getattr(sys.stdout, "reconfigure", None)
+if _reconfigure is not None:
+    try:
+        _reconfigure(encoding="utf-8")
+    except (ValueError, OSError):
+        pass
 
 
 class Style:

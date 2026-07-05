@@ -114,6 +114,8 @@ def _win_backend():
     kernel32.GlobalLock.restype = ctypes.c_void_p
     kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
     kernel32.GlobalUnlock.restype = wintypes.BOOL
+    kernel32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalFree.restype = wintypes.HGLOBAL
 
     def _open() -> bool:
         # The clipboard is a shared resource; another app may hold it briefly.
@@ -135,11 +137,14 @@ def _win_backend():
                 return
             ptr = kernel32.GlobalLock(handle)
             if not ptr:
+                kernel32.GlobalFree(handle)
                 return
             ctypes.memmove(ptr, buf, size)
             kernel32.GlobalUnlock(handle)
-            # On success the system owns `handle`; it must not be freed here.
+            # On success the system owns `handle`; it must not be freed here. But
+            # if SetClipboardData fails, ownership never transferred — free it.
             if not user32.SetClipboardData(CF_UNICODETEXT, handle):
+                kernel32.GlobalFree(handle)
                 return
         finally:
             user32.CloseClipboard()

@@ -1,6 +1,13 @@
+import codecs
 import os
 
 from cozy_tui import _console
+
+# Stateful UTF-8 decoder: a bulk read can end mid-character (a multi-byte glyph
+# split across the 1024-byte boundary during a fast paste). An incremental
+# decoder buffers the incomplete tail and completes it on the next read instead
+# of emitting replacement chars.
+_decoder = codecs.getincrementaldecoder("utf-8")("replace")
 
 
 # fmt: off
@@ -211,7 +218,7 @@ def _read_char() -> str:
     if _buf:
         return _buf.pop(0)
     raw = os.read(0, 1024)  # reads ALL currently available bytes
-    chars = list(raw.decode("utf-8", errors="replace"))
+    chars = list(_decoder.decode(raw))
     if not chars:
         return ""
     _buf = chars[1:]

@@ -261,12 +261,15 @@ def main() -> None:
     menu = RightClickMenu(
         [
             MenuItem(
-                "Go to",
+                "Pages",
                 icon="📄",
                 submenu=[
-                    MenuItem("Welcome", on_select=lambda i: goto("Welcome"), icon="👋"),
-                    MenuItem("Selection", on_select=lambda i: goto("Selection"), icon=""),
-                    MenuItem("About", on_select=lambda i: goto("About")),
+                    MenuItem("Welcome", on_select=lambda _: goto("Welcome")),
+                    MenuItem("Inputs", on_select=lambda _: goto("Inputs")),
+                    MenuItem("Selection", on_select=lambda _: goto("Selection")),
+                    MenuItem("Data", on_select=lambda _: goto("Data")),
+                    MenuItem("Overlays", on_select=lambda _: goto("Overlays")),
+                    MenuItem("About", on_select=lambda _: goto("About")),
                 ],
             ),
             MenuSeparator(),

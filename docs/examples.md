@@ -79,3 +79,19 @@ python examples/calculator_app/calculator.py
 | Backspace | Delete last character |
 | `c` | Clear |
 | ESC | Quit |
+
+### `examples/markdown_editor/markdown_editor.py` — Markdown Editor
+
+A live Markdown editor built on `MarkdownInput`: type on the left, press **Tab** to render the Rich Markdown preview, and click **Edit** to return.
+
+```bash
+python examples/markdown_editor/markdown_editor.py
+```
+
+### `examples/todo_app/todo.py` — Todo List
+
+A persistent todo list using `CheckList` and `Input`; items are saved to `todo_data.json` next to the script and reloaded on start.
+
+```bash
+python examples/todo_app/todo.py
+```
