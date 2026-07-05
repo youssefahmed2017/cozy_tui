@@ -141,6 +141,7 @@ class RadioSet(Widget):
     def _select_current(self) -> None:
         if not self._items:
             return
+        self._fire_click()  # on_click(widget): fires on Enter/Space or click
         if self._index != self._selected:
             self._selected = self._index
             self._fire_change(self.selected)

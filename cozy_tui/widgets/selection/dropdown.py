@@ -105,6 +105,7 @@ class Dropdown(Widget):
     def _on_lv_select(self, _value) -> None:
         # Fired by the inner ListView on Enter or a row click.
         self._index = self._lv._index
+        self._fire_click()  # on_click(widget): fires when an item is chosen
         self._fire_change(self.selected)
         if self._select_handler:
             self._select_handler(self.selected)

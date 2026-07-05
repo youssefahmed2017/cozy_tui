@@ -169,6 +169,7 @@ class CheckList(Widget):
     def _toggle_current(self) -> None:
         if not self._items:
             return
+        self._fire_click()  # on_click(widget): fires on Enter/Space or click
         item = self._items[self._index]
         item.checked = not item.checked
         if self._toggle_handler:

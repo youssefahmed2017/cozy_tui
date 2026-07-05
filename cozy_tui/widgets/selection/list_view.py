@@ -141,8 +141,7 @@ class ListView(Widget):
     def _activate(self, from_click: bool = False) -> None:
         if not self._items:
             return
-        if from_click and self._click_handler:
-            self._click_handler(self.selected)
+        self._fire_click()  # on_click(widget): fires on Enter or click
         if self._select_handler:
             self._select_handler(self.selected)
 

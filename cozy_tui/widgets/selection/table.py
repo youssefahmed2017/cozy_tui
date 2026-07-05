@@ -289,8 +289,10 @@ class Table(Widget):
         elif key == Key.END:
             self._move_row(len(self._rows) - 1)
         elif key == Key.ENTER:
-            if self._rows and self._select_handler:
-                self._select_handler(self.selected_row)
+            if self._rows:
+                self._fire_click()  # on_click(widget): fires on Enter or click
+                if self._select_handler:
+                    self._select_handler(self.selected_row)
 
     def on_mouse_click(self, col=None, row=None) -> None:
         if row is None or not self._rows:
@@ -302,6 +304,7 @@ class Table(Widget):
             self._clamp_scroll()
             if clicked != old:
                 self._fire_change(self.selected_row)
+            self._fire_click()  # on_click(widget): fires on Enter or click
             if self._select_handler:
                 self._select_handler(self.selected_row)
 

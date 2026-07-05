@@ -198,6 +198,7 @@ class Tree(Widget):
 
         elif key in (Key.ENTER, " "):
             node.toggle()
+            self._fire_click()  # on_click(widget): fires on Enter/Space or click
             if self._select_handler:
                 self._select_handler(node)
 
@@ -211,6 +212,7 @@ class Tree(Widget):
             self._index = idx
             self._clamp(len(vis))
             node.toggle()
+            self._fire_click()  # on_click(widget): fires on Enter/Space or click
             if self._select_handler:
                 self._select_handler(node)
             self._fire_change(node)
