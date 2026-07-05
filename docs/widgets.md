@@ -382,7 +382,7 @@ Button(x, y, text, style=None, width=None, *, animation=None, active_effect_dura
 
 ```python
 btn.on_click(func)   # Register a callback (receives the button as argument); returns self for chaining
-btn.on_enter(func)   # Cursor entered the button (Button tracks motion itself)
+btn.on_enter(func)   # Cursor entered the button (registering this enables hover)
 btn.on_leave(func)   # Cursor left the button
 ```
 
@@ -549,7 +549,7 @@ lv.on_select(func)   # called with selected value when Enter is pressed or item 
 
 **Key bindings:** Up/Down — move, Home/End — first/last, Enter — confirm selection.
 
-**Mouse:** clicking an item moves the cursor to it and confirms it. Hovering over an item highlights it (moves the cursor) without confirming — like arrow-key navigation.
+**Mouse:** clicking an item moves the cursor to it and confirms it. With `mouse_moves = True` set on the widget, hovering over an item highlights it (moves the cursor) without confirming — like arrow-key navigation.
 
 **Example:**
 
@@ -619,7 +619,7 @@ cl.on_toggle(func)   # func(value, checked) — called when an item is toggled b
 
 **Key bindings:** Up/Down — move cursor, Home/End — first/last, Enter/Space — toggle highlighted item.
 
-**Mouse:** clicking a row moves the cursor to it and toggles it immediately. Hovering over a row highlights it (moves the cursor) without toggling.
+**Mouse:** clicking a row moves the cursor to it and toggles it immediately. With `mouse_moves = True` set on the widget, hovering over a row highlights it (moves the cursor) without toggling.
 
 **Example:**
 
@@ -674,7 +674,7 @@ rs.on_change(func)   # func(value) — called when the selection changes (return
 
 **Key bindings:** Up/Down — move cursor, Home/End — first/last, Enter/Space — select the highlighted option.
 
-**Mouse:** clicking a row moves the cursor to it and selects it immediately. Hovering over a row highlights it (moves the cursor) without selecting.
+**Mouse:** clicking a row moves the cursor to it and selects it immediately. With `mouse_moves = True` set on the widget, hovering over a row highlights it (moves the cursor) without selecting.
 
 **Example:**
 

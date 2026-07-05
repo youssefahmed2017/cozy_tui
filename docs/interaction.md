@@ -159,25 +159,27 @@ app.on_right_click(lambda col, row, w: menu.open_at(app, col, row))
 
 ### Hover / motion events
 
-Bare mouse motion (no button held) is **off by default** because any-motion
-tracking floods the input stream on every cursor move. It's opt-in **per
-widget**, not app-wide: a widget receives `on_hover` / `on_mouse_move` /
-`on_enter` / `on_leave` only when its `mouse_moves` flag is set.
+Bare mouse motion (no button held) is **off by default** — for every widget —
+because any-motion tracking floods the input stream on every cursor move. It's
+opt-in **per widget**: a widget receives `on_hover` / `on_mouse_move` /
+`on_enter` / `on_leave` (and built-in hover effects like `Button`'s hover state
+or the list widgets' hover-to-highlight) only when its `mouse_moves` flag is set.
 
 ```python
-w = MyWidget(..., mouse_moves=True)   # subclasses can pass it through to Widget
+w = SomeWidget(...)
+w.mouse_moves = True                      # turn on hover for this widget
 w.on_hover(lambda widget, col, row: ...)  # registering also flips mouse_moves on
 ```
 
 Registering any of `on_hover` / `on_enter` / `on_leave` sets `mouse_moves`
-automatically, so most code never touches the flag directly. Built-in
-interactive widgets that use hover — `Button`, `ListView`, `CheckList`,
-`RadioSet`, `RightClickMenu` — opt in themselves.
+automatically, so if you only want the callbacks you never touch the flag. To
+get a widget's **built-in** hover behavior (e.g. list hover-to-highlight) without
+a callback, set `mouse_moves = True` explicitly.
 
 The App enables terminal-level motion tracking (`?1003h`) automatically whenever
-at least one live widget wants it — including overlays opened mid-run, like a
-`RightClickMenu` — and stays on the cheaper drag-only mode otherwise. There is no
-app-wide `mouse_moves` switch.
+at least one live widget wants it — including overlays opened mid-run — and stays
+on the cheaper drag-only mode otherwise. There is no app-wide `mouse_moves`
+switch.
 
 `on_enter` / `on_leave` fire once as the cursor crosses a widget's boundary (the
 app tracks which widget is hovered and dispatches the transitions), which is what

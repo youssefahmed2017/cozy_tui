@@ -40,7 +40,7 @@ class RadioSet(Widget):
         height=None,
         style=None,
     ):
-        super().__init__(x, y, style, mouse_moves=True)  # hover-to-highlight
+        super().__init__(x, y, style)  # hover-to-highlight is opt-in (mouse_moves=True)
         self._items: list[RadioItem] = []
         self._index: int = 0  # cursor position
         self._selected: int | None = None  # chosen option, or None
@@ -182,7 +182,7 @@ class RadioSet(Widget):
 
     def on_mouse_move(self, col=None, row=None) -> None:
         # Hover highlights the option under the cursor (like arrow-key movement),
-        # without selecting it. (This widget opts into mouse_moves itself.)
+        # without selecting it. Only fires when mouse_moves is enabled on this widget.
         if row is not None and self._items:
             idx = self._scroll_off + (row - self.abs_y)
             if 0 <= idx < len(self._items) and idx != self._index:

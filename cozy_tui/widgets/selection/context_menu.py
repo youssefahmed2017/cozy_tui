@@ -90,7 +90,7 @@ class RightClickMenu(Widget):
     GAP = 2  # minimum columns between the label and its shortcut/arrow column
 
     def __init__(self, items, *, style=None):
-        super().__init__(0, 0, style, mouse_moves=True)  # hover-to-highlight
+        super().__init__(0, 0, style)  # hover-to-highlight is opt-in (mouse_moves)
         self._items: list[MenuItem] = [self._coerce(it) for it in (items or [])]
         self._index: int = self._first_selectable(0, 1)
         self._app = None  # set by open_at, used to close on selection

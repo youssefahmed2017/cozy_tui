@@ -210,7 +210,9 @@ def test_render_upgrades_motion_for_hover_widget_added_to_container():
     assert app._motion_on is False  # nothing wants motion yet
 
     app._running = True
-    box.add(Button(0, 0, "Hi"))  # hover widget added to a container, not the App
+    btn = Button(0, 0, "Hi")
+    btn.mouse_moves = True  # a hover-wanting widget (opt-in)
+    box.add(btn)  # added to a container, not the App
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         app.render()

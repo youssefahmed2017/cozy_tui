@@ -37,7 +37,7 @@ class ListView(Widget):
         height=None,
         style=None,
     ):
-        super().__init__(x, y, style, mouse_moves=True)  # hover-to-highlight
+        super().__init__(x, y, style)  # hover-to-highlight is opt-in (mouse_moves=True)
         self._items: list = list(items) if items is not None else []
         self._index: int = 0
         self._scroll_off: int = 0
@@ -184,7 +184,7 @@ class ListView(Widget):
 
     def on_mouse_move(self, col=None, row=None) -> None:
         # Hover highlights the item under the cursor (like arrow-key movement),
-        # without activating it. (This widget opts into mouse_moves itself.)
+        # without activating it. Only fires when mouse_moves is enabled on this widget.
         if row is not None and self._items:
             idx = self._scroll_off + (row - self.abs_y)
             if 0 <= idx < len(self._items) and idx != self._index:

@@ -13,7 +13,9 @@ def make_app():
 
 
 def _hover_row(app, widget, row_index):
-    # Dispatch a hover at the widget's absolute row for the given item index.
+    # Hover-to-highlight is opt-in (off by default); enable it, then dispatch a
+    # hover at the widget's absolute row for the given item index.
+    widget.mouse_moves = True
     app._dispatch_mouse(MouseMove(widget.abs_x, widget.abs_y + row_index))
 
 

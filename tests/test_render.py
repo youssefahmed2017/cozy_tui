@@ -122,6 +122,8 @@ def test_setup_picks_motion_mode_from_widgets():
     assert "\033[?1002h" in enter and "\033[?1003h" not in enter  # drag-only
 
     hovering = App(full=False, size="400x200", style=Style(fg="white", bg="black"))
-    hovering.add(Button(0, 0, "Go"))  # Button opts into mouse_moves
+    b = Button(0, 0, "Go")
+    b.mouse_moves = True  # opt into hover (off by default)
+    hovering.add(b)
     enter, _ = hovering._setup_sequences()
     assert "\033[?1003h" in enter  # any-motion tracking for hover
