@@ -334,6 +334,13 @@ def _read_csi():
             if btn & 3 == 3:
                 return MouseMove(col - 1, row - 1)
             return MouseDrag(col - 1, row - 1, btn & 3)
+        # No motion flag. A "press" whose low bits are 3 (no button) is never a
+        # real click — some terminals (notably PyCharm's) report hover motion
+        # this way in any-motion mode without setting bit 32. Treat it as motion
+        # so it's gated to mouse_moves widgets instead of clicking whatever is
+        # under the cursor (which made the whole UI react to mere movement).
+        if btn & 3 == 3:
+            return MouseMove(col - 1, row - 1)
         if pressed:
             return MouseClick(col - 1, row - 1, btn & 3)
         return MouseRelease(col - 1, row - 1, btn & 3)
@@ -347,7 +354,9 @@ def _read_csi():
             return Key.SCROLL_UP
         if raw == 65:
             return Key.SCROLL_DOWN
-        if raw & 0x60 == 0:
+        if raw & 0x60 == 0:  # neither wheel (0x40) nor motion (0x20) flag
+            if raw & 0x03 == 3:
+                return MouseRelease(col, row, 0)  # button code 3 = release in X10
             return MouseClick(col, row, raw & 0x03)
         return None
 

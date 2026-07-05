@@ -43,6 +43,23 @@ def test_motion_without_button_is_move():
     assert (e.col, e.row) == (4, 2)
 
 
+def test_no_button_press_without_motion_flag_is_move_not_click():
+    # Regression: some terminals (PyCharm's) report hover in any-motion mode as a
+    # "press" (M) with low bits 3 and WITHOUT the 32 motion flag. It must not be
+    # treated as a click, or every cursor move clicks whatever is under it.
+    e = feed("\x1b[<3;5;3M")
+    assert isinstance(e, MouseMove)
+    assert (e.col, e.row) == (4, 2)
+
+
+def test_x10_button3_is_release_not_click():
+    # In legacy X10 encoding a button code of 3 is a release, not a click —
+    # otherwise every X10 click double-fires (press + a spurious btn-3 click).
+    e = feed("\x1b[M" + chr(32 + 3) + chr(33 + 4) + chr(33 + 2))
+    assert isinstance(e, MouseRelease)
+    assert (e.col, e.row) == (4, 2)
+
+
 def test_wheel_still_maps_to_scroll_keys():
     assert feed("\x1b[<64;5;3M") == Key.SCROLL_UP
     assert feed("\x1b[<65;5;3M") == Key.SCROLL_DOWN
