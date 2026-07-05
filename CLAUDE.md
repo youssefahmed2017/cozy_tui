@@ -9,9 +9,16 @@ pip install -e .[dev]        # editable install with pytest
 python -m pytest -q          # run the whole suite
 python -m pytest tests/test_render.py -q          # one file
 python -m pytest tests/test_render.py::test_name  # one test
-python -m cozy_tui           # run the built-in demo app
+python -m cozy_tui           # run the built-in demo app (no subcommand → demo)
+cozy-tui doctor              # CLI: environment checks; also `demo`, `info`, `--version`
 python examples/<name>/<name>.py   # run an example
 ```
+
+The CLI lives in `cozy_tui/cli.py` (argparse; the `cozy-tui` console script and
+`python -m cozy_tui` both call `cli.main`). The demo moved out of `__main__.py`
+into `cozy_tui/demo.py`; `__main__.py` is now a thin dispatcher. `__version__`
+is exposed from `cozy_tui/__init__.py` (via `importlib.metadata`, `"dev"` when
+running from an uninstalled source tree).
 
 There is no linter/formatter config, but the code is `black`/`isort`-formatted (note the `# fmt: off` blocks in `events.py`).
 

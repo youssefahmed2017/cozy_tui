@@ -66,7 +66,20 @@ That's it — `rich` (used to render `Markdown` / `MarkdownInput`) is pulled in 
 Take it for a spin with the built-in demo:
 
 ```bash
-python -m cozy_tui
+cozy-tui              # or: python -m cozy_tui
+```
+
+### Command-line
+
+Installing the package also provides a `cozy-tui` command (equivalently `python -m cozy_tui`):
+
+```bash
+cozy-tui              # launch the interactive demo (no subcommand)
+cozy-tui demo         # launch the interactive demo
+cozy-tui --version    # print the installed version
+cozy-tui doctor       # check Python, imports, clipboard backend, color depth, PyPI version
+cozy-tui doctor --offline   # skip the PyPI check
+cozy-tui info         # version + detected terminal capabilities
 ```
 
 Then in your script:

@@ -32,6 +32,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 
+[project.scripts]
+cozy-tui = "cozy_tui.cli:main"
+
 [project.urls]
 GitHub = "https://github.com/youssefahmed2017/cozy_tui"
 
