@@ -36,7 +36,7 @@ class Checkbox(Widget):
         mark = "✔" if self.checked else " "
         label = f"[{mark}] {self.text}"
 
-        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
+        raw_bg = self.style.raw_bg
         fg = self.style.fg or "white"
 
         if is_focused:

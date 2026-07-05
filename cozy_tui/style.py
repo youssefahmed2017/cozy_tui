@@ -26,6 +26,15 @@ class Style:
             self.bg = bg  # None, "rgb(R,G,B)", "#rrggbb", or "color(N)"
         self.styles = tuple(styles) if styles else ()
 
+    @property
+    def raw_bg(self):
+        """This style's background with the internal ``_bg`` suffix stripped, so
+        it can be handed to a fresh ``Style(bg=...)`` (which re-applies the
+        suffix). Returns ``None``/self-describing colors unchanged."""
+        if self.bg and self.bg.endswith("_bg"):
+            return self.bg[:-3]
+        return self.bg
+
 
 class Cell:
     __slots__ = ("char", "style")

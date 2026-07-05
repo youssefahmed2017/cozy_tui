@@ -99,6 +99,17 @@ widget.on_enter(lambda w: ...)              # cursor entered the widget
 widget.on_leave(lambda w: ...)              # cursor left the widget
 ```
 
+`on_click` is the activation hook for simple controls — `Button`, `Checkbox`,
+`Hyperlink`. The **selection widgets** (`ListView`, `CheckList`, `RadioSet`,
+`Dropdown`, `Table`, `Tree`) have their own, more specific callbacks that carry
+the selected value — prefer those over `on_click`:
+
+```python
+list_view.on_select(lambda value: ...)   # Enter or click on a row
+check_list.on_toggle(lambda value, checked: ...)
+radio_set.on_change(lambda value: ...)   # selection changed
+```
+
 `col`/`row` are absolute terminal cells (already adjusted for scrolling). If you
 subclass a widget instead, override `on_mouse_click` / `on_mouse_right_click` /
 `on_mouse_double_click` / `on_mouse_drag` / `on_mouse_release` / `on_mouse_move` /

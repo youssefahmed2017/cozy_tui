@@ -33,9 +33,8 @@ class Box(Widget):
         self.border = self.BORDERS[border]
         self.children = []
         self._bounds = (0, 0, 0, 0)  # last drawn (x, y, w, h) in cells, for hit-testing
-        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
         self._focused_border_style_cache = Style(
-            fg="bright_white", bg=raw_bg, styles=["bold"]
+            fg="bright_white", bg=self.style.raw_bg, styles=["bold"]
         )
 
     def natural_width(self, scale):
@@ -152,10 +151,6 @@ class Box(Widget):
                 return True
             w = w.parent
         return False
-
-    def _focus_border_style(self):
-        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
-        return Style(fg="bright_white", bg=raw_bg, styles=["bold"])
 
     def add(self, widget):
         widget.parent = self

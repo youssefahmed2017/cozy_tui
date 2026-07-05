@@ -11,7 +11,7 @@ class TreeNode:
         self.parent: "TreeNode | None" = None
         self.children: list["TreeNode"] = []
         self.expanded: bool = False
-        self.data = None
+        self.metadata = None  # arbitrary user data slot (matches TableRow.metadata)
 
     def add(self, text: str) -> "TreeNode":
         """Append a child node and return it."""
@@ -151,11 +151,6 @@ class Tree(Widget):
     def natural_height(self, scale) -> int:
         n = len(self._visible())
         return self.height or max(1, n)
-
-    def contains(self, col: int, row: int) -> bool:
-        w = self.natural_width(1)
-        h = self.natural_height(1)
-        return self.abs_x <= col < self.abs_x + w and self.abs_y <= row < self.abs_y + h
 
     def on_key(self, key) -> None:
         vis = self._visible()

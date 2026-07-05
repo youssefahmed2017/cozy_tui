@@ -166,7 +166,7 @@ class Markdown(Widget):
     # ── placeholder style (overridden by Input's version in MarkdownInput) ───
 
     def _placeholder_style(self, focused: bool = False) -> Style:
-        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
+        raw_bg = self.style.raw_bg
         return Style(fg=self.style.fg, bg=raw_bg, styles=["dim"])
 
     # ── draw ──────────────────────────────────────────────────────────────────

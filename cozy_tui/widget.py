@@ -177,7 +177,13 @@ class Widget:
         rectangle override it to grow into their slice."""
 
     def contains(self, col: int, row: int) -> bool:
-        return False
+        """True if (col, row) falls within this widget's natural bounding box.
+        The default suits any widget whose hit-box is its full natural size;
+        widgets with a smaller/offset hit-box (single-row controls, bordered
+        containers) override this. A zero-width base widget contains nothing."""
+        w = self.natural_width(1)
+        h = self.natural_height(1)
+        return self.abs_x <= col < self.abs_x + w and self.abs_y <= row < self.abs_y + h
 
     def draw(self, canvas):
         raise NotImplementedError

@@ -184,7 +184,7 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
     def _placeholder_style(self, focused: bool = False):
         if focused:
             return Style(fg="bright_black", bg="white", styles=["dim"])
-        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
+        raw_bg = self.style.raw_bg
         return Style(fg=self.style.fg, bg=raw_bg, styles=["dim"])
 
     def _cursor_style_obj(self, char_at_cursor, content_style: Style):

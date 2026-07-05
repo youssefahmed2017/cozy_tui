@@ -6,15 +6,6 @@ from cozy_tui.style import Style
 from cozy_tui.widget import Widget
 
 
-def _raw_bg(style) -> str | None:
-    """The style's background with the internal ``_bg`` suffix stripped, so a
-    fresh ``Style`` can re-apply it correctly."""
-    bg = style.bg
-    if bg and bg.endswith("_bg"):
-        return bg[:-3]
-    return bg
-
-
 class Animation:
     """Base class for :class:`AnimatedLabel` animations.
 
@@ -199,7 +190,7 @@ class GlowAnimation(Animation):
         colors = self._colors
         n = len(colors)
         frame = self.frame()
-        raw_bg = _raw_bg(style)
+        raw_bg = style.raw_bg
         extra = list(style.styles)
         for i, ch in enumerate(text):
             r, g, b = colors[(frame + i) % n]
@@ -235,7 +226,7 @@ class RainbowAnimation(Animation):
 
     def cells(self, text, style):
         frame = self.frame()
-        raw_bg = _raw_bg(style)
+        raw_bg = style.raw_bg
         extra = list(style.styles)
         for i, ch in enumerate(text):
             hue = ((frame * 6) + i * self.spread) % 360

@@ -206,11 +206,6 @@ class RightClickMenu(Widget):
     def natural_height(self, scale) -> int:
         return len(self._items) + 2  # + top/bottom border
 
-    def contains(self, col: int, row: int) -> bool:
-        w = self.natural_width(1)
-        h = self.natural_height(1)
-        return self.abs_x <= col < self.abs_x + w and self.abs_y <= row < self.abs_y + h
-
     def _item_at_row(self, row: int) -> int | None:
         idx = row - self.abs_y - 1  # -1 for the top border
         return idx if 0 <= idx < len(self._items) else None
@@ -262,7 +257,7 @@ class RightClickMenu(Widget):
         x, y = self.abs_x, self.abs_y
         tl, tr, bl, br = self._CORNERS
         border = self.style
-        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
+        raw_bg = self.style.raw_bg
 
         canvas.write(x, y, tl + self._H * inner + tr, border)
 

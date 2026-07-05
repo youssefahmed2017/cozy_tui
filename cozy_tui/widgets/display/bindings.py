@@ -40,7 +40,7 @@ class Bindings(Widget):
         self.title = title
         self.border = border
 
-        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
+        raw_bg = self.style.raw_bg
         self._border_style = Style(fg="bright_black", bg=raw_bg)
         self._key_style = Style(fg="bright_cyan", bg=raw_bg, styles=["bold"])
         self._header_style = Style(fg="bright_yellow", bg=raw_bg, styles=["bold"])

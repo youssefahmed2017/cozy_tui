@@ -39,7 +39,7 @@ class PromptDialog(Widget):
             self.text += key
 
     def _palette(self):
-        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
+        raw_bg = self.style.raw_bg
         border = Style(fg="bright_cyan", bg=raw_bg, styles=["bold"])
         dim = Style(fg="bright_black", bg=raw_bg)
         return self.style, border, dim

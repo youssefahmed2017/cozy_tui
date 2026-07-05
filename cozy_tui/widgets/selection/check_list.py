@@ -188,11 +188,6 @@ class CheckList(Widget):
     def natural_height(self, scale) -> int:
         return self.height or max(1, len(self._items))
 
-    def contains(self, col: int, row: int) -> bool:
-        w = self.natural_width(1)
-        h = self.natural_height(1)
-        return self.abs_x <= col < self.abs_x + w and self.abs_y <= row < self.abs_y + h
-
     def on_key(self, key) -> None:
         if key == Key.UP:
             self._move(self._index - 1)
@@ -229,7 +224,7 @@ class CheckList(Widget):
         w = self.natural_width(1)
         n = len(self._items)
         vis = self.height or n
-        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
+        raw_bg = self.style.raw_bg
 
         for row in range(vis):
             idx = self._scroll_off + row

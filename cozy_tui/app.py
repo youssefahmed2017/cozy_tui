@@ -126,7 +126,7 @@ class App:
         # write() honours scroll_y normally; overlays are screen-fixed, so it is
         # flipped off while they draw.
         self._scroll_active = True
-        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
+        raw_bg = self.style.raw_bg
         self._backdrop_style = Style(fg="bright_black", bg=raw_bg)
         self.title = title
 

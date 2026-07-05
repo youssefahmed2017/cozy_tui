@@ -85,7 +85,7 @@ class Button(Widget):
 
         is_focused = canvas.focused is self
         w = self._width()
-        raw_bg = self.style.bg.replace("_bg", "") if self.style.bg else None
+        raw_bg = self.style.raw_bg
         fg = self.style.fg or "white"
 
         label = self.text.center(w)
