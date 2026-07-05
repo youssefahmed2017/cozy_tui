@@ -51,6 +51,14 @@ A Spotlight/VS Code-style fuzzy command launcher in a modal overlay: a custom wi
 python examples/command_palette/command_palette.py
 ```
 
+### `examples/tabs/tabs.py` — Tabbed Container
+
+A `Tabs` widget with Files / Settings / About panels. Focus lands on the tab strip (←/→ or Home/End to switch, click a title), and Tab dives into the active panel's controls. Only the active panel is drawn and focusable.
+
+```bash
+python examples/tabs/tabs.py
+```
+
 ### `examples/kanban/kanban.py` — Kanban Board
 
 A keyboard-driven To Do / Doing / Done board built from Boxes + ListViews. Tab switches columns, Up/Down selects, ←/→ moves a card between columns, `a`/`d` add/delete, `?` shows a help overlay, `c` opens a confirm-clear modal.

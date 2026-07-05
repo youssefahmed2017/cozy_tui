@@ -934,6 +934,44 @@ app.add(tbl)
 
 ---
 
+### `Tabs`
+
+A tabbed container: a strip of clickable tab titles above a content area showing the active tab's panel. Only the active panel is drawn, focusable, and hit-tested — inactive tabs are inert.
+
+```python
+Tabs(x, y, size, *, style=None, accent="bright_cyan")
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position in terminal characters |
+| `size` | `"WIDTHxHEIGHT"` in virtual pixels — divide by `App.SCALE` (10) for cells, like `Box`. A **docked** `Tabs` fills its slice instead. |
+| `style` | Style for the tab area (its `bg` fills the panel background) |
+| `accent` | Color of the active tab + its underline (default `"bright_cyan"`) |
+
+**Building tabs:** `add_tab(title, *widgets)` adds a tab and returns its **panel** (a container) so you can add more widgets to it. Widgets passed inline are placed in the panel immediately.
+
+```python
+from cozy_tui.widgets import Tabs, Label, ListView, Input
+
+tabs = Tabs(2, 2, "600x200")
+
+files = tabs.add_tab("Files")            # returns the panel container
+files.add(ListView(1, 1, ["a", "b"], height=4))
+
+tabs.add_tab("Settings", Input(1, 1, 20))  # widgets can be passed inline
+tabs.add_tab("About", Label(1, 1, "cozy_tui"))
+
+tabs.on_change(lambda index: ...)        # fires with the new tab index
+box.add(tabs)
+```
+
+**Focus & navigation:** keyboard focus lands on the tab **strip** first — Left/Right (or Home/End) switch tabs; pressing **Tab** again dives into the active panel's own controls. A **click** on a tab title switches to it. Pass `tabs.bar` to `app.focus(...)` to start focus on the tabs.
+
+**Methods / properties:** `select(index)` (clamped, fires `on_change`), `panel(index)`, `bar`, `selected_index`, `selected_title`.
+
+---
+
 ### `Collapsible`
 
 A focusable expand/collapse container. Children are navigated with Up/Down while the `Collapsible` holds focus — Tab does not descend into individual children.
