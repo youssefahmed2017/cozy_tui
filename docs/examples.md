@@ -2,6 +2,14 @@
 
 The `examples/` directory contains runnable apps. Each example adds the project root to `sys.path` automatically, so they can be run from any directory.
 
+### `examples/dashboard/dashboard.py` — Dashboard (multi-widget showcase)
+
+A mock download manager that wires several widgets into one app: **`Tabs`** organise Downloads / Activity / About panels; a **`ProgressBar`** per file is advanced by an `app.every` timer; a **`Spinner`** spins next to *Start* while work is in flight; the Activity panel is an autoscrolling **`ScrollView`** log; and **`app.toast`** pops as each file — and the whole batch — completes.
+
+```bash
+python examples/dashboard/dashboard.py
+```
+
 ### `examples/basic/basic.py` — Hello World
 
 Minimal app with a label and a quit button. Good starting point.
@@ -27,14 +35,6 @@ Demonstrates `Input`, `Button`, `Checkbox`, `ProgressBar`, `Dropdown`, `ListView
 python examples/timer_app/timer.py
 ```
 
-### `examples/dock_layout/dock_layout.py` — Dock Layout
-
-Demonstrates `App.dock()` with a header (`top`), status bar (`bottom`), sidebar (`left`), and a `fill` main area that claims the remaining space. Resize the terminal to watch the layout re-flow.
-
-```bash
-python examples/dock_layout/dock_layout.py
-```
-
 ### `examples/overlay/overlay.py` — Overlays / Modals
 
 A base screen with a button that opens a centered, dimmed modal dialog. Tab is confined to the dialog; Esc or a click outside dismisses it.
@@ -49,30 +49,6 @@ A Spotlight/VS Code-style fuzzy command launcher in a modal overlay: a custom wi
 
 ```bash
 python examples/command_palette/command_palette.py
-```
-
-### `examples/toasts/toasts.py` — Toasts & Spinner
-
-Buttons that raise info / success / warning / error **toasts** (they stack in the corner and auto-dismiss on a timer), plus a "Load data" button that shows a **`Spinner`** while a background `run_worker` runs and fires a success toast when it finishes — the idiomatic async-feedback loop. Built on the App's `after` / `every` timers.
-
-```bash
-python examples/toasts/toasts.py
-```
-
-### `examples/drop_area/drop_area.py` — Drop Files Area
-
-A `DropFilesArea` that files whatever you drag onto the terminal (or paste the path of) into a `dropped/` folder next to the script. Demonstrates that a terminal delivers a drag-and-drop as the file's *path text* (a bracketed paste), which the widget resolves on the local filesystem and copies — never overwriting. A path dropped over SSH surfaces as a friendly "not found here".
-
-```bash
-python examples/drop_area/drop_area.py
-```
-
-### `examples/tabs/tabs.py` — Tabbed Container
-
-A `Tabs` widget with Files / Settings / About panels. Focus lands on the tab strip (←/→ or Home/End to switch, click a title), and Tab dives into the active panel's controls. Only the active panel is drawn and focusable.
-
-```bash
-python examples/tabs/tabs.py
 ```
 
 ### `examples/kanban/kanban.py` — Kanban Board

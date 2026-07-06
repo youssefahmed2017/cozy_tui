@@ -167,7 +167,7 @@ sidebar = app.dock(Box(0, 0, "180x10", title="Menu"), "left", margin=1)
 
 > On non-`full` (scrollable) apps, docked widgets scroll with the content rather than staying pinned to the viewport. For the typical `full=True` app there is no scroll, so they stay anchored.
 
-See [`examples/dock_layout/dock_layout.py`](../examples/dock_layout/dock_layout.py) for a complete header / sidebar / status / fill layout.
+See [`examples/dashboard/dashboard.py`](../examples/dashboard/dashboard.py) for a docked header / footer / fill layout.
 
 ---
 
