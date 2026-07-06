@@ -137,6 +137,9 @@ class App:
         # write() honours scroll_y normally; overlays are screen-fixed, so it is
         # flipped off while they draw.
         self._scroll_active = True
+        # Clip-rectangle stack (in abs content coords): write() drops cells that
+        # fall outside the top rect. ScrollView pushes its viewport onto it.
+        self._clip_stack: list = []
         raw_bg = self.style.raw_bg
         self._backdrop_style = Style(fg="bright_black", bg=raw_bg)
         self.title = title
@@ -545,7 +548,20 @@ class App:
             idx = -1
         self.focused = focusables[(idx + direction) % len(focusables)]
 
+    def push_clip(self, x0, y0, x1, y1):
+        """Confine subsequent ``write`` calls to the rectangle ``[x0, x1) ×
+        [y0, y1)`` (abs content coords). Balance with :meth:`pop_clip`. Used by
+        ScrollView to clip its content to the viewport."""
+        self._clip_stack.append((x0, y0, x1, y1))
+
+    def pop_clip(self):
+        if self._clip_stack:
+            self._clip_stack.pop()
+
     def write(self, x, y, text, style: Style):
+        clip = self._clip_stack[-1] if self._clip_stack else None
+        if clip is not None and not (clip[1] <= y < clip[3]):
+            return  # whole row is outside the active clip rectangle
         if self._scroll_active:
             if y + 1 > self._content_rows:
                 self._content_rows = y + 1
@@ -566,7 +582,7 @@ class App:
                 continue
             if col >= n:
                 break
-            if col >= 0:
+            if col >= 0 and (clip is None or clip[0] <= col < clip[2]):
                 cell = row[col]
                 cell.char = ch
                 cell.style = style
@@ -605,6 +621,7 @@ class App:
         """Run the draw pass into the cell buffer without emitting to the
         terminal. Shared by render() and snapshot()."""
         self._anim_interval = None  # widgets re-request during draw() below
+        self._clip_stack.clear()  # defensive: no clip leaks across frames
         self.clear()
         self._apply_docks()
         for widget in self.widgets:
@@ -966,10 +983,16 @@ class App:
                         self.focused.on_key(key)
                     else:
                         self.quit()
-                elif key in (Key.SCROLL_UP, Key.PAGE_UP, Key.CTRL_UP):
-                    self._scroll(-3)
-                elif key in (Key.SCROLL_DOWN, Key.PAGE_DOWN, Key.CTRL_DOWN):
-                    self._scroll(3)
+                elif key in (Key.SCROLL_UP, Key.SCROLL_DOWN, Key.PAGE_UP,
+                             Key.PAGE_DOWN, Key.CTRL_UP, Key.CTRL_DOWN):
+                    # A focused scrollable widget (ScrollView) consumes the wheel
+                    # / page keys; otherwise they scroll the whole base UI.
+                    if getattr(self.focused, "scrollable", False):
+                        self.focused.on_key(key)
+                    elif key in (Key.SCROLL_UP, Key.PAGE_UP, Key.CTRL_UP):
+                        self._scroll(-3)
+                    else:
+                        self._scroll(3)
                 elif key == Key.TAB:
                     self._cycle_focus(1)
                 elif key == Key.SHIFT_TAB:

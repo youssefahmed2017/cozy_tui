@@ -1065,6 +1065,41 @@ box.add(tabs)
 
 ---
 
+### `ScrollView`
+
+A scrollable viewport. Add widgets whose combined height exceeds the box; only the visible slice is drawn (clipped to the viewport), with a Textual-style **scrollbar** on the right edge. Child `y` positions are in **content space** (`0` = top of the content, may exceed the viewport height).
+
+```python
+ScrollView(x, y, size, *, autoscroll=True, scrollbar=True, style=None, accent="bright_cyan")
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `size` | `"WxH"` string in virtual pixels — ÷ `App.SCALE` (10) for the viewport's cell size. A docked ScrollView fills its slice. |
+| `autoscroll` | `True` (default) keeps the view pinned to the **bottom** as content grows — ideal for logs — until the user scrolls up (which unpins); scrolling back to the bottom re-pins. |
+| `scrollbar` | Show the scrollbar on the right edge (`True` by default; auto-hides when content fits). |
+| `accent` | Color of the scrollbar thumb. |
+
+**Scrolling:** mouse **wheel** or the keyboard (↑/↓, PageUp/PageDown, Home/End) while focused, or **drag the scrollbar thumb**. When a `ScrollView` has focus it consumes the wheel/page keys (otherwise they scroll the whole base UI).
+
+**Methods:** `add(widget)` (content-space `(x, y)`; returns it), `clear()`, `scroll_to(offset)`, `scroll_by(delta)`, `scroll_to_top()`, `scroll_to_bottom()`, `content_height(scale)`.
+
+> **Note:** best suited to display/scrolling content (text, logs, long read-only forms). Focusable children inside a `ScrollView` become the Tab stops (so the view itself isn't), and clipped-out children keep their hit-boxes — so interactive controls in a scrolled region are a v1 caveat.
+
+**Example:**
+
+```python
+from cozy_tui.widgets import ScrollView, Label
+
+log = ScrollView(2, 2, "600x160", autoscroll=True)
+for i in range(200):
+    log.add(Label(0, i, f"line {i}"))
+app.add(log)
+app.focus(log)
+```
+
+---
+
 ### `Collapsible`
 
 A focusable expand/collapse container. Children are navigated with Up/Down while the `Collapsible` holds focus — Tab does not descend into individual children.
