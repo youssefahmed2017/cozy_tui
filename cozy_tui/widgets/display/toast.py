@@ -12,15 +12,15 @@ _LEVELS = {
 
 
 class Toast(Widget):
-    """A transient notification, usually created via :meth:`App.toast` rather than
-    directly. Drawn as a small bordered card that stacks with other toasts in a
-    screen corner and auto-dismisses on a timer. Non-focusable and non-modal — it
-    never steals focus or blocks input.
+    """A transient notification, usually created via :meth:`App.toast`. Drawn as a
+    small bordered card that stacks with other toasts in a screen corner and
+    auto-dismisses on a timer. Non-focusable and non-modal — it never steals focus
+    or blocks input.
     """
 
-    HEIGHT = 6  # top border, padding, content row, padding, bottom border
+    HEIGHT = 5  # border + padding + content row + padding + border
     _MAX_WIDTH = 60
-    _PAD_X = 3   # horizontal breathing room inside the border
+    _PAD_X = 3
     _MARGIN = 1
     _GAP = 1
 
@@ -48,7 +48,7 @@ class Toast(Widget):
         return out + "…"
 
     def _place(self, canvas, w):
-        """Top-left (col, row) for this toast given the stack it belongs to."""
+        """Top-left ``(col, row)`` for this toast given its stack."""
         cols, rows = canvas.cols, canvas.rows
         stack = getattr(canvas, "_toasts", [self])
         n = len(stack)
@@ -65,27 +65,26 @@ class Toast(Widget):
         return left, top
 
     def draw(self, canvas):
-        raw_bg = canvas.style.raw_bg
+        bg = canvas.style.raw_bg
         w = self._content_width(canvas.cols)
         left, top = self._place(canvas, w)
         if top < 0 or top + self.HEIGHT > canvas.rows:
-            return  # scrolled off the top of the stack — skip
+            return  # scrolled off the stack
 
-        border = Style(fg=self.color, bg=raw_bg)
-        text_style = Style(fg="white", bg=raw_bg, styles=["bold"])
+        border = Style(fg=self.color, bg=bg)
         h = self.HEIGHT
 
         for r in range(h):  # paint the card background
-            canvas.write(left, top + r, " " * w, Style(bg=raw_bg))
+            canvas.write(left, top + r, " " * w, Style(bg=bg))
         canvas.write(left, top, "╭" + "─" * (w - 2) + "╮", border)
         canvas.write(left, top + h - 1, "╰" + "─" * (w - 2) + "╯", border)
-        for r in range(1, h - 1):  # side borders down the middle rows
+        for r in range(1, h - 1):
             canvas.write(left, top + r, "│", border)
             canvas.write(left + w - 1, top + r, "│", border)
 
-        cy = top + h // 2  # vertically centered content row
+        cy = top + h // 2
         cx = left + self._PAD_X
-        canvas.write(cx, cy, self.icon, Style(fg=self.color, bg=raw_bg))
+        canvas.write(cx, cy, self.icon, Style(fg=self.color, bg=bg))
         cx += text_width(self.icon) + 1
         canvas.write(cx, cy, self._clip(self.message, left + w - 1 - cx),
-                     text_style)
+                     Style(fg="white", bg=bg, styles=["bold"]))

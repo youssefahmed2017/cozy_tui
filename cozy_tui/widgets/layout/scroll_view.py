@@ -1,4 +1,5 @@
 from cozy_tui.events import Key
+from cozy_tui.motion import Tween, ease_out
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
 
@@ -34,14 +35,18 @@ class ScrollView(Widget):
     TRACK = "│"
 
     def __init__(self, x, y, size, *, autoscroll=True, scrollbar=True,
-                 style=None, accent="bright_cyan"):
+                 smooth=True, style=None, accent="bright_cyan"):
         super().__init__(x, y, style)
         self.width, self.height = map(int, size.split("x"))
         self.autoscroll = autoscroll
         self.scrollbar = scrollbar
+        self.smooth = smooth  # ease the displayed offset toward the target
         self.accent = accent
         self._children: list = []
-        self._scroll = 0
+        self._scroll = 0  # target offset (what scrolling sets / clamps to)
+        self._disp = 0.0  # displayed offset, eased toward _scroll when smooth
+        self._scroll_tween = None
+        self._laid_out = False  # first layout snaps (no fly-in animation)
         self._pin_bottom = True  # stick to the bottom until the user scrolls up
         self._vw = self._vh = 0
         self._max_scroll = 0
@@ -154,13 +159,34 @@ class ScrollView(Widget):
             self._scroll = self._max_scroll
         self._scroll = max(0, min(self._scroll, self._max_scroll))
 
+        # ease the displayed offset toward the target; the first layout snaps.
+        if not self.smooth or not self._laid_out:
+            self._disp = float(self._scroll)
+            self._scroll_tween = None
+        else:
+            if round(self._disp) != self._scroll and (
+                self._scroll_tween is None or self._scroll_tween.end != self._scroll
+            ):
+                self._scroll_tween = Tween(self._disp, self._scroll, 0.12, ease_out)
+            if self._scroll_tween is not None:
+                self._disp = self._scroll_tween.value()
+                if self._scroll_tween.done:
+                    self._disp = float(self._scroll)
+                    self._scroll_tween = None
+                else:
+                    canvas.request_frame(0.033)  # ~30fps until the scroll settles
+            else:
+                self._disp = float(self._scroll)
+        self._laid_out = True
+        offset = round(self._disp)
+
         for r in range(vh):  # paint the viewport background
             canvas.write(x, y + r, " " * vw, self.style)
 
         # draw children offset by the scroll, clipped to the viewport (minus the bar)
         canvas.push_clip(x, y, x + inner_w, y + vh)
         for child in self._children:
-            child._layout_y = -self._scroll
+            child._layout_y = -offset
             child.draw(canvas)
         canvas.pop_clip()
 
@@ -174,7 +200,7 @@ class ScrollView(Widget):
         raw_bg = self.style.raw_bg
         thumb = max(1, min(vh, round(vh * vh / content_h)))
         span = vh - thumb
-        pos = round(span * (self._scroll / self._max_scroll)) if self._max_scroll else 0
+        pos = round(span * (self._disp / self._max_scroll)) if self._max_scroll else 0
         thumb_style = Style(fg=self.accent, bg=raw_bg)
         track_style = Style(fg="bright_black", bg=raw_bg)
         for r in range(vh):

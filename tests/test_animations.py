@@ -166,3 +166,25 @@ def test_button_zero_duration_disables_active_effect():
     b = Button(0, 0, "OK", active_effect_duration=0)
     b.on_mouse_click()
     assert not b._active
+
+
+def test_button_bg_fades_between_states_on_focus(monkeypatch):
+    import cozy_tui.motion as motion
+
+    app = make_app()  # screen bg black
+    b = Button(0, 0, "OK", style=Style(fg="white", bg="blue"))
+    app.add(b)
+    app._compose()  # first draw snaps to idle
+    assert app.buffer[0][0].style.bg == "blue_bg"  # idle: exact named colour
+
+    clock = [100.0]
+    monkeypatch.setattr(motion.time, "monotonic", lambda: clock[0])
+    app.focus(b)
+    app._compose()  # starts the fade tween at t=100.0
+    clock[0] = 100.05  # mid-fade
+    app._compose()
+    assert app.buffer[0][0].style.bg.startswith("rgb(")  # interpolating in RGB
+
+    clock[0] = 100.2  # settled
+    app._compose()
+    assert app.buffer[0][0].style.bg == "white_bg"  # focused: exact named again

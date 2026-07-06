@@ -121,3 +121,34 @@ def test_dock_resize_sets_cell_size():
     sv = ScrollView(0, 0, "100x100")
     sv.dock_resize(50, 20, 10)
     assert sv.natural_width(10) == 50 and sv.natural_height(10) == 20
+
+
+def test_smooth_scroll_eases_toward_target(monkeypatch):
+    import cozy_tui.motion as motion
+
+    app = make_app()
+    sv = make_sv(app, autoscroll=False)  # starts at top; first layout snaps _disp=0
+    app.snapshot()
+    clock = [100.0]
+    monkeypatch.setattr(motion.time, "monotonic", lambda: clock[0])
+
+    sv.scroll_to(20)  # target jumps immediately, display eases
+    app.snapshot()  # a draw at t=0: tween just started
+    assert sv._scroll == 20
+    assert sv._disp < 20  # hasn't jumped to the target yet
+
+    clock[0] = 100.2  # past the 0.12s ease
+    app.snapshot()
+    assert round(sv._disp) == 20  # settled on the target
+
+
+def test_smooth_false_snaps_instantly():
+    app = make_app()
+    sv = ScrollView(0, 0, "260x80", autoscroll=False, smooth=False)
+    for i in range(30):
+        sv.add(Label(0, i, f"row{i:02d}"))
+    app.add(sv)
+    app.snapshot()
+    sv.scroll_to(10)
+    app.snapshot()
+    assert sv._disp == 10  # no easing when smooth=False

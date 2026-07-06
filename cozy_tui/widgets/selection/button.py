@@ -2,6 +2,7 @@ import time
 
 from cozy_tui.ansi import tint
 from cozy_tui.events import Key
+from cozy_tui.motion import Tween, ease_out, lerp_color
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
 
@@ -47,6 +48,10 @@ class Button(Widget):
         self._active = False
         self._active_time = 0.0
         self._hovered = False
+        # eased highlight level (0 idle → 1 focused) for the colour fade
+        self._hl = 0.0
+        self._hl_tween = None
+        self._hl_laid_out = False
 
     def _width(self):
         return max(self.width or 0, len(self.text) + 4, 8)
@@ -94,12 +99,38 @@ class Button(Widget):
 
         label = self.text.center(w)
 
-        if is_focused:
-            fg_c, bg_c, styles = raw_bg or "black", fg, ["bold"]
-        elif self._hovered:
-            fg_c, bg_c, styles = fg, raw_bg, ["bold"]  # subtle lift
-        else:
+        # Ease a highlight level toward the current state and fade the colours
+        # between idle and focused/hovered. Idle and settled-focused render with
+        # the exact (named) colours; only the mid-fade interpolates in RGB. The
+        # first draw snaps (no fade-in on load).
+        target = 1.0 if is_focused else (0.5 if self._hovered else 0.0)
+        if not self._hl_laid_out:
+            self._hl = target
+            self._hl_laid_out = True
+        elif self._hl != target and (
+            self._hl_tween is None or self._hl_tween.end != target
+        ):
+            self._hl_tween = Tween(self._hl, target, 0.12, ease_out)
+        if self._hl_tween is not None:
+            self._hl = self._hl_tween.value()
+            if self._hl_tween.done:
+                self._hl = target
+                self._hl_tween = None
+            else:
+                request = getattr(canvas, "request_frame", None)
+                if request is not None:
+                    request(0.033)
+
+        h = self._hl
+        if h <= 0.001:
             fg_c, bg_c, styles = fg, raw_bg, []
+        elif is_focused and h >= 0.999:
+            fg_c, bg_c, styles = raw_bg or "black", fg, ["bold"]
+        else:
+            base_bg = raw_bg or canvas.style.raw_bg or "black"
+            bg_c = lerp_color(base_bg, fg, h)
+            fg_c = lerp_color(fg, base_bg, h)
+            styles = ["bold"]
 
         if self._active:
             # Tint the whole button toward the screen background (Textual's

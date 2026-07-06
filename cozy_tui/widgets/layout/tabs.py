@@ -1,5 +1,8 @@
+import time
+
 from cozy_tui._width import text_width
 from cozy_tui.events import Key
+from cozy_tui.motion import ease_out
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
 
@@ -93,13 +96,23 @@ class _TabBar(Widget):
             self._segments.append((cx, cx + lw, i))
             cx += lw
 
-        # underline rule; the active tab's span is drawn in the accent color.
+        # underline rule; the active tab's span is drawn in the accent color. While
+        # switching, the accent span glides between the old and new tab segments.
         canvas.write(x, y + 1, "─" * w, Style(fg="bright_black", bg=raw_bg))
-        for start, end, index in self._segments:
-            if index == tabs.active and start < w:
-                span = min(end, w) - start
-                canvas.write(x + start, y + 1, "─" * span,
-                             Style(fg=accent, bg=raw_bg, styles=["bold"]))
+        accent_style = Style(fg=accent, bg=raw_bg, styles=["bold"])
+        ease = tabs._anim_ease()
+        if ease is not None and self._segments:
+            fs, ts = self._segments[tabs._from], self._segments[tabs._to]
+            u0 = fs[0] + (ts[0] - fs[0]) * ease
+            u1 = fs[1] + (ts[1] - fs[1]) * ease
+            a, b = max(0, round(u0)), min(w, round(u1))
+            if b > a:
+                canvas.write(x + a, y + 1, "─" * (b - a), accent_style)
+        else:
+            for start, end, index in self._segments:
+                if index == tabs.active and start < w:
+                    span = min(end, w) - start
+                    canvas.write(x + start, y + 1, "─" * span, accent_style)
 
 
 class Tabs(Widget):
@@ -124,15 +137,22 @@ class Tabs(Widget):
     cells), like :class:`Box`; a docked ``Tabs`` fills its slice instead.
     """
 
-    def __init__(self, x, y, size, *, style=None, accent="bright_cyan"):
+    def __init__(self, x, y, size, *, style=None, accent="bright_cyan",
+                 animate=True, anim_duration=0.18):
         super().__init__(x, y, style)
         self.width, self.height = map(int, size.split("x"))
         self.accent = accent
+        self.animate = animate  # slide panels + glide the underline on switch
+        self.anim_duration = anim_duration
         self._titles = []
         self._panels = []
         self.active = 0
         self._bar = _TabBar(self)
         self._wc = self._hc = 0  # last drawn size in cells
+        # switch-transition state (purely visual; active/focus swap immediately)
+        self._transitioning = False
+        self._from = self._to = 0
+        self._anim_start = 0.0
 
     # ── building ──────────────────────────────────────────────────────────────
 
@@ -147,12 +167,20 @@ class Tabs(Widget):
         return panel
 
     def select(self, index):
-        """Switch to the tab at *index* (clamped), firing ``on_change``."""
+        """Switch to the tab at *index* (clamped), firing ``on_change``. When
+        ``animate`` is on (and the widget has been drawn), the panels slide and
+        the underline glides; ``active``/focus still switch immediately."""
         if not self._panels:
             return
         index = max(0, min(index, len(self._panels) - 1))
         if index != self.active:
+            old = self.active
             self.active = index
+            if self.animate and self._wc > 0:  # _wc>0: at least one draw has run
+                self._from = old
+                self._to = index
+                self._anim_start = time.monotonic()
+                self._transitioning = True
             self._fire_change(index)
 
     @property
@@ -199,11 +227,30 @@ class Tabs(Widget):
             and self.abs_y <= row < self.abs_y + self._hc
         )
 
+    def _anim_ease(self):
+        """Eased switch progress in ``[0, 1)`` while transitioning, else ``None``.
+        Ease-out cubic, so the slide starts fast and settles gently."""
+        if not self._transitioning:
+            return None
+        p = (time.monotonic() - self._anim_start) / self.anim_duration
+        if p >= 1.0:
+            return None
+        return ease_out(p)
+
     def draw(self, canvas):
         self._wc = self.width // canvas.SCALE
         self._hc = self.height // canvas.SCALE
         for r in range(self._hc):  # paint the tab area (esp. if style has a bg)
             canvas.write(self.abs_x, self.abs_y + r, " " * self._wc, self.style)
         self._bar.draw(canvas)
-        if self._panels:
+        if not self._panels:
+            return
+
+        if self._anim_ease() is None:
+            # settled (or not animating): reveal the active tab's content.
+            self._transitioning = False
             self._panels[self.active].draw(canvas)
+        else:
+            # mid-switch: keep the content area empty while the underline glides;
+            # the new panel is revealed only once the animation finishes.
+            canvas.request_frame(0.033)  # ~30fps for a smooth glide

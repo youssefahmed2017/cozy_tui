@@ -363,7 +363,7 @@ box.add(notes_input)
 
 ### `Button`
 
-A focusable button that executes a callback when activated. Activates on Enter, Space, or mouse click.
+A focusable button that executes a callback when activated. Activates on Enter, Space, or mouse click. Its background **fades smoothly** between idle, hovered, and focused states (RGB interpolation; the idle and focused states keep their exact colours). Hover requires opting into motion (`mouse_moves=True` or an `on_enter`/`on_leave` callback).
 
 ```python
 Button(x, y, text, style=None, width=None, *, animation=None, active_effect_duration=0.2)
@@ -1032,7 +1032,7 @@ app.add(tbl)
 A tabbed container: a strip of clickable tab titles above a content area showing the active tab's panel. Only the active panel is drawn, focusable, and hit-tested — inactive tabs are inert.
 
 ```python
-Tabs(x, y, size, *, style=None, accent="bright_cyan")
+Tabs(x, y, size, *, style=None, accent="bright_cyan", animate=True, anim_duration=0.18)
 ```
 
 | Parameter | Description |
@@ -1041,6 +1041,10 @@ Tabs(x, y, size, *, style=None, accent="bright_cyan")
 | `size` | `"WIDTHxHEIGHT"` in virtual pixels — divide by `App.SCALE` (10) for cells, like `Box`. A **docked** `Tabs` fills its slice instead. |
 | `style` | Style for the tab area (its `bg` fills the panel background) |
 | `accent` | Color of the active tab + its underline (default `"bright_cyan"`) |
+| `animate` | Glide the underline on switch and reveal the new panel when it finishes (`True` by default; `False` = instant swap / reduced motion). |
+| `anim_duration` | Seconds the switch animation takes. |
+
+**Switch animation:** switching tabs smoothly glides the accent underline from the old title to the new one (ease-out, ~30fps); the content area stays empty during the glide and the new panel is revealed only when the animation finishes. It's purely visual — `active`, focus, and hit-testing switch immediately — and self-drives the redraw (no `tick_interval` needed). `animate=False` disables it.
 
 **Building tabs:** `add_tab(title, *widgets)` adds a tab and returns its **panel** (a container) so you can add more widgets to it. Widgets passed inline are placed in the panel immediately.
 
@@ -1070,7 +1074,7 @@ box.add(tabs)
 A scrollable viewport. Add widgets whose combined height exceeds the box; only the visible slice is drawn (clipped to the viewport), with a Textual-style **scrollbar** on the right edge. Child `y` positions are in **content space** (`0` = top of the content, may exceed the viewport height).
 
 ```python
-ScrollView(x, y, size, *, autoscroll=True, scrollbar=True, style=None, accent="bright_cyan")
+ScrollView(x, y, size, *, autoscroll=True, scrollbar=True, smooth=True, style=None, accent="bright_cyan")
 ```
 
 | Parameter | Description |
@@ -1078,6 +1082,7 @@ ScrollView(x, y, size, *, autoscroll=True, scrollbar=True, style=None, accent="b
 | `size` | `"WxH"` string in virtual pixels — ÷ `App.SCALE` (10) for the viewport's cell size. A docked ScrollView fills its slice. |
 | `autoscroll` | `True` (default) keeps the view pinned to the **bottom** as content grows — ideal for logs — until the user scrolls up (which unpins); scrolling back to the bottom re-pins. |
 | `scrollbar` | Show the scrollbar on the right edge (`True` by default; auto-hides when content fits). |
+| `smooth` | `True` (default) eases the displayed offset toward the target (momentum scrolling, ~30fps); `False` snaps instantly. |
 | `accent` | Color of the scrollbar thumb. |
 
 **Scrolling:** mouse **wheel** or the keyboard (↑/↓, PageUp/PageDown, Home/End) while focused, or **drag the scrollbar thumb**. When a `ScrollView` has focus it consumes the wheel/page keys (otherwise they scroll the whole base UI).

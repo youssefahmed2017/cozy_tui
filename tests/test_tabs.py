@@ -91,7 +91,7 @@ def test_click_on_a_tab_title_selects_it():
 
 def test_only_active_panel_content_renders():
     app = make_app()
-    tabs = Tabs(0, 0, "800x200")
+    tabs = Tabs(0, 0, "800x200", animate=False)  # instant swap for a clean assert
     tabs.add_tab("One", Label(1, 1, "PANEL_ONE"))
     tabs.add_tab("Two", Label(1, 1, "PANEL_TWO"))
     app.add(tabs)
@@ -110,3 +110,66 @@ def test_dock_resize_sets_cell_size():
     tabs.dock_resize(50, 20, 10)  # 50x20 cells at scale 10
     assert tabs.natural_width(10) == 50
     assert tabs.natural_height(10) == 20
+
+
+# ── switch animation ─────────────────────────────────────────────────────────
+
+
+def _built_tabs(app, **kw):
+    tabs = Tabs(0, 0, "800x200", **kw)
+    tabs.add_tab("One", Label(1, 1, "PANEL_ONE"))
+    tabs.add_tab("Two", Label(1, 1, "PANEL_TWO"))
+    tabs.add_tab("Three", Label(1, 1, "PANEL_THREE"))
+    app.add(tabs)
+    app.snapshot()  # first draw so _wc is known (a switch only animates after that)
+    return tabs
+
+
+def test_animate_false_switches_instantly():
+    app = make_app()
+    tabs = _built_tabs(app, animate=False)
+    tabs.select(1)
+    assert not tabs._transitioning
+    snap = app.snapshot()
+    assert "PANEL_TWO" in snap and "PANEL_ONE" not in snap
+
+
+def test_select_starts_a_transition():
+    app = make_app()
+    tabs = _built_tabs(app)  # animate defaults on
+    tabs.select(2)
+    assert tabs._transitioning and tabs._from == 0 and tabs._to == 2
+
+
+def test_content_hidden_until_transition_finishes(monkeypatch):
+    import cozy_tui.widgets.layout.tabs as tabsmod
+
+    app = make_app()
+    tabs = _built_tabs(app, anim_duration=0.2)
+    clock = [100.0]
+    monkeypatch.setattr(tabsmod.time, "monotonic", lambda: clock[0])
+
+    tabs.select(1)  # _anim_start = 100.0
+    clock[0] = 100.05  # mid-transition: no panel content is shown yet
+    snap = app.snapshot()
+    assert "PANEL_ONE" not in snap and "PANEL_TWO" not in snap
+    assert "One" in snap and "Two" in snap  # the tab strip stays visible
+
+    clock[0] = 100.3  # finished: the new panel is revealed
+    snap = app.snapshot()
+    assert "PANEL_TWO" in snap and "PANEL_ONE" not in snap
+
+
+def test_transition_settles_after_duration(monkeypatch):
+    import cozy_tui.widgets.layout.tabs as tabsmod
+
+    app = make_app()
+    tabs = _built_tabs(app, anim_duration=0.2)
+    clock = [100.0]
+    monkeypatch.setattr(tabsmod.time, "monotonic", lambda: clock[0])
+
+    tabs.select(1)
+    clock[0] = 100.3  # past the duration
+    snap = app.snapshot()
+    assert not tabs._transitioning
+    assert "PANEL_TWO" in snap and "PANEL_ONE" not in snap
