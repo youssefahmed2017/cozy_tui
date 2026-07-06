@@ -1,3 +1,5 @@
+import re
+
 from cozy_tui import App, Style
 
 
@@ -101,6 +103,28 @@ def test_full_render_uses_crlf_line_breaks():
     out = buf.getvalue()
     assert "\r\n" in out  # rows separated by CRLF
     assert "\n" not in out.replace("\r\n", "")  # and no lone LF anywhere
+
+
+def test_diff_render_coalesces_a_changed_run_into_one_cursor_move():
+    import contextlib
+    import io
+
+    from cozy_tui.widgets import Label
+
+    app = make_app()
+    label = Label(0, 0, "hello")
+    app.add(label)
+    app.render()  # full render primes _prev_cells
+
+    label.text = "HELLO"  # a single contiguous 5-cell change
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        app.render()  # diff render
+    out = buf.getvalue()
+    # One cursor-position escape (CUP) for the whole run, not one per cell.
+    cups = re.findall(r"\033\[\d+;\d+H", out)
+    assert len(cups) == 1
+    assert "HELLO" in out
 
 
 def test_setup_disables_and_restores_autowrap():

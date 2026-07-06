@@ -30,6 +30,9 @@ if IS_WINDOWS:
     _PROCESSED_INPUT = 0x0001
     _LINE_INPUT = 0x0002
     _ECHO_INPUT = 0x0004
+    _MOUSE_INPUT = 0x0010
+    _QUICK_EDIT_MODE = 0x0040
+    _EXTENDED_FLAGS = 0x0080  # required before QuickEdit/mouse flags take effect
 
     def enable_raw():
         try:
@@ -37,9 +40,14 @@ if IS_WINDOWS:
             m_out = ctypes.c_ulong()
             _k32.GetConsoleMode(_H_IN, ctypes.byref(m_in))
             _k32.GetConsoleMode(_H_OUT, ctypes.byref(m_out))
+            # Disable QuickEdit (it steals the mouse for text selection) and enable
+            # mouse input, so mouse events reach the app (translated to VT by
+            # ?1000h/?1006h). Some terminals (WezTerm/ConPTY) drop mouse entirely
+            # without this; Windows Terminal happens to forward it regardless.
             raw_in = (
-                m_in.value & ~(_PROCESSED_INPUT | _LINE_INPUT | _ECHO_INPUT)
-            ) | _VT_INPUT
+                m_in.value
+                & ~(_PROCESSED_INPUT | _LINE_INPUT | _ECHO_INPUT | _QUICK_EDIT_MODE)
+            ) | _VT_INPUT | _MOUSE_INPUT | _EXTENDED_FLAGS
             _k32.SetConsoleMode(_H_IN, raw_in)
             _k32.SetConsoleMode(_H_OUT, m_out.value | _VT_PROCESSING)
             return (m_in.value, m_out.value)

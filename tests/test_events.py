@@ -84,6 +84,26 @@ def test_alt_via_modify_other_keys():
     assert feed("\x1b[97;3u") == "alt+a"
 
 
+def test_csi_u_unmodified_keys_without_a_modifier_field():
+    # WezTerm / kitty / GNOME (kitty keyboard protocol) send unmodified keys as
+    # `CSI code u` with no `;modifier` — Esc must still map to Key.ESC (else the
+    # quit handler never fires and the terminal is left with mouse tracking on).
+    assert feed("\x1b[27u") == Key.ESC
+    assert feed("\x1b[13u") == Key.ENTER
+    assert feed("\x1b[97u") == "a"
+
+
+def test_csi_u_ignores_key_release_events():
+    # kitty protocol appends `:event`; 3 = release. Act on press only.
+    assert feed("\x1b[97;1:3u") is None
+    assert feed("\x1b[97;1:1u") == "a"  # explicit press event
+
+
+def test_csi_u_modified_keys_still_map():
+    assert feed("\x1b[122;6u") == Key.CTRL_Y      # Ctrl+Shift+Z → redo
+    assert feed("\x1b[97;5u") == Key.ctrl("a")    # Ctrl+A
+
+
 def test_ctrl_byte_passthrough():
     assert feed("\x06") == Key.ctrl("f")  # Ctrl+F arrives as raw 0x06
 

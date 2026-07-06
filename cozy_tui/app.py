@@ -1,4 +1,6 @@
+import atexit
 import os
+import signal
 import sys
 import threading
 import time
@@ -223,7 +225,11 @@ class App:
         drag-only ?1002h baseline — never downgrades — which keeps it flicker-
         free and cheap to call on every add()/open_overlay()."""
         if self._running and not self._motion_on and self._wants_motion():
-            sys.stdout.write("\033[?1002l\033[?1003h")
+            # Re-assert SGR extended coordinates (?1006h) after switching tracking
+            # modes: some terminals (WezTerm) otherwise revert to the legacy X10
+            # encoding, whose high bytes get mangled by the UTF-8 input decoder —
+            # breaking clicks/hover and leaving X10 motion reports on exit.
+            sys.stdout.write("\033[?1002l\033[?1003h\033[?1006h")
             sys.stdout.flush()
             self._motion_on = True
 
@@ -495,7 +501,7 @@ class App:
         """Fire every timer whose deadline has passed; reschedule repeats and drop
         spent/cancelled ones. Returns True if any fired (so the caller re-renders)."""
         fired = False
-        for timer in self._timers:
+        for timer in list(self._timers):  # snapshot: callbacks may add timers
             if timer.alive and now >= timer.deadline:
                 timer.callback()
                 fired = True
@@ -715,26 +721,46 @@ class App:
         self._last_cursor_esc = cursor
 
     def _do_diff_render(self):
-        """Write only cells that changed since the last render."""
+        """Write only cells that changed since the last render, coalescing each
+        span of consecutive changed cells into a single cursor move + a style
+        escape per style change (rather than one per cell)."""
         out = []
         prev = self._prev_cells
 
         for r, row in enumerate(self.buffer):
             prev_row = prev[r]
-            for c, cell in enumerate(row):
+            n = len(row)
+            c = 0
+            while c < n:
+                cell = row[c]
                 sk = cell.style.styles
                 key = (cell.char, cell.style.fg, cell.style.bg, sk)
                 if key == prev_row[c]:
+                    c += 1
                     continue
-                prev_row[c] = key
+                # start a run at column c: one cursor move for the whole span
                 out.append(f"\033[{r + 1};{c + 1}H")
-                out.append(style_esc(cell.style.fg, cell.style.bg, sk))
-                out.append(cell.char)
+                cur_style = None
+                while c < n:
+                    cell = row[c]
+                    sk = cell.style.styles
+                    key = (cell.char, cell.style.fg, cell.style.bg, sk)
+                    if key == prev_row[c]:
+                        break  # run ends at the first unchanged cell
+                    prev_row[c] = key
+                    style_key = (cell.style.fg, cell.style.bg, sk)
+                    if style_key != cur_style:
+                        out.append(style_esc(cell.style.fg, cell.style.bg, sk))
+                        cur_style = style_key
+                    out.append(cell.char)
+                    c += 1
 
         cursor = self._cursor_esc()
         if out or cursor != self._last_cursor_esc:
-            out.append(cursor)
-            sys.stdout.write("".join(out))
+            body = "".join(out)
+            if body:
+                body += "\033[0m"  # reset after the runs; each run re-sets style
+            sys.stdout.write(body + cursor)
             sys.stdout.flush()
             self._last_cursor_esc = cursor
 
@@ -866,18 +892,21 @@ class App:
         self._motion_on = self._wants_motion()
         motion = "1003" if self._motion_on else "1002"
         mouse_on = f"\033[?1000h\033[?{motion}h\033[?1006h"
-        # Disable both motion modes on exit regardless of which we ended on (a
-        # dynamic upgrade may have switched us to 1003 after setup).
-        mouse_off = "\033[?1006l\033[?1003l\033[?1002l\033[?1000l"
+        # Disable every mouse mode on exit regardless of which we ended on (a
+        # dynamic upgrade may have switched us to 1003 after setup). Turn the
+        # *tracking* modes off before the SGR encoding (1006) — some terminals
+        # (WezTerm) otherwise keep motion reporting on in the legacy encoding.
+        mouse_off = "\033[?1003l\033[?1002l\033[?1000l\033[?1006l"
         enter = (
             f"\033[?1049h\033[2J\033[H\033[?25l\033[?7l{mouse_on}\033[?2004h\033[>4;1m"
             if self.full
             else f"\033[2J\033[H\033[?25l\033[?7l{mouse_on}\033[?2004h\033[>4;1m"
         )
+        # Disable the mouse again after leaving the alt screen, in case the
+        # terminal tracks mouse state per screen buffer.
+        reset = f"\033[>4;0m\033[?2004l{mouse_off}\033[?7h\033[?25h"
         exit_ = (
-            f"\033[>4;0m\033[?2004l{mouse_off}\033[?7h\033[?25h\033[?1049l"
-            if self.full
-            else f"\033[>4;0m\033[?2004l{mouse_off}\033[?7h\033[?25h"
+            f"{reset}\033[?1049l{mouse_off}" if self.full else f"{reset}{mouse_off}"
         )
         return enter, exit_
 
@@ -890,6 +919,34 @@ class App:
         sys.stdout.flush()
         raw_state = enable_raw()
         self._running = True
+
+        # Safety net: restore the terminal on *any* exit, including a tab close
+        # (SIGHUP) or kill (SIGTERM) that skips the finally below. Without this a
+        # hard exit leaves mouse tracking on, spraying reports into the shell.
+        cleaned = [False]
+
+        def _restore_terminal():
+            if cleaned[0]:
+                return
+            cleaned[0] = True
+            try:
+                restore(raw_state)
+            finally:
+                sys.stdout.write(exit_)
+                sys.stdout.flush()
+
+        atexit.register(_restore_terminal)
+        old_handlers = {}
+        for _name in ("SIGHUP", "SIGTERM"):
+            sig = getattr(signal, _name, None)
+            if sig is None:
+                continue
+            try:  # signals only settable on the main thread
+                old_handlers[sig] = signal.signal(
+                    sig, lambda *_a: (_restore_terminal(), os._exit(1))
+                )
+            except (ValueError, OSError):
+                pass
         try:
             while not self._should_quit:
                 if self._check_resize():
@@ -1007,6 +1064,10 @@ class App:
             pass
         finally:
             self._running = False
-            restore(raw_state)
-            sys.stdout.write(exit_)
-            sys.stdout.flush()
+            _restore_terminal()
+            atexit.unregister(_restore_terminal)
+            for sig, old in old_handlers.items():
+                try:
+                    signal.signal(sig, old)
+                except (ValueError, OSError):
+                    pass

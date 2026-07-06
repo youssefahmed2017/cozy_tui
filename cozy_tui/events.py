@@ -364,13 +364,37 @@ def _read_csi():
     if buf.startswith("3") and buf.endswith("~"):
         return Key.DELETE
 
-    # XTerm modifyOtherKeys / kitty keyboard: ESC [ codepoint ; modifier u
-    # Windows Terminal sends these when \033[>4;1m is active.  Map modified
-    # letter keys back to their expected constants so existing handlers work.
-    if buf.endswith("u") and ";" in buf:
+    # CSI-u key encoding: ESC [ code (; mod (: event)? )? u
+    #
+    # XTerm and Windows Terminal emit the two-field form (`code;mod u`) only for
+    # modified keys, under modifyOtherKeys (\033[>4;1m). But WezTerm, kitty, foot
+    # and modern VTE (GNOME Terminal) speak the *kitty keyboard protocol*, which
+    #   • may OMIT the modifier for unmodified keys — e.g. Esc arrives as `27u`,
+    #     Enter as `13u`, Tab as `9u` (the old `;`-required check dropped these,
+    #     so Esc never reached the quit handler — the terminal was then closed
+    #     abnormally, leaving mouse tracking on); and
+    #   • may append an `:event` sub-parameter (2=repeat, 3=release).
+    # So accept any `…u`, default a missing modifier to 1, and ignore releases.
+    if buf.endswith("u"):
+        fields = buf[:-1].split(";")
         try:
-            cp, mod = (int(x) for x in buf[:-1].split(";", 1))
-        except ValueError:
+            cp = int(fields[0].split(":")[0])  # key code (ignore any :alternate)
+        except (ValueError, IndexError):
+            return None
+        mod, event = 1, 1
+        if len(fields) >= 2:
+            mparts = fields[1].split(":")
+            if mparts[0]:
+                try:
+                    mod = int(mparts[0])
+                except ValueError:
+                    return None
+            if len(mparts) >= 2 and mparts[1]:
+                try:
+                    event = int(mparts[1])
+                except ValueError:
+                    event = 1
+        if event == 3:  # key release — act on press/repeat only
             return None
         # Ctrl+Shift+Z (modifier 6, codepoint 90='Z' or 122='z') → treat as redo
         if mod == 6 and cp in (90, 122):
@@ -382,7 +406,8 @@ def _read_csi():
         # Alt (3) or Alt+Shift (4) + printable → "alt+<char>"
         if mod in (3, 4) and cp >= 0x20:
             return Key.alt(chr(cp))
-        if mod == 1:
+        # Unmodified (1) or shift-only (2): the plain key / character.
+        if mod in (1, 2):
             return Key.BACKSPACE if cp == 127 else chr(cp)
         return None
 
