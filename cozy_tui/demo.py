@@ -6,6 +6,8 @@ a content area, and a footer hint bar. Tab moves focus into the current page,
 Enter/Space activate the focused control, and Esc quits.
 """
 
+import time
+
 from cozy_tui import App, Style
 from cozy_tui import __version__ as _VERSION
 from cozy_tui.events import Key
@@ -13,7 +15,7 @@ from cozy_tui.widgets import (AnimatedLabel, Bindings, Box, Button, Checkbox,
                               CheckItem, CheckList, Dropdown, GlowAnimation,
                               Hyperlink, Input, Label, ListItem, ListView,
                               MenuItem, MenuSeparator, RadioItem, RadioSet,
-                              RightClickMenu, Table, Tabs, Tree)
+                              RightClickMenu, Spinner, Table, Tabs, Tree)
 
 GITHUB = "https://github.com/youssefahmed2017/cozy_tui"
 PYPI = "https://pypi.org/project/cozy-tui/"
@@ -160,7 +162,7 @@ def page_data(app, box):
 
 def page_overlays(app, box):
     box.add(Label(2, 1, "Overlays float above everything and confine focus:", ACCENT))
-    info = Label(2, 6, "", OK)
+    info = Label(2, 5, "", OK)
 
     def open_dialog(_b):
         dlg = Box(0, 0, "420x140", title="Confirm", border="rounded")
@@ -186,6 +188,35 @@ def page_overlays(app, box):
         )
     )
     box.add(info)
+
+    # Toasts are transient overlays; a Spinner shows background work in flight.
+    box.add(Label(2, 8, "Notifications & background work:", ACCENT))
+    levels = ["info", "success", "warning", "error"]
+    state = {"n": 0, "busy": False}
+
+    def notify(_b):
+        level = levels[state["n"] % len(levels)]
+        state["n"] += 1
+        app.toast(f"This is a {level} toast.", level=level)
+
+    spinner = Spinner(38, 10, label="Loading…")
+
+    def load(_b):
+        if state["busy"]:
+            return
+        state["busy"] = True
+        box.add(spinner)  # appears and self-animates while the worker runs
+
+        def done(rows):
+            state["busy"] = False
+            if spinner in box.children:
+                box.children.remove(spinner)
+            app.toast(f"Loaded {rows} rows.", level="success")
+
+        app.run_worker(lambda: (time.sleep(1.5), 128)[1], on_result=done)
+
+    box.add(Button(2, 10, "Notify").on_click(notify))
+    box.add(Button(13, 10, "Load data").on_click(load))
 
 
 def page_about(app, box):
