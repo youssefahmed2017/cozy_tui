@@ -36,6 +36,16 @@ class Style:
         return self.bg
 
 
+def selection_style(dim: bool = False) -> Style:
+    """The focused-row highlight style shared by ListView, RadioSet, CheckList,
+    Table, Tree, Dropdown, Checkbox, and RightClickMenu: a solid inverted block
+    for the item under the cursor. `dim=True` gives the softer variant used for
+    "selected but not the cursor row" (bold foreground, no background fill)."""
+    if dim:
+        return Style(fg="white", styles=["bold"])
+    return Style(fg="black", bg="white", styles=["bold"])
+
+
 class Cell:
     __slots__ = ("char", "style")
 

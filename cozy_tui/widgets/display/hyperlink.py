@@ -14,7 +14,12 @@ class Hyperlink(Widget):
     focusable = True
 
     def __init__(self, x, y, text, link, style=None):
-        super().__init__(x, y, style or Style(fg="blue", styles=["bold", "underline"]))
+        super().__init__(
+            x,
+            y,
+            style or Style(fg="blue", styles=["bold", "underline"]),
+            name="Hyperlink",
+        )
         self.text = text
         self.link = link
         self.laps = True

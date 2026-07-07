@@ -1,7 +1,7 @@
 from typing import Any
 
 from cozy_tui.events import Key
-from cozy_tui.style import Style
+from cozy_tui.style import Style, selection_style
 from cozy_tui.widget import Widget
 
 
@@ -36,8 +36,11 @@ class CheckList(Widget):
         width=None,
         height=None,
         style=None,
+        mouse_moves: bool = False,
     ):
-        super().__init__(x, y, style)  # hover-to-highlight is opt-in (mouse_moves=True)
+        super().__init__(
+            x, y, style, mouse_moves=mouse_moves, name="Check List"
+        )  # hover-to-highlight opt-in
         self._items: list[CheckItem] = []
         self._index: int = 0
         self._scroll_off: int = 0
@@ -242,9 +245,9 @@ class CheckList(Widget):
             text = f"{prefix}[{mark}] {item.text}".ljust(w)[:w]
 
             if is_focused and is_sel:
-                style = Style(fg="black", bg="white", styles=["bold"])
+                style = selection_style()
             elif is_sel:
-                style = Style(fg="white", styles=["bold"])
+                style = selection_style(dim=True)
             elif item.checked:
                 style = Style(fg=self.style.fg, bg=raw_bg, styles=["dim"])
             else:

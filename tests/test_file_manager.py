@@ -6,7 +6,9 @@ import pathlib
 
 _PATH = (
     pathlib.Path(__file__).resolve().parents[1]
-    / "examples" / "file_manager" / "file_manager.py"
+    / "examples"
+    / "file_manager"
+    / "file_manager.py"
 )
 _spec = importlib.util.spec_from_file_location("file_manager", _PATH)
 fm = importlib.util.module_from_spec(_spec)

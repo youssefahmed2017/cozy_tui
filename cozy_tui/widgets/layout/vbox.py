@@ -5,7 +5,7 @@ class VBox(Layout):
     """Stack children vertically, top to bottom."""
 
     def __init__(self, x, y, gap=0, style=None):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Vertical Box")
         self.gap = gap
 
     def _arrange(self):

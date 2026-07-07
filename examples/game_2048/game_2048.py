@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from cozy_tui import App, Style
 from cozy_tui.events import Key
 from cozy_tui.widget import Widget
-from cozy_tui.widgets import Box, Button, Label, Bindings
+from cozy_tui.widgets import Bindings, Box, Button, Label
 
 SIZE = 4
 
@@ -150,9 +150,18 @@ class Game2048(Widget):
     focusable = True
 
     _KEYS = {
-        Key.LEFT: "left", Key.RIGHT: "right", Key.UP: "up", Key.DOWN: "down",
-        "a": "left", "d": "right", "w": "up", "s": "down",
-        "h": "left", "l": "right", "k": "up", "j": "down",
+        Key.LEFT: "left",
+        Key.RIGHT: "right",
+        Key.UP: "up",
+        Key.DOWN: "down",
+        "a": "left",
+        "d": "right",
+        "w": "up",
+        "s": "down",
+        "h": "left",
+        "l": "right",
+        "k": "up",
+        "j": "down",
     }
 
     def __init__(self, app):
@@ -196,10 +205,14 @@ class Game2048(Widget):
 
         if not self.keep_going and max_tile(self.grid) >= 2048:
             self.state = "won"
-            self._show_end("You win! 🎉", f"You reached 2048 — score {self.score}", win=True)
+            self._show_end(
+                "You win! 🎉", f"You reached 2048 — score {self.score}", win=True
+            )
         elif not has_moves(self.grid):
             self.state = "over"
-            self._show_end("Game Over", f"No moves left — score {self.score}", win=False)
+            self._show_end(
+                "Game Over", f"No moves left — score {self.score}", win=False
+            )
 
     def _continue(self):
         self.keep_going = True
@@ -209,8 +222,14 @@ class Game2048(Widget):
             self._over_box = None
 
     def _show_end(self, title, message, win):
-        box = Box(0, 0, "440x120", title=title, border="bold",
-                  style=Style(fg="white", bg="black"))
+        box = Box(
+            0,
+            0,
+            "440x120",
+            title=title,
+            border="bold",
+            style=Style(fg="white", bg="black"),
+        )
         box.add(Label(2, 1, message))
         x = 2
         if win:
@@ -265,11 +284,16 @@ class Game2048(Widget):
 
         # title + score
         title = "2 0 4 8"
-        canvas.write(ox + (BW - len(title)) // 2, top, title,
-                     Style(fg=GOLD, styles=["bold"]))
+        canvas.write(
+            ox + (BW - len(title)) // 2, top, title, Style(fg=GOLD, styles=["bold"])
+        )
         score = f"Score {self.score}     Best {self.best}"
-        canvas.write(ox + (BW - len(score)) // 2, top + 2, score,
-                     Style(fg="bright_white", styles=["bold"]))
+        canvas.write(
+            ox + (BW - len(score)) // 2,
+            top + 2,
+            score,
+            Style(fg="bright_white", styles=["bold"]),
+        )
 
         # tiles
         for r in range(SIZE):

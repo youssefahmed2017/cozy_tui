@@ -1,3 +1,5 @@
+from collections import deque
+
 import cozy_tui.events as ev
 from cozy_tui import App, Style
 from cozy_tui.events import Key, MouseClick, MouseDrag, MouseMove, MouseRelease
@@ -6,7 +8,7 @@ from cozy_tui.widget import Widget
 
 def feed(seq: str):
     """Prime the internal read buffer and parse one event (stdin untouched)."""
-    ev._buf = list(seq)
+    ev._buf = deque(seq)
     return ev.read_key()
 
 
@@ -65,7 +67,7 @@ def test_sequence_split_on_esc_is_not_misread_as_escape():
     # instead of firing Key.ESC (which, bound to quit, closed apps instantly).
     orig_read, orig_wait = ev.os.read, ev._console.wait_input
     try:
-        ev._buf = list("\x1b")  # chunk ended right on the ESC
+        ev._buf = deque("\x1b")  # chunk ended right on the ESC
         rest = list("[<35;5;3M")  # continuation: a MouseMove
         ev.os.read = lambda fd, n: ("".join(rest), rest.clear())[0].encode()
         ev._console.wait_input = lambda t: True  # continuation is pending
@@ -74,18 +76,18 @@ def test_sequence_split_on_esc_is_not_misread_as_escape():
         assert (e.col, e.row) == (4, 2)
     finally:
         ev.os.read, ev._console.wait_input = orig_read, orig_wait
-        ev._buf = []
+        ev._buf = deque()
 
 
 def test_lone_escape_still_returns_escape():
     orig_wait = ev._console.wait_input
     try:
         ev._console.wait_input = lambda t: False  # nothing follows the ESC
-        ev._buf = list("\x1b")
+        ev._buf = deque("\x1b")
         assert ev.read_key() == Key.ESC
     finally:
         ev._console.wait_input = orig_wait
-        ev._buf = []
+        ev._buf = deque()
 
 
 # ── app dispatch ──────────────────────────────────────────────────────────────

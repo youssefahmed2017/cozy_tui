@@ -39,8 +39,11 @@ class Button(Widget):
         *,
         animation=None,
         active_effect_duration: float = 0.2,
+        mouse_moves: bool = False,
     ):
-        super().__init__(x, y, style)  # hover state is opt-in (set mouse_moves=True)
+        super().__init__(
+            x, y, style, mouse_moves=mouse_moves, name="Button"
+        )  # hover state opt-in
         self.text = text
         self.width = width
         self.animation = animation
@@ -135,9 +138,7 @@ class Button(Widget):
         if self._active:
             # Tint the whole button toward the screen background (Textual's
             # -active effect), producing a brief "pressed-in" darkening.
-            screen_bg = canvas.style.bg
-            if screen_bg and screen_bg.endswith("_bg"):
-                screen_bg = screen_bg[:-3]
+            screen_bg = canvas.style.raw_bg
             fg_c = tint(fg_c, screen_bg, self.ACTIVE_TINT)
             bg_c = tint(bg_c, screen_bg, self.ACTIVE_TINT) if bg_c else bg_c
 

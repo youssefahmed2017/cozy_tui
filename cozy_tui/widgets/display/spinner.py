@@ -1,5 +1,6 @@
 import time
 
+from cozy_tui._spinners import SPINNERS
 from cozy_tui._width import text_width
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
@@ -20,20 +21,47 @@ class Spinner(Widget):
         box.add(spinner)
         app.run_worker(fetch, on_result=lambda data: box.remove(spinner))
 
-    Frame presets are class attributes: ``Spinner.DOTS`` (default), ``LINE``,
-    ``BAR``, ``MOON``, ``ARROW``.
+        Spinner(2, 2, spinner="material", label="Uploading…")  # a named preset
+
+    ``spinner`` picks both frames and speed from the built-in catalog:
+    ``dots`` (default), ``line``, ``normalDots``, ``growVertical``, ``bounce``,
+    ``arrow``, ``bouncingBar``, ``bouncingBall``, ``clock``, ``material``,
+    ``moon``, ``pong``, ``aesthetic``. Passing ``frames=``/``speed=`` overrides
+    it for a fully custom animation. The original class attributes
+    (``Spinner.DOTS``, ``LINE``, ``BAR``, ``MOON``, ``ARROW``) still work and
+    are just the matching preset's frames.
     """
 
-    DOTS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-    LINE = ("|", "/", "-", "\\")
-    BAR = ("▁", "▃", "▄", "▅", "▆", "▇", "▆", "▅", "▄", "▃")
-    MOON = ("🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘")
-    ARROW = ("←", "↖", "↑", "↗", "→", "↘", "↓", "↙")
+    DOTS = SPINNERS["dots"][0]
+    LINE = SPINNERS["line"][0]
+    BAR = SPINNERS["growVertical"][0]
+    MOON = SPINNERS["moon"][0]
+    ARROW = SPINNERS["arrow"][0]
 
-    def __init__(self, x, y, *, frames=None, speed=0.08, label="", style=None):
-        super().__init__(x, y, style)
-        self.frames = tuple(frames) if frames is not None else tuple(self.DOTS)
-        self.speed = speed
+    def __init__(
+        self,
+        x,
+        y,
+        *,
+        frames=None,
+        speed: float | None = None,
+        spinner: str = "dots",
+        label: str = "",
+        style: Style | None = None,
+    ):
+        super().__init__(x, y, style, name="Spinner")
+        if frames is not None:
+            self.frames = tuple(frames)
+            self.speed = speed if speed is not None else 0.08
+        else:
+            if spinner not in SPINNERS:
+                raise ValueError(
+                    f"Unknown spinner preset {spinner!r}; choose from "
+                    f"{', '.join(sorted(SPINNERS))}"
+                )
+            preset_frames, preset_speed = SPINNERS[spinner]
+            self.frames = preset_frames
+            self.speed = speed if speed is not None else preset_speed
         self.label = label
         self._start = time.monotonic()
 

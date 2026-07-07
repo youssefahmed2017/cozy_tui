@@ -83,13 +83,15 @@ def main():
     # ── About tab ───────────────────────────────────────────────────────────────
     about_panel.add(Label(1, 0, "Cozy Dashboard", ACCENT))
     about_panel.add(Label(1, 2, "One example wiring together several widgets:"))
-    for i, line in enumerate([
-        "Tabs        — the three panels above",
-        "ProgressBar — one bar per file on the Downloads tab",
-        "Spinner     — spins next to Start while work is in flight",
-        "ScrollView  — the Activity log (autoscroll + scrollbar)",
-        "app.toast   — pops when each file (and the batch) completes",
-    ]):
+    for i, line in enumerate(
+        [
+            "Tabs        — the three panels above",
+            "ProgressBar — one bar per file on the Downloads tab",
+            "Spinner     — spins next to Start while work is in flight",
+            "ScrollView  — the Activity log (autoscroll + scrollbar)",
+            "app.toast   — pops when each file (and the batch) completes",
+        ]
+    ):
         about_panel.add(Label(3, 4 + i, line, MUTED))
 
     # ── the download loop (main-thread timer) ───────────────────────────────────

@@ -1,5 +1,5 @@
 from cozy_tui.events import Key
-from cozy_tui.style import Style
+from cozy_tui.style import Style, selection_style
 from cozy_tui.widget import Widget
 from cozy_tui.widgets.selection.list_view import ListView, _display, _value
 
@@ -10,7 +10,7 @@ class Dropdown(Widget):
     def __init__(
         self, x, y, items=None, *, width=None, height=6, style=None, placeholder=None
     ):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Dropdown")
         # The inner ListView owns item storage, scrolling, and row rendering. When
         # open it is pushed onto the App's overlay layer so it floats above every
         # other widget instead of being drawn inline (which could be overpainted).
@@ -159,7 +159,7 @@ class Dropdown(Widget):
         header = "[ " + display[:inner].ljust(inner) + " " + arrow + "]"
 
         if is_focused:
-            header_style = Style(fg="black", bg="white", styles=["bold"])
+            header_style = selection_style()
         elif not label and self.placeholder:
             header_style = Style(fg="bright_black", styles=["dim"])
         else:

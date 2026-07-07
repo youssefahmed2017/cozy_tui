@@ -1,5 +1,6 @@
 import codecs
 import os
+from collections import deque
 
 from cozy_tui import _console
 
@@ -197,8 +198,10 @@ _KEY_LABELS = {
 # Internal read buffer.  We bulk-read from stdin on every refill so that a full
 # VT sequence (e.g. ESC [ A) lands in _buf all at once, making the ESC-vs-CSI
 # disambiguation reliable — separate from the OS-level input readiness that
-# _console.kbhit() reports.
-_buf: list[str] = []
+# _console.kbhit() reports. A deque (not a list) so draining it one character
+# at a time (a large paste, or a burst of mouse-motion reports) is O(1) per
+# character instead of O(n) per `list.pop(0)`.
+_buf: deque = deque()
 
 # How long read_key waits for a VT-sequence continuation before treating a
 # lone ESC (empty buffer) as the Escape key. Long enough to catch a sequence
@@ -216,13 +219,20 @@ def _read_char() -> str:
     """Return one character, doing a bulk read from stdin if the buffer is empty."""
     global _buf
     if _buf:
-        return _buf.pop(0)
+        return _buf.popleft()
     raw = os.read(0, 1024)  # reads ALL currently available bytes
-    chars = list(_decoder.decode(raw))
-    if not chars:
+    if not raw:
+        # stdin closed (EOF). A live raw-mode fd never returns b"" from a read
+        # that only happens after kbhit()/select() reported data available, so
+        # this unambiguously means the input stream is gone. Without this,
+        # POSIX select() reports a closed fd as forever-readable, so the caller
+        # would otherwise busy-loop at 100% CPU re-reading "" forever.
+        raise EOFError("stdin closed")
+    text = _decoder.decode(raw)
+    if not text:
         return ""
-    _buf = chars[1:]
-    return chars[0]
+    _buf = deque(text)
+    return _buf.popleft()
 
 
 # CSI final-byte → Key constant

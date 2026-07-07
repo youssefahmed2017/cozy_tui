@@ -34,9 +34,19 @@ class ScrollView(Widget):
     THUMB = "█"
     TRACK = "│"
 
-    def __init__(self, x, y, size, *, autoscroll=True, scrollbar=True,
-                 smooth=True, style=None, accent="bright_cyan"):
-        super().__init__(x, y, style)
+    def __init__(
+        self,
+        x,
+        y,
+        size,
+        *,
+        autoscroll=True,
+        scrollbar=True,
+        smooth=True,
+        style=None,
+        accent="bright_cyan",
+    ):
+        super().__init__(x, y, style, name="Scroll View")
         self.width, self.height = map(int, size.split("x"))
         self.autoscroll = autoscroll
         self.scrollbar = scrollbar
@@ -183,11 +193,18 @@ class ScrollView(Widget):
         for r in range(vh):  # paint the viewport background
             canvas.write(x, y + r, " " * vw, self.style)
 
-        # draw children offset by the scroll, clipped to the viewport (minus the bar)
+        # draw children offset by the scroll, clipped to the viewport (minus the bar).
+        # Children fully outside [offset, offset+vh) are skipped entirely (not just
+        # clipped) so a long log/list doesn't pay for off-screen widgets' draw() every
+        # frame — _layout_y is still kept current for all of them so hit-testing
+        # (contains()) never sees a stale position for a child scrolled into view by
+        # a mouse-only change (e.g. a drag) that doesn't itself trigger a redraw.
         canvas.push_clip(x, y, x + inner_w, y + vh)
         for child in self._children:
             child._layout_y = -offset
-            child.draw(canvas)
+            top = child.y - offset
+            if top + child.natural_height(canvas.SCALE) > 0 and top < vh:
+                child.draw(canvas)
         canvas.pop_clip()
 
         if show_bar:
@@ -205,5 +222,9 @@ class ScrollView(Widget):
         track_style = Style(fg="bright_black", bg=raw_bg)
         for r in range(vh):
             on_thumb = pos <= r < pos + thumb
-            canvas.write(col, top + r, self.THUMB if on_thumb else self.TRACK,
-                         thumb_style if on_thumb else track_style)
+            canvas.write(
+                col,
+                top + r,
+                self.THUMB if on_thumb else self.TRACK,
+                thumb_style if on_thumb else track_style,
+            )

@@ -48,6 +48,7 @@ def page_welcome(app, box):
             {
                 "Navigation": {"↑ / ↓": "Switch page", "Tab": "Focus a control"},
                 "Global": {"Enter / Space": "Activate", "Esc": "Quit"},
+                "Debug": {"F12": "Toggle debug log"},
             },
             title="Keys",
         )
@@ -199,7 +200,7 @@ def page_overlays(app, box):
         state["n"] += 1
         app.toast(f"This is a {level} toast.", level=level)
 
-    spinner = Spinner(38, 10, label="Loading…")
+    spinner = Spinner(38, 10, label="Loading...", spinner="clock")
 
     def load(_b):
         if state["busy"]:
@@ -246,6 +247,7 @@ def main() -> None:
         style=Style(fg="white", bg="black"),
         title="Cozy TUI Demo",
     )
+    app.debug(f"Cozy TUI {_VERSION} demo started — F12 or right-click > Open Debugger")
     app.tick_interval = 0.06  # keep the animated header running
 
     header = Box(0, 0, "10x10", title="✨ Cozy TUI", border="rounded")
@@ -276,6 +278,7 @@ def main() -> None:
             f"  {PAGES[index][0]}     ←/→ or click: switch tab    Tab: into panel    "
             "Right-click: menu    Enter/Space: activate    Esc: quit"
         )
+        app.debug(f"switched to tab {index!r}: {PAGES[index][0]}")
 
     tabs.on_change(on_tab)
     on_tab(0)
@@ -293,9 +296,17 @@ def main() -> None:
             ),
             MenuSeparator(),
             MenuItem("Quit", icon="🚪", shortcut="Esc", on_select=lambda i: app.quit()),
+            MenuItem(
+                "Open Debugger", icon="🐞", on_select=lambda _: app.toggle_debug_pane()
+            ),
         ]
     )
-    app.on_right_click(lambda col, row, w: menu.open_at(app, col, row))
+
+    def on_right_click(col, row, w):
+        app.debug(f"right-click at ({col}, {row}) on {type(w).__name__ if w else None}")
+        menu.open_at(app, col, row)
+
+    app.on_right_click(on_right_click)
 
     app.focus(tabs.bar)
     app.on_key(Key.ESC, lambda: "quit")

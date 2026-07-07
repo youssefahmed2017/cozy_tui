@@ -11,6 +11,7 @@ Public API (identical on every platform):
     restore(state) -> None         # undo enable_raw()
     kbhit() -> bool                # is input available right now?
     wait_input(timeout) -> bool    # block up to `timeout` seconds for input
+    flush_input() -> None          # discard any input queued before raw mode
 """
 
 import sys
@@ -45,9 +46,14 @@ if IS_WINDOWS:
             # ?1000h/?1006h). Some terminals (WezTerm/ConPTY) drop mouse entirely
             # without this; Windows Terminal happens to forward it regardless.
             raw_in = (
-                m_in.value
-                & ~(_PROCESSED_INPUT | _LINE_INPUT | _ECHO_INPUT | _QUICK_EDIT_MODE)
-            ) | _VT_INPUT | _MOUSE_INPUT | _EXTENDED_FLAGS
+                (
+                    m_in.value
+                    & ~(_PROCESSED_INPUT | _LINE_INPUT | _ECHO_INPUT | _QUICK_EDIT_MODE)
+                )
+                | _VT_INPUT
+                | _MOUSE_INPUT
+                | _EXTENDED_FLAGS
+            )
             _k32.SetConsoleMode(_H_IN, raw_in)
             _k32.SetConsoleMode(_H_OUT, m_out.value | _VT_PROCESSING)
             return (m_in.value, m_out.value)
@@ -72,6 +78,20 @@ if IS_WINDOWS:
     def wait_input(timeout):
         ms = max(0, int(timeout * 1000))
         return _k32.WaitForSingleObject(_H_IN, ms) == 0
+
+    def flush_input():
+        # Console-window creation queues a FOCUS_EVENT (and sometimes a
+        # WINDOW_BUFFER_SIZE_EVENT) before the app ever reads anything. That
+        # makes WaitForSingleObject/kbhit() report "input ready" immediately,
+        # so the render loop's tick-driven inner wait exits on its very first
+        # check and falls into a *blocking* read_key() — which gets no bytes
+        # for a non-keystroke event, so animations sit frozen on frame 0 until
+        # a real key/mouse event arrives. Discard the stale queue once raw
+        # mode is entered so the loop starts clean and self-drives normally.
+        try:
+            _k32.FlushConsoleInputBuffer(_H_IN)
+        except Exception:
+            pass
 
 else:  # POSIX (Linux, macOS, *BSD)
     import select
@@ -106,3 +126,13 @@ else:  # POSIX (Linux, macOS, *BSD)
             return bool(select.select([sys.stdin], [], [], max(0, timeout))[0])
         except Exception:
             return False
+
+    def flush_input():
+        # Discards any bytes typed before raw mode took effect (type-ahead) so
+        # they aren't misread once the loop starts. select()-based waiting has
+        # no Windows-style phantom-event issue, but flushing is still cheap and
+        # keeps behavior consistent across platforms.
+        try:
+            termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+        except Exception:
+            pass

@@ -1,7 +1,7 @@
 from typing import Any
 
 from cozy_tui.events import Key
-from cozy_tui.style import Style
+from cozy_tui.style import selection_style
 from cozy_tui.widget import Widget
 
 
@@ -39,8 +39,11 @@ class RadioSet(Widget):
         width=None,
         height=None,
         style=None,
+        mouse_moves: bool = False,
     ):
-        super().__init__(x, y, style)  # hover-to-highlight is opt-in (mouse_moves=True)
+        super().__init__(
+            x, y, style, mouse_moves=mouse_moves, name="Radio Set"
+        )  # hover-to-highlight opt-in
         self._items: list[RadioItem] = []
         self._index: int = 0  # cursor position
         self._selected: int | None = None  # chosen option, or None
@@ -210,9 +213,9 @@ class RadioSet(Widget):
             text = f"{prefix}({mark}) {item.text}".ljust(w)[:w]
 
             if is_focused and is_cursor:
-                style = Style(fg="black", bg="white", styles=["bold"])
+                style = selection_style()
             elif is_cursor:
-                style = Style(fg="white", styles=["bold"])
+                style = selection_style(dim=True)
             else:
                 style = self.style
 

@@ -8,7 +8,7 @@ from cozy_tui.style import Style
 
 try:
     __version__ = _pkg_version("cozy-tui")
-except PackageNotFoundError:  # running from a source tree without an install
+except PackageNotFoundError:  # running from a source tree without an installation
     __version__ = "dev"
 
 # Widgets are intentionally NOT re-exported here — import them from the

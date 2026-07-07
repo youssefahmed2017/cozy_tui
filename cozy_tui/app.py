@@ -6,7 +6,7 @@ import threading
 import time
 from collections import deque
 
-from cozy_tui._console import enable_raw, restore, wait_input
+from cozy_tui._console import enable_raw, flush_input, restore, wait_input
 from cozy_tui._dock import SIDES, dock_layout
 from cozy_tui._width import char_width
 from cozy_tui.ansi import style_esc
@@ -22,6 +22,9 @@ _UNSET = object()
 # results, even when nothing else is due. Small enough to feel responsive,
 # large enough that an idle app isn't busy-spinning.
 _IDLE_POLL = 0.1
+
+# Bounded so a long-running App(debug=True) doesn't leak memory from app.debug().
+_DEBUG_LOG_MAXLEN = 500
 
 
 class _Timer:
@@ -40,7 +43,7 @@ class _Timer:
 
 class _Overlay:
     """A widget layered above the base UI. `modal` confines keyboard/mouse input
-    to it (and, with `dim`, greys the background); a non-modal overlay is purely
+    to it (and, with `dim`, grays the background); a non-modal overlay is purely
     visual (e.g. a tooltip). `prev_focus` is restored when the overlay closes."""
 
     __slots__ = (
@@ -78,18 +81,56 @@ class _Overlay:
 class App:
     SCALE = 10
     BLINK_INTERVAL = 0.5
-    # Two clicks on the same widget within this window count as a double-click.
+    # Two clicks on the same widget within this window count as a double click.
     DOUBLE_CLICK_INTERVAL = 0.4
 
     def __init__(
         self,
-        style: Style = Style(bg="black", fg="white"),
+        style: Style | None = None,
         size=None,
         full=True,
         title: str = "Cozy TUI App",
+        catch_errors: bool = True,
+        debug: bool | None = None,
+        debug_log_path: str | None = None,
+        default_logs: bool = True,
     ):
-        self.style = style
+        # A literal Style() default would be one mutable object shared by every
+        # App() call that omits `style` — mutating one app's .style would then
+        # leak into every other such app. Build a fresh one instead.
+        self.style = style if style is not None else Style(bg="black", fg="white")
         self.full = full
+        # None (the default) defers to COZY_TUI_DEBUG=1, set by `cozy-tui run
+        # --debug script.py` — so a script needs no code change to opt in from
+        # the CLI. An explicit True/False here always wins over the env var.
+        if debug is None:
+            debug = os.environ.get("COZY_TUI_DEBUG") == "1"
+        # If True (the default), an unhandled exception from run() is shown as
+        # a full-screen crash view (cozy_tui.crash_screen.show_traceback)
+        # instead of propagating — after the terminal has been cleanly
+        # restored either way. Pass False for a script/test that wants run()
+        # to raise normally, or that can't offer a real interactive terminal
+        # for the crash screen to block on (e.g. running under CI/headless).
+        self.catch_errors = catch_errors
+        # app.debug(...) is safe to call while the raw-mode/alt-screen loop is
+        # running (unlike print(), which would corrupt the display). Off by
+        # default: no buffer is even allocated unless debug=True, so apps that
+        # never use it pay nothing. View it with the F12 pane (bound below,
+        # only when debug=True) or tail `debug_log_path` from another terminal.
+        self._debug_log = deque(maxlen=_DEBUG_LOG_MAXLEN) if debug else None
+        self._debug_seq = 0
+        self._debug_pane = None
+        # Auto-logs focus changes, key presses, and mouse clicks/drags
+        # via app.debug() — meaningless (and never checked) unless debug=True
+        # too. Pass default_logs=False to keep app.debug() for your own
+        # messages only.
+        self._default_logs = debug and default_logs
+        self._debug_file = None
+        if debug and debug_log_path:
+            try:
+                self._debug_file = open(debug_log_path, "a", encoding="utf-8")
+            except OSError:
+                self._debug_file = None
         # Whether any-motion tracking (?1003h, needed for hover/MouseMove) is
         # currently enabled at the terminal. Driven by per-widget mouse_moves:
         # the App turns it on when a live widget wants motion and never floods
@@ -145,6 +186,13 @@ class App:
         raw_bg = self.style.raw_bg
         self._backdrop_style = Style(fg="bright_black", bg=raw_bg)
         self.title = title
+        if debug:
+            self.on_key(
+                Key.F12,
+                self.toggle_debug_pane,
+                description="Toggle debug log",
+                section="Debug",
+            )
 
     def _init_size(self, size=None):
         if self.full:
@@ -161,6 +209,9 @@ class App:
             self.cols = self.width // self.SCALE
             self.rows = self.height // self.SCALE
         self._size_arg = size
+        self._alloc_buffers()
+
+    def _alloc_buffers(self):
         self.buffer = [
             [Cell(char=" ", style=self.style) for _ in range(self.cols)]
             for _ in range(self.rows)
@@ -184,13 +235,7 @@ class App:
         self.rows = term.lines
         self.width = self.cols * self.SCALE
         self.height = self.rows * self.SCALE
-        self.buffer = [
-            [Cell(char=" ", style=self.style) for _ in range(self.cols)]
-            for _ in range(self.rows)
-        ]
-        self._prev_cells = [[_UNSET] * self.cols for _ in range(self.rows)]
-        self._full_render_pending = True
-        self._last_cursor_esc = None
+        self._alloc_buffers()
         max_scroll = max(0, self._content_rows - self.rows)
         self.scroll_y = min(self.scroll_y, max_scroll)
         return True
@@ -222,8 +267,8 @@ class App:
     def _ensure_motion_mode(self) -> None:
         """Upgrade the terminal to any-motion tracking (?1003h) the moment a
         widget that wants hover becomes live. Only ever upgrades from the
-        drag-only ?1002h baseline — never downgrades — which keeps it flicker-
-        free and cheap to call on every add()/open_overlay()."""
+        drag-only ?1002h baseline — never downgrades — which keeps it flicker-free
+        and cheap to call on every add()/open_overlay()."""
         if self._running and not self._motion_on and self._wants_motion():
             # Re-assert SGR extended coordinates (?1006h) after switching tracking
             # modes: some terminals (WezTerm) otherwise revert to the legacy X10
@@ -275,7 +320,7 @@ class App:
         """Push `widget` onto the overlay stack, drawn above everything else.
 
         A **modal** overlay confines keyboard focus and mouse input to itself
-        (and, with `dim`, greys the background); a **non-modal** overlay is purely
+        (and, with `dim`, grays the background); a **non-modal** overlay is purely
         visual, e.g. a tooltip. `center` re-centres the widget on screen every
         frame (use a `Box` for a dialog). `close_on_escape` / `close_on_click_outside`
         give light dismissal. Overlays are screen-fixed (ignore scrolling).
@@ -294,7 +339,7 @@ class App:
         )
         self._overlays.append(entry)
         if modal:
-            self.focused = self._first_focusable(widget)
+            self._set_focused(self._first_focusable(widget))
         self._ensure_motion_mode()  # an overlay (e.g. a menu) may want hover
         self.invalidate()
         return widget
@@ -311,7 +356,7 @@ class App:
             if entry is None:
                 return
             self._overlays.remove(entry)
-        self.focused = entry.prev_focus
+        self._set_focused(entry.prev_focus)
         self.invalidate()
         if entry.on_close is not None:
             entry.on_close(entry.widget)
@@ -357,7 +402,9 @@ class App:
         )
         return dialog
 
-    def toast(self, message, *, level="info", duration=3.0, icon=None, corner="bottom-right"):
+    def toast(
+        self, message, *, level="info", duration=3.0, icon=None, corner="bottom-right"
+    ):
         """Pop a transient notification that auto-dismisses after ``duration``
         seconds. ``level`` is ``"info"``/``"success"``/``"warning"``/``"error"``
         (sets color + default icon). Stacks with other toasts in ``corner``.
@@ -377,6 +424,48 @@ class App:
         if toast in self._toasts:
             self._toasts.remove(toast)
             self.close_overlay(toast)
+
+    def debug(self, *values, sep: str = " ") -> None:
+        """Append a debug message — safe to call while the raw-mode/alt-screen
+        loop is running, unlike ``print()``, which would corrupt the display.
+        No-op unless the app was built with ``App(debug=True)``. View the log
+        with the F12 pane, or read ``debug_log_path`` from another terminal if
+        one was given."""
+        if self._debug_log is None:
+            return
+        line = sep.join(str(v) for v in values)
+        self._debug_log.append(line)
+        self._debug_seq += 1
+        if self._debug_file is not None:
+            try:
+                self._debug_file.write(line + "\n")
+                self._debug_file.flush()
+            except Exception:
+                pass
+
+    def toggle_debug_pane(self) -> None:
+        """Open or close the F12 debug-log overlay. A no-op if the app wasn't
+        built with ``App(debug=True)`` (there is no log to show). Bound to
+        F12 automatically when `debug=True`; call it yourself to trigger it
+        from a menu item, button, or your own key binding instead."""
+        if self._debug_log is None:
+            return
+        if self._debug_pane is not None:
+            self.close_overlay(self._debug_pane)
+            return
+        from cozy_tui._debug_pane import DebugPane
+
+        # Chrome-DevTools-style: docked to the top-left corner, a quarter of
+        # the screen (half width x half height) — not a centered dialog.
+        w = max(20, self.cols // 2)
+        h = max(6, self.rows // 2)
+        pane = DebugPane(self, 0, 0, f"{w * self.SCALE}x{h * self.SCALE}")
+        self._debug_pane = pane
+
+        def _on_close(_widget):
+            self._debug_pane = None
+
+        self.open_overlay(pane, center=False, on_close=_on_close)
 
     def _topmost_modal(self):
         for entry in reversed(self._overlays):
@@ -399,7 +488,7 @@ class App:
             self._scroll_active = True
 
     def _apply_backdrop(self):
-        """Grey every already-drawn cell (chars kept) as a scrim behind a modal."""
+        """Gray every already-drawn cell (chars kept) as a scrim behind a modal."""
         style = self._backdrop_style
         for row in self.buffer:
             for cell in row:
@@ -437,7 +526,15 @@ class App:
         self._right_click_handler = handler
 
     def focus(self, widget):
+        self._set_focused(widget)
+
+    def _set_focused(self, widget) -> None:
+        """The single place `self.focused` is assigned (besides the initial
+        `None` in `__init__`), so default-logs has one hook instead of one
+        per call site."""
         self.focused = widget
+        if self._default_logs:
+            self.debug(f"Focused on widget: {widget}")
 
     def invalidate(self):
         """Force a full render on the next frame — call after switching screens."""
@@ -482,7 +579,7 @@ class App:
 
     def every(self, interval, callback):
         """Call ``callback()`` every ``interval`` seconds on the main thread until
-        cancelled. Returns a handle for :meth:`cancel`."""
+        canceled. Returns a handle for :meth:`cancel`."""
         timer = _Timer(time.monotonic() + interval, callback, interval)
         self._timers.append(timer)
         return timer
@@ -499,7 +596,7 @@ class App:
 
     def _drain_timers(self, now):
         """Fire every timer whose deadline has passed; reschedule repeats and drop
-        spent/cancelled ones. Returns True if any fired (so the caller re-renders)."""
+        spent/canceled ones. Returns True if any fired (so the caller re-renders)."""
         fired = False
         for timer in list(self._timers):  # snapshot: callbacks may add timers
             if timer.alive and now >= timer.deadline:
@@ -552,7 +649,7 @@ class App:
             idx = focusables.index(self.focused)
         except ValueError:
             idx = -1
-        self.focused = focusables[(idx + direction) % len(focusables)]
+        self._set_focused(focusables[(idx + direction) % len(focusables)])
 
     def push_clip(self, x0, y0, x1, y1):
         """Confine subsequent ``write`` calls to the rectangle ``[x0, x1) ×
@@ -776,7 +873,10 @@ class App:
     def _hit_widget(self, widget, col, row):
         """Deepest focusable descendant of `widget` (children first) at (col, row)."""
         if hasattr(widget, "children"):
-            for child in widget.children:
+            # Reversed: later-added (visually topmost) children win, matching
+            # both draw order and the top-level policy in _hit_test — otherwise
+            # overlapping siblings route clicks to the bottom-most one.
+            for child in reversed(widget.children):
                 result = self._hit_widget(child, col, row)
                 if result:
                     return result
@@ -812,8 +912,12 @@ class App:
         if self._mouse_handler is not None and self._mouse_handler(event):
             return  # consumed by the global hook
         if isinstance(event, MouseClick):
+            if self._default_logs:
+                self.debug(f"Clicked on col: {event.col}, row: {event.row}")
             self._dispatch_click(event, modal)
         elif isinstance(event, MouseDrag):
+            if self._default_logs:
+                self.debug(f"Dragged mouse on col: {event.col}, row: {event.row}")
             if self.focused is not None:
                 self.focused.on_mouse_drag(event.col, event.row)
         elif isinstance(event, MouseRelease):
@@ -821,7 +925,7 @@ class App:
                 self.focused.on_mouse_release(event.col, event.row)
         elif isinstance(event, MouseMove):
             target = self._mouse_target(event.col, event.row, modal)
-            # Only widgets that opted into motion receive hover/enter/leave.
+            # Only widgets that opted into motion receive enter/leave.
             if target is not None and not target.mouse_moves:
                 target = None
             if target is not self._hovered:
@@ -849,7 +953,7 @@ class App:
         if target is None:
             return
         # Clicking a container dives to its first child, matching Tab.
-        self.focused = self._first_focusable(target) or target
+        self._set_focused(self._first_focusable(target) or target)
         now = time.monotonic()
         last_t, last_target, last_btn = self._last_click
         double = (
@@ -905,9 +1009,7 @@ class App:
         # Disable the mouse again after leaving the alt screen, in case the
         # terminal tracks mouse state per screen buffer.
         reset = f"\033[>4;0m\033[?2004l{mouse_off}\033[?7h\033[?25h"
-        exit_ = (
-            f"{reset}\033[?1049l{mouse_off}" if self.full else f"{reset}{mouse_off}"
-        )
+        exit_ = f"{reset}\033[?1049l{mouse_off}" if self.full else f"{reset}{mouse_off}"
         return enter, exit_
 
     def run(self):
@@ -918,6 +1020,12 @@ class App:
         sys.stdout.write(enter)
         sys.stdout.flush()
         raw_state = enable_raw()
+        # Discard input queued before raw mode took effect (e.g. a stale
+        # window-creation focus event on Windows) — otherwise kbhit() reports
+        # ready immediately, the tick loop below never gets a chance to run,
+        # and read_key() blocks until a real key/mouse event arrives, freezing
+        # any animation on its first frame until the user does something.
+        flush_input()
         self._running = True
 
         # Safety net: restore the terminal on *any* exit, including a tab close
@@ -932,8 +1040,14 @@ class App:
             try:
                 restore(raw_state)
             finally:
-                sys.stdout.write(exit_)
-                sys.stdout.flush()
+                # A hard teardown (SIGHUP from a closed tab) can leave stdout as
+                # a broken pipe; don't let that exception stop the SIGHUP/SIGTERM
+                # handler from reaching its os._exit(1).
+                try:
+                    sys.stdout.write(exit_)
+                    sys.stdout.flush()
+                except Exception:
+                    pass
 
         atexit.register(_restore_terminal)
         old_handlers = {}
@@ -947,6 +1061,7 @@ class App:
                 )
             except (ValueError, OSError):
                 pass
+        crash_exc = None
         try:
             while not self._should_quit:
                 if self._check_resize():
@@ -1017,10 +1132,12 @@ class App:
                 if isinstance(key, (MouseClick, MouseDrag, MouseRelease, MouseMove)):
                     self._dispatch_mouse(key)
                     continue
+                if self._default_logs and key not in (Key.SCROLL_UP, Key.SCROLL_DOWN):
+                    self.debug(f"Pressed on key: {key}")
                 modal = self._topmost_modal()
                 if modal is not None:
                     # A modal captures all keys: no global handlers, no scroll.
-                    if key == Key.ESC and modal.close_on_escape:
+                    if key in (Key.ESC, Key.F12) and modal.close_on_escape:
                         self.close_overlay(modal.widget)
                     elif key == Key.TAB:
                         self._cycle_focus(1)
@@ -1040,8 +1157,14 @@ class App:
                         self.focused.on_key(key)
                     else:
                         self.quit()
-                elif key in (Key.SCROLL_UP, Key.SCROLL_DOWN, Key.PAGE_UP,
-                             Key.PAGE_DOWN, Key.CTRL_UP, Key.CTRL_DOWN):
+                elif key in (
+                    Key.SCROLL_UP,
+                    Key.SCROLL_DOWN,
+                    Key.PAGE_UP,
+                    Key.PAGE_DOWN,
+                    Key.CTRL_UP,
+                    Key.CTRL_DOWN,
+                ):
                     # A focused scrollable widget (ScrollView) consumes the wheel
                     # / page keys; otherwise they scroll the whole base UI.
                     if getattr(self.focused, "scrollable", False):
@@ -1060,8 +1183,18 @@ class App:
                         break
                 elif self.focused:
                     self.focused.on_key(key)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
+            # EOFError: stdin was closed out from under us (e.g. redirected from
+            # a closed pipe) — nothing left to read, so shut down cleanly rather
+            # than leaving the terminal in raw mode or busy-looping.
             pass
+        except Exception as exc:
+            if not self.catch_errors:
+                raise
+            # Deferred past `finally` below: the crash screen is its own fresh
+            # App and must not start until *this* app's terminal state (raw
+            # mode, alt screen, mouse tracking) has been fully torn down.
+            crash_exc = exc
         finally:
             self._running = False
             _restore_terminal()
@@ -1071,3 +1204,16 @@ class App:
                     signal.signal(sig, old)
                 except (ValueError, OSError):
                     pass
+            if self._debug_file is not None:
+                try:
+                    self._debug_file.close()
+                except Exception:
+                    pass
+
+        if crash_exc is not None:
+            # Deferred import: crash_screen imports App itself (a module-level
+            # import here would be circular) and pulls in the widgets/rich
+            # machinery, which apps that never crash need not load at all.
+            from cozy_tui.crash_screen import show_traceback
+
+            show_traceback(crash_exc)

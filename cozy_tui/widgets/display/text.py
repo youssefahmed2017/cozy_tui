@@ -11,13 +11,16 @@ class Text(Widget):
     Example::
 
         article = "Lorem ipsum dolor sit amet, consectetur adipiscing elit..."
-        t = Text(2, 2, article, width=50, height=10, show_border=True)
+        t = Text(2, 2, article, size="50x10", show_border=True)
         app.add(t)
         app.focus(t)  # enables ↑ ↓ PageUp PageDown scrolling
 
-    When show_border=True the border dims when unfocused and turns bold white
-    when focused.  width/height refer to the inner text area; the widget's
-    total footprint is width+2 × height+2.
+    ``size`` is a ``"WIDTHxHEIGHT"`` string in **character cells** (unlike
+    :class:`Box`/:class:`ScrollView`, it is *not* virtual pixels — width is the
+    wrap column, height the visible line count). Omit it to auto-size from the
+    content instead. When show_border=True the border dims when unfocused and
+    turns bold white when focused; width/height refer to the inner text area,
+    so the widget's total footprint is width+2 × height+2.
     """
 
     focusable = True
@@ -33,9 +36,9 @@ class Text(Widget):
         show_border: bool = False,
         style=None,
     ):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Text")
         self._text = text
-        self.width, self.height = map(int, size.split("x")) if size else None
+        self.width, self.height = map(int, size.split("x")) if size else (None, None)
         self.align = align
         self.show_border = show_border
         self._scroll_off: int = 0

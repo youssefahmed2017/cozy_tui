@@ -8,8 +8,8 @@ class Layout(Widget):
     updates self._computed_width / self._computed_height before drawing.
     """
 
-    def __init__(self, x, y, style=None):
-        super().__init__(x, y, style)
+    def __init__(self, x, y, style=None, name: str = "BaseLayout"):
+        super().__init__(x, y, style, name=name)
         self.children = []
         self._computed_width = 0
         self._computed_height = 0

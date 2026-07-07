@@ -4,7 +4,9 @@ from cozy_tui.style import Style
 class Widget:
     focusable = False
 
-    def __init__(self, x=0, y=0, style=None, *, mouse_moves=False):
+    def __init__(
+        self, x=0, y=0, style=None, *, mouse_moves=False, name: str = "BaseWidget"
+    ):
         self.x = x
         self.y = y
         self.parent = None
@@ -27,6 +29,7 @@ class Widget:
         self._leave_handler = None
         self._change_handler = None
         self.laps = False
+        self.name = name
 
     @property
     def abs_x(self):
@@ -190,3 +193,6 @@ class Widget:
 
     def on_key(self, key):
         pass
+
+    def __str__(self):
+        return f"Widget {self.name}"

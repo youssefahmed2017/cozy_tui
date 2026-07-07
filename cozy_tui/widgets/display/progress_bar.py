@@ -20,7 +20,7 @@ class ProgressBar(Widget):
         max=100,
         style: Style | None = None,
     ):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Progress Bar")
         self.min = min
         self.max = max
         self._value = self._clamp(progress)

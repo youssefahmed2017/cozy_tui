@@ -212,7 +212,7 @@ app.on_mouse(on_mouse)
 
 ## Focus System
 
-Focus determines which widget receives keyboard input. Only `focusable` widgets (`Input`, `Button`, `Checkbox`, `ListView`, `Dropdown`, `Table`, `Collapsible`, `Tree`) can hold focus. A **focusable container defers to its children**: Tab dives into a `Box`'s first focusable child instead of stopping on the box. A `Box` is not a Tab stop on its own unless you construct it with `Box(..., focusable=True)`, which is useful for empty or decorative boxes you still want selectable.
+Focus determines which widget receives keyboard input. Only widgets with `focusable = True` can hold focus — most interactive widgets (`Input`, `Button`, `Checkbox`, `ListView`, `Dropdown`, `Table`, `Tree`, `Tabs`, `ScrollView`, `Collapsible`, `DropFilesArea`, and others). A **focusable container defers to its children**: Tab dives into a `Box`'s first focusable child instead of stopping on the box. A `Box` is not a Tab stop on its own unless you construct it with `Box(..., focusable=True)`, which is useful for empty or decorative boxes you still want selectable.
 
 ```python
 app.focus(widget)      # set initial focus manually

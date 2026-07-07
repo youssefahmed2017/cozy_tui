@@ -295,7 +295,7 @@ class AnimatedLabel(Widget):
     """
 
     def __init__(self, x, y, text: str, *, animation: Animation, style=None):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="AnimatedLabel")
         self.text = text
         self.animation = animation
 

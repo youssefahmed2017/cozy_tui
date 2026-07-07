@@ -5,7 +5,10 @@ import pathlib
 import random
 
 _PATH = (
-    pathlib.Path(__file__).resolve().parents[1] / "examples" / "game_2048" / "game_2048.py"
+    pathlib.Path(__file__).resolve().parents[1]
+    / "examples"
+    / "game_2048"
+    / "game_2048.py"
 )
 _spec = importlib.util.spec_from_file_location("game_2048", _PATH)
 g = importlib.util.module_from_spec(_spec)
@@ -57,7 +60,9 @@ def test_move_does_not_mutate_input():
 def test_has_moves():
     assert g.has_moves([[2, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
     # full board with an adjacent equal pair is still playable
-    assert g.has_moves([[2, 2, 4, 8], [16, 32, 64, 128], [2, 4, 8, 16], [32, 64, 128, 256]])
+    assert g.has_moves(
+        [[2, 2, 4, 8], [16, 32, 64, 128], [2, 4, 8, 16], [32, 64, 128, 256]]
+    )
     # full board, no two equal neighbors -> stuck
     stuck = [[2, 4, 2, 4], [4, 2, 4, 2], [2, 4, 2, 4], [4, 2, 4, 2]]
     assert not g.has_moves(stuck)
@@ -77,4 +82,6 @@ def test_spawn_returns_none_on_full_board():
 
 
 def test_max_tile():
-    assert g.max_tile([[2, 4, 8, 16], [0, 0, 0, 2048], [0, 0, 0, 0], [0, 0, 0, 0]]) == 2048
+    assert (
+        g.max_tile([[2, 4, 8, 16], [0, 0, 0, 2048], [0, 0, 0, 0], [0, 0, 0, 0]]) == 2048
+    )

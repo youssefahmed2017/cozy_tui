@@ -32,7 +32,7 @@ class Bindings(Widget):
     _GAP = 3  # spaces between the key column and the description
 
     def __init__(self, x, y, bindings, *, title=None, border="rounded", style=None):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Bindings")
         if border not in Box.BORDERS:
             raise ValueError(
                 f"border must be one of {list(Box.BORDERS)}, got {border!r}"

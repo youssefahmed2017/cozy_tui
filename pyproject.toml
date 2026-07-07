@@ -48,4 +48,4 @@ cozy_tui = ["py.typed"]
 testpaths = ["tests"]
 
 [tool.black]
-target-version = "py311"
+target-version = ["py311"]

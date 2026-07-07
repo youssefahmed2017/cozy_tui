@@ -1,6 +1,6 @@
 from cozy_tui._width import text_width
 from cozy_tui.events import Key
-from cozy_tui.style import Style
+from cozy_tui.style import Style, selection_style
 from cozy_tui.widget import Widget
 
 
@@ -89,8 +89,10 @@ class RightClickMenu(Widget):
     _SUBMENU_ARROW = "▶"
     GAP = 2  # minimum columns between the label and its shortcut/arrow column
 
-    def __init__(self, items, *, style=None):
-        super().__init__(0, 0, style)  # hover-to-highlight is opt-in (mouse_moves)
+    def __init__(self, items, *, style=None, mouse_moves: bool = False):
+        super().__init__(
+            0, 0, style, mouse_moves=mouse_moves, name="Right Click Menu"
+        )  # hover-to-highlight opt-in
         self._items: list[MenuItem] = [self._coerce(it) for it in (items or [])]
         self._index: int = self._first_selectable(0, 1)
         self._app = None  # set by open_at, used to close on selection
@@ -267,7 +269,7 @@ class RightClickMenu(Widget):
                 continue
 
             if row == self._index:
-                st = Style(fg="black", bg="white", styles=["bold"])
+                st = selection_style()
             elif not item.enabled:
                 st = Style(fg="bright_black", bg=raw_bg)
             else:

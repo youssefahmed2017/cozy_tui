@@ -5,7 +5,8 @@
 The root of every cozy_tui application. Manages the render loop, focus, scrolling, and global key handlers.
 
 ```python
-App(full=True, size="800x600", style=Style(...))
+App(full=True, size="800x600", style=Style(...), catch_errors=True,
+    debug=None, debug_log_path=None, default_logs=True)
 ```
 
 | Parameter | Description                                                                   |
@@ -14,6 +15,10 @@ App(full=True, size="800x600", style=Style(...))
 | `size`    | `"WxH"` string in virtual pixels when `full=False`; divide by `App.SCALE` (10) for characters. `"800x600"` = 80 cols × 60 rows. |
 | `style`   | Background style for the entire screen.                                       |
 | `title`   | Terminal Tab Title (defaulted to Cozy TUI App)                                |
+| `catch_errors` | An unhandled exception from `run()` shows a full-screen `TracebackView` crash view (see below) instead of propagating (terminal state is restored either way). Pass `False` for a script/test that wants `run()` to raise normally, or that has no real interactive terminal for the crash screen to block on (e.g. CI). |
+| `debug` | Enables `app.debug(...)` logging and the **F12** debug pane. `None` (default) resolves from the `COZY_TUI_DEBUG` env var (set by `cozy-tui run --debug script.py`); an explicit `True`/`False` always overrides it. |
+| `debug_log_path` | Also tail every `app.debug(...)` line to this file (only when `debug` is on) — handy for `tail -f` in a second terminal. |
+| `default_logs` | When `debug` is on, `App` automatically logs its own focus changes, key presses, and mouse clicks/drags via `app.debug(...)`. Pass `False` to keep the log for your own messages only. |
 
 **Methods:**
 
@@ -21,12 +26,29 @@ App(full=True, size="800x600", style=Style(...))
 app.add(widget)             # Add a top-level widget
 app.dock(widget, side)      # Dock a widget to "left"/"right"/"top"/"bottom"/"fill"
                             # (see the Dock Layout section)
-app.focus(widget)           # Set the initially focused widget
+app.focus(widget)            # Set the initially focused widget
 app.on_key(key, func)       # Register a global key handler
                             # Return "quit" from func to exit the app
 app.quit()                  # Exit the app from anywhere (e.g. inside a callback)
 app.run()                   # Start the event loop (blocking)
+app.debug(*values, sep=" ")  # print()-equivalent that's safe under raw mode; no-op unless debug is on
+app.toggle_debug_pane()      # Open/close the F12 debug-log pane yourself (menu item, button, ...)
 ```
+
+**Debugging:**
+
+```bash
+cozy-tui run --debug myapp.py
+```
+
+or from code:
+
+```python
+app = App(debug=True, debug_log_path="app.log")
+app.debug("connected", user.id, "at", timestamp)
+```
+
+Press **F12** for a live, scrollable view of the log — docked to the top-left corner, a quarter of the screen (Chrome-DevTools style), auto-scrolling as new lines arrive. Esc or F12 again closes it.
 
 **Example:**
 
@@ -259,15 +281,14 @@ Custom animations: subclass `Animation` and implement
 A read-only multi-line text display with automatic word wrapping and optional scrolling. Useful for help text, logs, or any longer content.
 
 ```python
-Text(x, y, *, width, height, text="", align="left", show_border=False, style=None)
+Text(x, y, text="", *, size=None, align="left", show_border=False, style=None)
 ```
 
 | Parameter | Description |
 |-----------|-------------|
 | `x`, `y` | Position |
-| `width` | Display width in characters (inner text area) |
-| `height` | Number of visible rows (inner text area) |
 | `text` | Initial text content. Use `\n` for explicit line breaks. |
+| `size` | `"WIDTHxHEIGHT"` string in **character cells** (unlike `Box`/`ScrollView`, not virtual pixels) — width is the wrap column, height the visible row count, both for the inner text area. Omit to auto-size from the content. |
 | `align` | `"left"` (default), `"center"`, or `"right"` |
 | `show_border` | Draw a single-line border around the widget (`False` by default). The border turns bold-white when focused. |
 
@@ -295,7 +316,7 @@ txt.set("Also works via set().")
 from cozy_tui import Style
 from cozy_tui.widgets import Text
 
-txt = Text(2, 2, width=50, height=10, align="left", show_border=True,
+txt = Text(2, 2, size="50x10", align="left", show_border=True,
            text="Lorem ipsum dolor sit amet, consectetur adipiscing elit.")
 app.add(txt)
 app.focus(txt)
@@ -513,7 +534,7 @@ A focusable drop zone: drag a file onto the terminal (while the zone has focus) 
 
 ```python
 DropFilesArea(x, y, storage_location, size, *, move=False, hint=None,
-              on_drop=None, style=None, accent="bright_cyan")
+              accept=None, on_drop=None, style=None, accent="bright_cyan")
 ```
 
 | Parameter | Description |
@@ -523,10 +544,18 @@ DropFilesArea(x, y, storage_location, size, *, move=False, hint=None,
 | `size` | `"WxH"` string in virtual pixels — divide by `App.SCALE` (10) for characters. A docked `DropFilesArea` fills its slice instead. |
 | `move` | `False` (default) **copies** the dropped file; `True` **moves** it (removes the source). |
 | `hint` | Prompt text shown in the zone (defaults to "Drop files here"). |
+| `accept` | List of allowed extensions, e.g. `[".png", ".jpg"]` (`"png"` without the dot also works; matched case-insensitively). A dropped file whose extension isn't listed is rejected instead of stored. |
 | `on_drop` | Callback fired after a drop with the list of stored `Path`s. Also settable via `drop.on_drop(func)`. |
 | `accent` | Border/icon color when focused. |
 
 A name clash **never overwrites** — the copy auto-renames to `name (1)`. File I/O runs on a background worker so a large copy won't block the UI.
+
+For validation an extension list can't express (file size, contents, a filename pattern, …), register `drop.on_validate(func)` — called with each dropped file's `Path`; return a falsy value to reject it. If both `accept` and `on_validate` are set, a file must pass both. A drop can be part-accepted, part-rejected: accepted files are still stored and `on_drop` still fires for them, with the rejection count noted in the status line.
+
+```python
+drop = DropFilesArea(2, 2, "uploads/", "400x120", accept=[".png", ".jpg"])
+drop.on_validate(lambda p: p.stat().st_size < 5_000_000)  # reject anything over 5MB
+```
 
 > **A terminal "drop" is a *path*, not a file transfer.** Terminal emulators deliver a drag-and-drop by typing the file's **path** into the input stream. `DropFilesArea` resolves that path on the **local** filesystem — the machine running the *process*. So a file dropped in a local session works, but a path dropped over an **SSH** session points at the *terminal's* machine, not the remote process, and surfaces as a friendly "not found on this machine" rather than a silent failure.
 >
@@ -902,13 +931,14 @@ box.add(bar)
 A small animated activity indicator — the idiomatic "working…" companion to `run_worker`. Non-focusable; show one while a background task runs and remove it in the worker's `on_result`. It animates smoothly on its own (via `request_frame`), so the app does **not** need `tick_interval` set.
 
 ```python
-Spinner(x, y, *, frames=None, speed=0.08, label="", style=None)
+Spinner(x, y, *, frames=None, speed=None, spinner="dots", label="", style=None)
 ```
 
 | Parameter | Description |
 |-----------|-------------|
-| `frames` | Iterable of frame strings. Defaults to `Spinner.DOTS`. Presets: `Spinner.DOTS`, `LINE`, `BAR`, `MOON`, `ARROW`. |
-| `speed` | Seconds per frame. |
+| `spinner` | Name of a built-in animation — picks both `frames` and `speed` in one shot. One of: `dots` (default), `line`, `normalDots`, `growVertical`, `bounce`, `arrow`, `bouncingBar`, `bouncingBall`, `clock`, `material`, `moon`, `pong`, `aesthetic`. Raises `ValueError` on an unknown name. |
+| `frames` | Iterable of frame strings for a fully custom animation, overriding `spinner`. The old class-attribute presets still work too: `Spinner.DOTS`, `LINE`, `BAR`, `MOON`, `ARROW`. |
+| `speed` | Seconds per frame. Defaults to the chosen preset's speed (or `0.08` with custom `frames`); pass it explicitly to override either. |
 | `label` | Optional text drawn after the spinner glyph. |
 
 **Example:**
@@ -919,7 +949,11 @@ from cozy_tui.widgets import Spinner
 spinner = Spinner(2, 2, label="Loading…")
 box.add(spinner)
 app.run_worker(fetch, on_result=lambda data: box.children.remove(spinner))
+
+Spinner(2, 4, spinner="material", label="Uploading…")
 ```
+
+Run `python -m cozy_tui.spinners` for a live showcase of every preset.
 
 ---
 
@@ -947,6 +981,50 @@ Auto-dismissal is driven by the App's timer primitives (`app.after` / `app.every
 app.toast("Saved successfully.", level="success")
 app.toast("Upload failed.", level="error", duration=5.0)
 ```
+
+---
+
+### `TracebackView` / `crash_screen.show_traceback`
+
+Displays an exception's traceback with Rich's syntax highlighting and local-variable inspection, rendered into the cell grid like any other widget (not a stdout print) — so it composes with `ScrollView`, overlays, and the raw-mode/alt-screen renderer. Non-focusable and non-interactive on its own; wrap it in a `ScrollView` for tracebacks taller than the screen (`show_locals` in particular can make these long).
+
+```python
+TracebackView(x, y, width, exc, *, show_locals=True, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `width` | Wrap width in character cells (matches `Markdown`'s convention — not virtual pixels like `Box`/`ScrollView`). |
+| `exc` | The exception instance to display. |
+| `show_locals` | Include each frame's local variables (Rich's `show_locals`). |
+
+**Example:**
+
+```python
+from cozy_tui.widgets import ScrollView, TracebackView
+
+try:
+    risky()
+except Exception as exc:
+    view = ScrollView(2, 1, "700x400")
+    view.add(TracebackView(0, 0, 68, exc))
+    app.add(view)
+```
+
+For the common case — a ready-made full-screen crash view (Esc quits, C copies the plain-text traceback to the clipboard, arrows/PageUp/PageDown/Home/End scroll) — use `show_traceback` instead of building the screen yourself. **`App` already does this automatically**: an unhandled exception from `app.run()` calls `show_traceback` for you (see `catch_errors` in the `App` section above), so most code never needs to call it directly — it's there for scripts that catch an exception outside of `run()` (or that want the screen without an `App` at all):
+
+```python
+from cozy_tui.crash_screen import show_traceback
+
+try:
+    risky()
+except Exception as exc:
+    show_traceback(exc)
+```
+
+`cozy_tui.widgets.display.traceback_view.format_traceback(exc)` returns the plain-text traceback (no styling) if you want it for logging without building a widget at all. Run `python -m cozy_tui.crash_screen` for a demo.
+
+`show_traceback`'s own `App` always runs with `catch_errors=False` — if the crash screen itself fails, it fails loudly rather than recursively trying to show a crash screen for its own crash.
 
 ---
 

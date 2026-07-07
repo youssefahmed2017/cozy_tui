@@ -1,5 +1,5 @@
 from cozy_tui.events import Key
-from cozy_tui.style import Style
+from cozy_tui.style import Style, selection_style
 from cozy_tui.widget import Widget
 from cozy_tui.widgets.selection.list_view import ListView, _display, _value
 
@@ -24,12 +24,11 @@ class Collapsible(ListView):
     focusable = True
 
     def __init__(self, x, y, *, title: str = "", expanded: bool = True, style=None):
-        super().__init__(x, y, style=style)
+        super().__init__(x, y, style=style, name="Collapsible")
         self.title = title
         self.expanded = expanded
         self._toggle_handler = None
         # _items (from ListView) stores Widget objects, ListItems, or plain strings.
-        # We bypass ListView.append() to avoid _label_width_cache misuse.
 
     # -- children -------------------------------------------------------------
 
@@ -45,6 +44,10 @@ class Collapsible(ListView):
             item._layout_y = 1  # refined each frame in draw()
         self._items.append(item)
         return self
+
+    # ListView.append() would misuse _label_width_cache (it's a str-only concept
+    # here); route it to add() so calling either name does the right thing.
+    append = add
 
     # -- expand / collapse API ------------------------------------------------
 
@@ -181,7 +184,7 @@ class Collapsible(ListView):
                 prefix = "> " if is_sel else "  "
                 line = (prefix + text).ljust(w)[:w]
                 if is_sel:
-                    style = Style(fg="black", bg="white", styles=["bold"])
+                    style = selection_style()
                 else:
                     style = self.style
                 canvas.write(self.abs_x, row, line, style)

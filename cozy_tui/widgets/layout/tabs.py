@@ -35,7 +35,7 @@ class _TabBar(Widget):
     focusable = True
 
     def __init__(self, tabs):
-        super().__init__(0, 0)
+        super().__init__(0, 0, name="Tab")
         self.parent = tabs
         self.tabs = tabs
         self._segments = []  # (local_start, local_end, index) for click hit-testing
@@ -137,9 +137,18 @@ class Tabs(Widget):
     cells), like :class:`Box`; a docked ``Tabs`` fills its slice instead.
     """
 
-    def __init__(self, x, y, size, *, style=None, accent="bright_cyan",
-                 animate=True, anim_duration=0.18):
-        super().__init__(x, y, style)
+    def __init__(
+        self,
+        x,
+        y,
+        size,
+        *,
+        style=None,
+        accent="bright_cyan",
+        animate=True,
+        anim_duration=0.18,
+    ):
+        super().__init__(x, y, style, name="Tabs")
         self.width, self.height = map(int, size.split("x"))
         self.accent = accent
         self.animate = animate  # slide panels + glide the underline on switch

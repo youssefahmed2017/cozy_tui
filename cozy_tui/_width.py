@@ -88,6 +88,8 @@ def char_width(ch: str) -> int:
         return 0
     if cp < 32 or 0x7F <= cp < 0xA0:  # C0/C1 control chars are not printable
         return 0
+    if cp < 0x300:  # below the lowest zero-width/wide codepoint (all Latin/ASCII)
+        return 1
     if _in(_ZERO_EDGES, cp):
         return 0
     if _in(_WIDE_EDGES, cp):
@@ -98,3 +100,24 @@ def char_width(ch: str) -> int:
 def text_width(text: str) -> int:
     """Return the total column width of a string."""
     return sum(char_width(c) for c in text)
+
+
+def clip_text(text: str, width: int) -> str:
+    """Truncate `text` to fit within `width` columns, appending an ellipsis."""
+    if text_width(text) <= width:
+        return text
+    out = ""
+    for ch in text:
+        if text_width(out + ch) > width - 1:
+            break
+        out += ch
+    return out + "…"
+
+
+def tail_clip_text(text: str, width: int) -> str:
+    """Like `clip_text` but keeps the *end* of the text visible (e.g. a filename)."""
+    if text_width(text) <= width:
+        return text
+    while text and text_width("…" + text) > width:
+        text = text[1:]
+    return "…" + text

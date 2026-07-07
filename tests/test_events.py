@@ -1,3 +1,5 @@
+from collections import deque
+
 import cozy_tui.events as ev
 from cozy_tui.events import Key
 
@@ -5,7 +7,7 @@ from cozy_tui.events import Key
 def feed(seq: str):
     """Prime the internal read buffer with a full byte sequence and parse one key.
     The buffer holds the whole sequence, so os.read (stdin) is never touched."""
-    ev._buf = list(seq)
+    ev._buf = deque(seq)
     return ev.read_key()
 
 
@@ -100,15 +102,19 @@ def test_csi_u_ignores_key_release_events():
 
 
 def test_csi_u_modified_keys_still_map():
-    assert feed("\x1b[122;6u") == Key.CTRL_Y      # Ctrl+Shift+Z → redo
-    assert feed("\x1b[97;5u") == Key.ctrl("a")    # Ctrl+A
+    assert feed("\x1b[122;6u") == Key.CTRL_Y  # Ctrl+Shift+Z → redo
+    assert feed("\x1b[97;5u") == Key.ctrl("a")  # Ctrl+A
 
 
 def test_ctrl_byte_passthrough():
     assert feed("\x06") == Key.ctrl("f")  # Ctrl+F arrives as raw 0x06
 
 
-def test_lone_escape_still_escape():
+def test_lone_escape_still_escape(monkeypatch):
+    # A lone ESC empties _buf, so read_key() falls through to _console.wait_input()
+    # to check for a pending continuation. Force "nothing pending" deterministically
+    # instead of racing the real stdin fd's state under the test runner.
+    monkeypatch.setattr(ev._console, "wait_input", lambda timeout: False)
     assert feed("\x1b") == Key.ESC
 
 

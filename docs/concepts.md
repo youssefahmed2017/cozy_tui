@@ -10,6 +10,10 @@ All positions are in **terminal characters** (columns and rows), not pixels. `(x
 
 When a widget is inside a `Box`, its `x` and `y` are **relative to the box's interior** (inside the border). The widget's absolute position is computed automatically.
 
+### Clipping
+
+`canvas.push_clip(x0, y0, x1, y1)` confines subsequent `write()` calls to the rectangle `[x0, x1) × [y0, y1)` (absolute content coordinates) until the matching `canvas.pop_clip()`. Calls nest — always balance a `push_clip` with a `pop_clip`, typically wrapping a container's call to `child.draw(canvas)`. `ScrollView` uses this to clip its content to the visible viewport.
+
 ### Widget lifecycle
 
 1. You create widgets and set their properties.

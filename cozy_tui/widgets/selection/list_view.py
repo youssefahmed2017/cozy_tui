@@ -1,7 +1,7 @@
 from typing import Any
 
 from cozy_tui.events import Key
-from cozy_tui.style import Style
+from cozy_tui.style import selection_style
 from cozy_tui.widget import Widget
 
 
@@ -36,8 +36,11 @@ class ListView(Widget):
         width=None,
         height=None,
         style=None,
+        mouse_moves: bool = False,
     ):
-        super().__init__(x, y, style)  # hover-to-highlight is opt-in (mouse_moves=True)
+        super().__init__(
+            x, y, style, mouse_moves=mouse_moves, name="List View"
+        )  # hover-to-highlight opt-in
         self._items: list = list(items) if items is not None else []
         self._index: int = 0
         self._scroll_off: int = 0
@@ -111,7 +114,7 @@ class ListView(Widget):
         self._items.clear()
         self._index = 0
         self._scroll_off = 0
-        self._label_width_cache = 0
+        self._label_width_cache = None
 
     # ── callbacks ────────────────────────────────────────────────────────────
 
@@ -210,9 +213,9 @@ class ListView(Widget):
             text = (prefix + _display(self._items[idx])).ljust(w)[:w]
 
             if is_focused and is_sel:
-                style = Style(fg="black", bg="white", styles=["bold"])
+                style = selection_style()
             elif is_sel:
-                style = Style(fg="white", styles=["bold"])
+                style = selection_style(dim=True)
             else:
                 style = self.style
 

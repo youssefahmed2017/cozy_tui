@@ -23,7 +23,7 @@ class Box(Widget):
         title="",
         focusable=False,
     ):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Box")
         self.text = text
         self.title = title
         # Non-focusable by default: Tab still dives into any focusable children,

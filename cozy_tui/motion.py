@@ -18,8 +18,14 @@ A widget animates by holding a :class:`Tween` and, from its ``draw``, reading
 import time
 
 __all__ = [
-    "linear", "ease_in", "ease_out", "ease_in_out", "ease_out_quad",
-    "lerp", "lerp_color", "Tween",
+    "linear",
+    "ease_in",
+    "ease_out",
+    "ease_in_out",
+    "ease_out_quad",
+    "lerp",
+    "lerp_color",
+    "Tween",
 ]
 
 
@@ -57,13 +63,23 @@ def lerp(a, b, t):
 # The standard 16 ANSI colours (matching cozy_tui.ansi's downgrade table) so
 # named colours can be interpolated too.
 _NAMED = {
-    "black": (0, 0, 0), "red": (128, 0, 0), "green": (0, 128, 0),
-    "yellow": (128, 128, 0), "blue": (0, 0, 128), "magenta": (128, 0, 128),
-    "cyan": (0, 128, 128), "white": (192, 192, 192),
-    "bright_black": (128, 128, 128), "gray": (128, 128, 128), "grey": (128, 128, 128),
-    "bright_red": (255, 0, 0), "bright_green": (0, 255, 0),
-    "bright_yellow": (255, 255, 0), "bright_blue": (0, 0, 255),
-    "bright_magenta": (255, 0, 255), "bright_cyan": (0, 255, 255),
+    "black": (0, 0, 0),
+    "red": (128, 0, 0),
+    "green": (0, 128, 0),
+    "yellow": (128, 128, 0),
+    "blue": (0, 0, 128),
+    "magenta": (128, 0, 128),
+    "cyan": (0, 128, 128),
+    "white": (192, 192, 192),
+    "bright_black": (128, 128, 128),
+    "gray": (128, 128, 128),
+    "grey": (128, 128, 128),
+    "bright_red": (255, 0, 0),
+    "bright_green": (0, 255, 0),
+    "bright_yellow": (255, 255, 0),
+    "bright_blue": (0, 0, 255),
+    "bright_magenta": (255, 0, 255),
+    "bright_cyan": (0, 255, 255),
     "bright_white": (255, 255, 255),
 }
 

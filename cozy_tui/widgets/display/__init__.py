@@ -8,6 +8,7 @@ from .progress_bar import ProgressBar
 from .spinner import Spinner
 from .text import Text
 from .toast import Toast
+from .traceback_view import TracebackView
 
 __all__ = [
     "Label",
@@ -23,4 +24,5 @@ __all__ = [
     "Spinner",
     "Text",
     "Toast",
+    "TracebackView",
 ]

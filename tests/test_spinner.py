@@ -36,7 +36,13 @@ def test_draw_shows_current_frame_and_label():
 
 
 def test_presets_are_nonempty():
-    for preset in (Spinner.DOTS, Spinner.LINE, Spinner.BAR, Spinner.MOON, Spinner.ARROW):
+    for preset in (
+        Spinner.DOTS,
+        Spinner.LINE,
+        Spinner.BAR,
+        Spinner.MOON,
+        Spinner.ARROW,
+    ):
         assert len(preset) >= 2
 
 
@@ -47,3 +53,30 @@ def test_draw_requests_a_frame_to_keep_animating():
     app._anim_interval = None
     app._compose()
     assert app._anim_interval == 0.05  # asked the loop to redraw at its cadence
+
+
+def test_preset_supplies_frames_and_speed():
+    import cozy_tui._spinners as spinners
+
+    sp = Spinner(0, 0, spinner="material")
+    frames, speed = spinners.SPINNERS["material"]
+    assert sp.frames == frames
+    assert sp.speed == speed
+
+
+def test_preset_speed_can_still_be_overridden():
+    sp = Spinner(0, 0, spinner="clock", speed=0.5)
+    assert sp.speed == 0.5
+
+
+def test_unknown_preset_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        Spinner(0, 0, spinner="not-a-real-preset")
+
+
+def test_default_preset_matches_dots_class_attribute():
+    sp = Spinner(0, 0)
+    assert sp.frames == Spinner.DOTS
+    assert sp.speed == 0.08

@@ -1,5 +1,5 @@
 from cozy_tui.events import Key
-from cozy_tui.style import Style
+from cozy_tui.style import Style, selection_style
 from cozy_tui.widget import Widget
 
 
@@ -60,7 +60,7 @@ class Table(Widget):
         show_border: bool = False,
         style=None,
     ):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Table")
         self._columns: list[dict] = []
         self._rows: list[TableRow] = []
         self._index: int = 0
@@ -232,13 +232,6 @@ class Table(Widget):
             content = text[:inner].ljust(inner)
         return f" {content} "
 
-    @staticmethod
-    def _raw_bg(style: Style) -> str | None:
-        bg = style.bg
-        if bg and bg.endswith("_bg"):
-            return bg[:-3]
-        return bg  # None or rgb(...)
-
     def _clamp_scroll(self) -> None:
         vis = self._visible_rows()
         if vis <= 0:
@@ -319,7 +312,7 @@ class Table(Widget):
         vis = self._visible_rows()
         x = self.abs_x
         y = self.abs_y
-        table_raw_bg = self._raw_bg(self.style)
+        table_raw_bg = self.style.raw_bg
 
         def write_row(row_y, cells, base_style, highlight_col: int | None = None):
             cx = x
@@ -330,7 +323,7 @@ class Table(Widget):
                 align = self._columns[ci]["align"] if ci < n_cols else "left"
                 cell_text = cells[ci] if ci < len(cells) else ""
                 if highlight_col is not None and ci == highlight_col:
-                    cell_bg = self._raw_bg(base_style)
+                    cell_bg = base_style.raw_bg
                     cell_style = Style(
                         fg=base_style.fg,
                         bg=cell_bg,
@@ -385,10 +378,10 @@ class Table(Widget):
             is_sel = idx == self._index
 
             if is_focused and is_sel:
-                row_style = Style(fg="black", bg="white", styles=["bold"])
+                row_style = selection_style()
                 highlight_col = self._col_index
             elif is_sel:
-                row_style = Style(fg="white", styles=["bold"])
+                row_style = selection_style(dim=True)
                 highlight_col = None
             elif row.style is not None:
                 row_style = row.style

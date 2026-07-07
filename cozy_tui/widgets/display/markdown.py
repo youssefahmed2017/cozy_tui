@@ -2,114 +2,12 @@
 
 from __future__ import annotations
 
-from rich.color import ColorType
 from rich.console import Console
 from rich.markdown import Markdown as _RichMarkdown
 
+from cozy_tui._rich_bridge import to_cozy_style as _to_cozy_style
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
-
-# ── Rich → cozy_tui colour mapping ───────────────────────────────────────────
-
-_ANSI16 = [
-    "black",
-    "red",
-    "green",
-    "yellow",
-    "blue",
-    "magenta",
-    "cyan",
-    "white",
-    "bright_black",
-    "bright_red",
-    "bright_green",
-    "bright_yellow",
-    "bright_blue",
-    "bright_magenta",
-    "bright_cyan",
-    "bright_white",
-]
-
-_ANSI16_RGB = [
-    (0, 0, 0),
-    (170, 0, 0),
-    (0, 170, 0),
-    (170, 170, 0),
-    (0, 0, 170),
-    (170, 0, 170),
-    (0, 170, 170),
-    (170, 170, 170),
-    (85, 85, 85),
-    (255, 85, 85),
-    (85, 255, 85),
-    (255, 255, 85),
-    (85, 85, 255),
-    (255, 85, 255),
-    (85, 255, 255),
-    (255, 255, 255),
-]
-
-
-def _eight_bit_to_rgb(n: int) -> tuple:
-    if n < 16:
-        return _ANSI16_RGB[n]
-    if n < 232:
-        n -= 16
-        r, g, b = n // 36, (n // 6) % 6, n % 6
-
-        def _v(x):
-            return 0 if x == 0 else 55 + x * 40
-
-        return _v(r), _v(g), _v(b)
-    v = 8 + (n - 232) * 10
-    return v, v, v
-
-
-def _nearest_ansi16(r: int, g: int, b: int) -> str:
-    return _ANSI16[
-        min(
-            range(16),
-            key=lambda i: (
-                (r - _ANSI16_RGB[i][0]) ** 2
-                + (g - _ANSI16_RGB[i][1]) ** 2
-                + (b - _ANSI16_RGB[i][2]) ** 2
-            ),
-        )
-    ]
-
-
-def _cozy_color(rich_color) -> str | None:
-    if rich_color is None or rich_color.type == ColorType.DEFAULT:
-        return None
-    if rich_color.type == ColorType.STANDARD:
-        n = rich_color.number
-        return _ANSI16[n] if n is not None and 0 <= n < 16 else None
-    if rich_color.type == ColorType.EIGHT_BIT:
-        n = rich_color.number
-        if n is None:
-            return None
-        return _ANSI16[n] if n < 16 else _nearest_ansi16(*_eight_bit_to_rgb(n))
-    if rich_color.type == ColorType.TRUECOLOR:
-        t = rich_color.triplet
-        return _nearest_ansi16(t.red, t.green, t.blue) if t else None
-    return None
-
-
-def _to_cozy_style(rich_style, base: Style) -> Style:
-    if not rich_style:
-        return base
-    fg = _cozy_color(rich_style.color) if rich_style.color is not None else base.fg
-    bg = _cozy_color(rich_style.bgcolor) if rich_style.bgcolor is not None else base.bg
-    st = list(base.styles)
-    for attr, name in (
-        ("bold", "bold"),
-        ("italic", "italic"),
-        ("underline", "underline"),
-        ("dim", "dim"),
-    ):
-        if getattr(rich_style, attr, False) and name not in st:
-            st.append(name)
-    return Style(fg=fg, bg=bg, styles=st)
 
 
 def _emit(lines: list, text: str, style: Style) -> None:
@@ -135,7 +33,7 @@ class Markdown(Widget):
     """
 
     def __init__(self, x, y, width, value="", *, placeholder="", style=None):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Markdown")
         self.width = width
         self.value = value
         self.placeholder = placeholder

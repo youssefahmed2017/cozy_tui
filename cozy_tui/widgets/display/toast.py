@@ -1,4 +1,4 @@
-from cozy_tui._width import text_width
+from cozy_tui._width import clip_text, text_width
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
 
@@ -25,7 +25,7 @@ class Toast(Widget):
     _GAP = 1
 
     def __init__(self, message, *, level="info", icon=None, corner="bottom-right"):
-        super().__init__(0, 0)
+        super().__init__(0, 0, name="Toast")
         self.message = message
         self.level = level if level in _LEVELS else "info"
         color, default_icon = _LEVELS[self.level]
@@ -35,17 +35,9 @@ class Toast(Widget):
 
     def _content_width(self, cols):
         inner = text_width(self.icon) + 1 + text_width(self.message)
-        return min(self._MAX_WIDTH, cols - 2 * self._MARGIN, inner + 2 * self._PAD_X + 2)
-
-    def _clip(self, text, width):
-        if text_width(text) <= width:
-            return text
-        out = ""
-        for ch in text:
-            if text_width(out + ch) > width - 1:
-                break
-            out += ch
-        return out + "…"
+        return min(
+            self._MAX_WIDTH, cols - 2 * self._MARGIN, inner + 2 * self._PAD_X + 2
+        )
 
     def _place(self, canvas, w):
         """Top-left ``(col, row)`` for this toast given its stack."""
@@ -86,5 +78,9 @@ class Toast(Widget):
         cx = left + self._PAD_X
         canvas.write(cx, cy, self.icon, Style(fg=self.color, bg=bg))
         cx += text_width(self.icon) + 1
-        canvas.write(cx, cy, self._clip(self.message, left + w - 1 - cx),
-                     Style(fg="white", bg=bg, styles=["bold"]))
+        canvas.write(
+            cx,
+            cy,
+            clip_text(self.message, left + w - 1 - cx),
+            Style(fg="white", bg=bg, styles=["bold"]),
+        )

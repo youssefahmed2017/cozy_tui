@@ -34,8 +34,8 @@ def test_focus_order_is_bar_then_active_panel_controls():
 
     focusables = app._collect_focusables()
     assert focusables[0] is tabs._bar  # Tab lands on the strip first
-    assert focusables[1] is a          # then dives into the active panel
-    assert len(focusables) == 2        # tab Two's controls are not reachable yet
+    assert focusables[1] is a  # then dives into the active panel
+    assert len(focusables) == 2  # tab Two's controls are not reachable yet
 
     tabs.select(1)
     focusables = app._collect_focusables()

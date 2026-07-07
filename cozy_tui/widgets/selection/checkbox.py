@@ -1,5 +1,5 @@
 from cozy_tui.events import Key
-from cozy_tui.style import Style
+from cozy_tui.style import Style, selection_style
 from cozy_tui.widget import Widget
 
 
@@ -7,7 +7,7 @@ class Checkbox(Widget):
     focusable = True
 
     def __init__(self, x, y, text, checked=False, style=None):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Checkbox")
         self.text = text
         self.checked = checked
 
@@ -40,7 +40,7 @@ class Checkbox(Widget):
         fg = self.style.fg or "white"
 
         if is_focused:
-            style = Style(fg="black", bg="white", styles=["bold"])
+            style = selection_style()
         elif self.checked:
             style = Style(fg=fg, bg=raw_bg, styles=["bold"])
         else:

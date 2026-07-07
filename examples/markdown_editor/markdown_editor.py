@@ -38,7 +38,7 @@ class StatusBar(Widget):
         self._bar_width = width
 
     def natural_width(self, scale):
-        return self._bar_width
+        return self._bar_fwidth
 
     def draw(self, canvas):
         text = self.editor.value
@@ -57,7 +57,7 @@ class StatusBar(Widget):
 
 # ── App & layout ──────────────────────────────────────────────────────────────
 
-app = App(full=True, style=Style(fg="white", bg="black"))
+app = App(full=True, style=Style(fg="white", bg="black"), catch_errors=True)
 
 W = 66  # editor column width
 

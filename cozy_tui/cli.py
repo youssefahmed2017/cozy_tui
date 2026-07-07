@@ -2,11 +2,13 @@
 
 Usage::
 
-    cozy-tui                # launch the interactive demo (same as `python -m cozy_tui`)
-    cozy-tui --version      # print the installed version
-    cozy-tui demo           # launch the interactive demo
-    cozy-tui doctor         # run environment / capability checks
-    cozy-tui info           # print version + detected terminal capabilities
+    cozy-tui                          # launch the interactive demo (same as `python -m cozy_tui`)
+    cozy-tui --version                # print the installed version
+    cozy-tui demo                     # launch the interactive demo
+    cozy-tui doctor                   # run environment / capability checks
+    cozy-tui info                     # print version + detected terminal capabilities
+    cozy-tui run script.py            # run a script (like `python script.py`)
+    cozy-tui run --debug script.py    # ...with App(debug=True) enabled, with no code change
 
 ``doctor`` is modelled on cozy-kit's Doctor command: it gathers a handful of
 checks and renders them as a Rich table.
@@ -14,9 +16,12 @@ checks and renders them as a Rich table.
 
 import argparse
 import json
+import os
 import platform
+import runpy
 import shutil
 import sys
+from pathlib import Path
 from urllib import request
 
 from cozy_tui import __version__
@@ -161,6 +166,32 @@ def _cmd_demo(args) -> int:
     return 0
 
 
+# ── run ───────────────────────────────────────────────────────────────────────
+
+
+def _cmd_run(args) -> int:
+    """Run a user script, like `python script.py`, optionally flipping on
+    App(debug=True) for it via an env var (see App.__init__) — so scripts
+    don't need a code change to opt in from the command line."""
+    script = Path(args.script)
+    if not script.is_file():
+        print(f"cozy-tui run: no such file: {script}", file=sys.stderr)
+        return 1
+
+    if args.debug:
+        os.environ["COZY_TUI_DEBUG"] = "1"
+
+    # Match `python script.py`: argv[0] is the script, the rest is its own;
+    # its directory goes on sys.path so its own sibling imports resolve.
+    sys.argv = [str(script), *args.script_args]
+    script_dir = str(script.resolve().parent)
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+
+    runpy.run_path(str(script), run_name="__main__")
+    return 0
+
+
 # ── entry point ───────────────────────────────────────────────────────────────
 
 
@@ -172,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version", action="version", version=f"cozy-tui {__version__}"
     )
-    sub = parser.add_subparsers(dest="command", metavar="{demo,doctor,info}")
+    sub = parser.add_subparsers(dest="command", metavar="{demo,doctor,info,run}")
 
     p_demo = sub.add_parser("demo", help="launch the interactive showcase")
     p_demo.set_defaults(func=_cmd_demo)
@@ -187,6 +218,20 @@ def build_parser() -> argparse.ArgumentParser:
         "info", help="print version and detected terminal capabilities"
     )
     p_info.set_defaults(func=_cmd_info)
+
+    p_run = sub.add_parser("run", help="run a Python script (like `python script.py`)")
+    p_run.add_argument("script", help="path to the .py file to run")
+    p_run.add_argument(
+        "--debug",
+        action="store_true",
+        help="enable App(debug=True) for the script, with no code change needed",
+    )
+    p_run.add_argument(
+        "script_args",
+        nargs=argparse.REMAINDER,
+        help="arguments forwarded to the script (as sys.argv[1:])",
+    )
+    p_run.set_defaults(func=_cmd_run)
 
     return parser
 

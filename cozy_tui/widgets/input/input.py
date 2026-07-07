@@ -24,7 +24,7 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
         masked=False,
         masked_symbol="*",
     ):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Input")
         self.laps = True
         self.width = width
         self.placeholder = placeholder

@@ -65,6 +65,12 @@ def _null_paste() -> str:
     return ""
 
 
+# Both copy() and paste() run synchronously on the main UI thread (from
+# Ctrl+C/Ctrl+V key handling), so a hung clipboard tool (e.g. a Wayland
+# compositor that never hands off ownership) must not freeze the app forever.
+_CLI_TIMEOUT = 2.0
+
+
 def _cli_copier(cmd):
     def _copy(text: str) -> None:
         subprocess.run(
@@ -73,6 +79,7 @@ def _cli_copier(cmd):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
+            timeout=_CLI_TIMEOUT,
         )
 
     return _copy
@@ -80,7 +87,9 @@ def _cli_copier(cmd):
 
 def _cli_paster(cmd):
     def _paste() -> str:
-        out = subprocess.run(cmd, capture_output=True, check=False).stdout
+        out = subprocess.run(
+            cmd, capture_output=True, check=False, timeout=_CLI_TIMEOUT
+        ).stdout
         return out.decode("utf-8", "replace")
 
     return _paste

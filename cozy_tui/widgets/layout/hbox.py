@@ -5,7 +5,7 @@ class HBox(Layout):
     """Stack children horizontally, left to right."""
 
     def __init__(self, x, y, gap=0, style=None):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Horizontal Box")
         self.gap = gap
 
     def _arrange(self):

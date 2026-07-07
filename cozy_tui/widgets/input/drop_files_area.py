@@ -20,7 +20,7 @@ import shutil
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from cozy_tui._width import text_width
+from cozy_tui._width import clip_text, tail_clip_text, text_width
 from cozy_tui.events import Key, Paste
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
@@ -109,9 +109,15 @@ class DropFilesArea(Widget):
     ``size`` is a ``"WIDTHxHEIGHT"`` string in virtual pixels (÷ ``App.SCALE`` for
     cells), like :class:`Box`; a docked ``DropFilesArea`` fills its slice instead.
 
+    ``accept`` filters by extension (``".png"`` or ``"png"``, either works;
+    case-insensitive) — a dropped file whose suffix doesn't match is rejected
+    rather than stored. For anything an extension list can't express (size,
+    content, a filename pattern, …), register :meth:`on_validate` instead; if
+    both are set, a file must pass both to be accepted.
+
     Example::
 
-        drop = DropFilesArea(2, 2, "uploads/", "400x120")
+        drop = DropFilesArea(2, 2, "uploads/", "400x120", accept=[".png", ".jpg"])
         drop.on_drop(lambda paths: status.set(f"stored {len(paths)}"))
         app.add(drop)
     """
@@ -119,14 +125,33 @@ class DropFilesArea(Widget):
     focusable = True
     _MAX_RECENT = 4
 
-    def __init__(self, x, y, storage_location, size, *, move=False, hint=None,
-                 on_drop=None, style=None, accent="bright_cyan"):
-        super().__init__(x, y, style)
+    def __init__(
+        self,
+        x,
+        y,
+        storage_location,
+        size,
+        *,
+        move=False,
+        hint=None,
+        accept=None,
+        on_drop=None,
+        style=None,
+        accent="bright_cyan",
+    ):
+        super().__init__(x, y, style, name="Drop Files Area")
         self.storage_location = Path(storage_location)
         self.width, self.height = map(int, size.split("x"))
         self.move = move
         self.hint = hint or ("Drop files to move here" if move else "Drop files here")
         self.accent = accent
+        # Normalize so both ".png" and "png" work; compared case-insensitively
+        # against Path.suffix (which is always "" or ".xxx").
+        self.accept = (
+            [e if e.startswith(".") else f".{e}" for e in accept] if accept else None
+        )
+        self._accept_set = {e.lower() for e in self.accept} if self.accept else None
+        self._validate = None
         self._on_drop = on_drop
         self._status = ""
         self._error = False
@@ -140,6 +165,20 @@ class DropFilesArea(Widget):
         stored :class:`~pathlib.Path` s."""
         self._on_drop = func
         return self
+
+    def on_validate(self, func):
+        """Register a custom validator called with each dropped file's
+        :class:`~pathlib.Path` (before it's copied/moved); return a falsy value
+        to reject it. Composes with ``accept`` — both must pass if both are set."""
+        self._validate = func
+        return self
+
+    def _accepts(self, path: Path) -> bool:
+        if self._accept_set is not None and path.suffix.lower() not in self._accept_set:
+            return False
+        if self._validate is not None:
+            return bool(self._validate(path))
+        return True
 
     # ── ingest ───────────────────────────────────────────────────────────────────
 
@@ -178,17 +217,29 @@ class DropFilesArea(Widget):
             self._set_status(f"Not found on this machine: {names}", error=True)
             return
 
-        self._set_status(f"{'Moving' if self.move else 'Copying'} {len(found)} "
-                         f"file{'s' * (len(found) != 1)}…")
+        accepted, rejected = [], []
+        for p in found:
+            (accepted if self._accepts(p) else rejected).append(p)
+        if not accepted:
+            names = ", ".join(p.name for p in rejected) or "that file"
+            self._set_status(f"Rejected (not an accepted type): {names}", error=True)
+            return
+
+        self._set_status(
+            f"{'Moving' if self.move else 'Copying'} {len(accepted)} "
+            f"file{'s' * (len(accepted) != 1)}…"
+        )
         try:
             self.storage_location.mkdir(parents=True, exist_ok=True)
         except OSError as err:
-            self._set_status(f"Can't write to {self.storage_location}: {err}", error=True)
+            self._set_status(
+                f"Can't write to {self.storage_location}: {err}", error=True
+            )
             return
 
         def work():
             stored = []
-            for src in found:
+            for src in accepted:
                 dest = _unique_path(self.storage_location / src.name)
                 if self.move:
                     shutil.move(str(src), str(dest))
@@ -201,17 +252,23 @@ class DropFilesArea(Widget):
 
         def done(stored):
             self._recent = [p.name for p in stored] + self._recent
-            del self._recent[self._MAX_RECENT:]
+            del self._recent[self._MAX_RECENT :]
             verb = "Moved" if self.move else "Copied"
-            extra = f"  ({len(missing)} not found)" if missing else ""
+            notes = []
+            if missing:
+                notes.append(f"{len(missing)} not found")
+            if rejected:
+                notes.append(f"{len(rejected)} rejected")
+            extra = f"  ({', '.join(notes)})" if notes else ""
             self._set_status(f"{verb} {len(stored)} → {self.storage_location}{extra}")
             self._fire_change(stored)
             if self._on_drop:
                 self._on_drop(stored)
 
         def fail(err):
-            self._set_status(f"{'Move' if self.move else 'Copy'} failed: {err}",
-                             error=True)
+            self._set_status(
+                f"{'Move' if self.move else 'Copy'} failed: {err}", error=True
+            )
 
         if self._app is not None:
             self._app.run_worker(work, on_result=done, on_error=fail)
@@ -248,27 +305,9 @@ class DropFilesArea(Widget):
     def _center(self, canvas, y, text, style):
         if not (0 <= y < self._hc):
             return
-        text = self._clip(text, self._wc - 2)
+        text = clip_text(text, self._wc - 2)
         cx = self.abs_x + max(1, (self._wc - text_width(text)) // 2)
         canvas.write(cx, self.abs_y + y, text, style)
-
-    def _clip(self, text, width):
-        if text_width(text) <= width:
-            return text
-        out = ""
-        for ch in text:
-            if text_width(out + ch) > width - 1:
-                break
-            out += ch
-        return out + "…"
-
-    def _tail_clip(self, text, width):
-        """Like ``_clip`` but keeps the *end* visible (a path's filename)."""
-        if text_width(text) <= width:
-            return text
-        while text and text_width("…" + text) > width:
-            text = text[1:]
-        return "…" + text
 
     def draw(self, canvas):
         self._app = canvas
@@ -282,8 +321,11 @@ class DropFilesArea(Widget):
             canvas.write(x, y + r, " " * wc, self.style)
 
         # dashed border — accented + bold when focused ("ready to receive")
-        bs = (Style(fg=self.accent, bg=raw_bg, styles=["bold"]) if focused
-              else Style(fg="bright_black", bg=raw_bg))
+        bs = (
+            Style(fg=self.accent, bg=raw_bg, styles=["bold"])
+            if focused
+            else Style(fg="bright_black", bg=raw_bg)
+        )
         dash = "┄" * (wc - 2)
         canvas.write(x, y, "╭" + dash + "╮", bs)
         canvas.write(x, y + hc - 1, "╰" + dash + "╯", bs)
@@ -294,28 +336,50 @@ class DropFilesArea(Widget):
         # centered content: icon, then the hint (or the path being entered),
         # a secondary line, and a status line
         cy = hc // 2
-        icon_style = (Style(fg=self.accent, bg=raw_bg) if focused
-                      else Style(fg="bright_black", bg=raw_bg))
+        icon_style = (
+            Style(fg=self.accent, bg=raw_bg)
+            if focused
+            else Style(fg="bright_black", bg=raw_bg)
+        )
         self._center(canvas, cy - 1, "⬇", icon_style)
 
         if focused and self._pending:
             # a raw-typed / hand-entered path, tail-clipped so the name stays visible
-            self._center(canvas, cy, self._tail_clip(self._pending, wc - 2),
-                         Style(fg="bright_white", bg=raw_bg, styles=["bold"]))
-            self._center(canvas, cy + 1, "⏎ Enter to file it",
-                         Style(fg=self.accent, bg=raw_bg))
+            self._center(
+                canvas,
+                cy,
+                tail_clip_text(self._pending, wc - 2),
+                Style(fg="bright_white", bg=raw_bg, styles=["bold"]),
+            )
+            self._center(
+                canvas, cy + 1, "⏎ Enter to file it", Style(fg=self.accent, bg=raw_bg)
+            )
         else:
-            self._center(canvas, cy, self.hint,
-                         Style(fg="white", bg=raw_bg, styles=["bold"]))
+            self._center(
+                canvas, cy, self.hint, Style(fg="white", bg=raw_bg, styles=["bold"])
+            )
             if not focused:
-                sub, sub_style = "(click / Tab to focus)", Style(fg="bright_black", bg=raw_bg)
+                sub, sub_style = "(click / Tab to focus)", Style(
+                    fg="bright_black", bg=raw_bg
+                )
             elif self._recent:
-                sub, sub_style = "✓ " + ", ".join(self._recent), Style(fg="bright_green", bg=raw_bg)
+                sub, sub_style = "✓ " + ", ".join(self._recent), Style(
+                    fg="bright_green", bg=raw_bg
+                )
+            elif self.accept:
+                sub, sub_style = "Accepts: " + ", ".join(self.accept), Style(
+                    fg="bright_black", bg=raw_bg
+                )
             else:
-                sub, sub_style = "or paste / type a path + ⏎", Style(fg="bright_black", bg=raw_bg)
+                sub, sub_style = "or paste / type a path + ⏎", Style(
+                    fg="bright_black", bg=raw_bg
+                )
             self._center(canvas, cy + 1, sub, sub_style)
 
         if self._status:
-            st = (Style(fg="bright_yellow", bg=raw_bg) if self._error
-                  else Style(fg="bright_green", bg=raw_bg))
+            st = (
+                Style(fg="bright_yellow", bg=raw_bg)
+                if self._error
+                else Style(fg="bright_green", bg=raw_bg)
+            )
             self._center(canvas, hc - 2, self._status, st)

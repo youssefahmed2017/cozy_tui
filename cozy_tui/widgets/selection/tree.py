@@ -1,5 +1,5 @@
 from cozy_tui.events import Key
-from cozy_tui.style import Style
+from cozy_tui.style import selection_style
 from cozy_tui.widget import Widget
 
 
@@ -49,7 +49,7 @@ class Tree(Widget):
     def __init__(
         self, x, y, *, height: int | None = None, connectors: bool = False, style=None
     ):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Tree")
         self._roots: list[TreeNode] = []
         self._index: int = 0
         self._scroll_off: int = 0
@@ -248,7 +248,7 @@ class Tree(Widget):
             line = (prefix + node.text).ljust(w)[:w]
 
             if is_sel:
-                style = Style(fg="black", bg="white", styles=["bold"])
+                style = selection_style()
             else:
                 style = self.style
 

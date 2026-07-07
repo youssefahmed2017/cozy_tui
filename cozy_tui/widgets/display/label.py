@@ -4,7 +4,7 @@ from cozy_tui.widget import Widget
 
 class Label(Widget):
     def __init__(self, x, y, text, style=None):
-        super().__init__(x, y, style)
+        super().__init__(x, y, style, name="Label")
         self.text = text
         self.laps = True
 

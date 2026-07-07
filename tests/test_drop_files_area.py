@@ -7,7 +7,6 @@ from cozy_tui.events import Paste
 from cozy_tui.widgets import DropFilesArea
 from cozy_tui.widgets.input.drop_files_area import parse_dropped_paths
 
-
 # ── path parsing ──────────────────────────────────────────────────────────────
 
 
@@ -18,9 +17,10 @@ def test_parse_plain_and_multiple_paths():
 
 def test_parse_file_uri_percent_decoded_and_multiple():
     assert parse_dropped_paths("file:///home/u/a%20b.png") == ["/home/u/a b.png"]
-    assert parse_dropped_paths(
-        "file:///a/b.txt\nfile:///c/d.txt"
-    ) == ["/a/b.txt", "/c/d.txt"]
+    assert parse_dropped_paths("file:///a/b.txt\nfile:///c/d.txt") == [
+        "/a/b.txt",
+        "/c/d.txt",
+    ]
 
 
 def test_parse_windows_file_uri_strips_leading_slash():
@@ -73,8 +73,8 @@ def test_drop_never_overwrites_auto_renames(tmp_path):
 
     da._ingest(str(src))
 
-    assert (store / "note.txt").read_text() == "existing"      # untouched
-    assert (store / "note (1).txt").read_text() == "new"       # dropped copy
+    assert (store / "note.txt").read_text() == "existing"  # untouched
+    assert (store / "note (1).txt").read_text() == "new"  # dropped copy
 
 
 def test_move_relocates_source(tmp_path):
@@ -141,6 +141,104 @@ def test_unreadable_drop_text_reports_error(tmp_path):
     da = DropFilesArea(0, 0, tmp_path / "store", "200x80")
     da._ingest("   ")
     assert da._error and "path" in da._status.lower()
+
+
+# ── accept / on_validate ─────────────────────────────────────────────────────
+
+
+def test_accept_normalizes_extensions_without_a_leading_dot():
+    da = DropFilesArea(0, 0, "store", "200x80", accept=["png", ".JPG"])
+    assert da.accept == [".png", ".JPG"]
+    assert da._accept_set == {".png", ".jpg"}
+
+
+def test_accept_allows_matching_extension(tmp_path):
+    src = tmp_path / "photo.png"
+    src.write_bytes(b"x")
+    store = tmp_path / "store"
+    da = DropFilesArea(0, 0, store, "200x80", accept=[".png"])
+
+    da._ingest(str(src))
+
+    assert (store / "photo.png").exists()
+    assert not da._error
+
+
+def test_accept_rejects_non_matching_extension(tmp_path):
+    src = tmp_path / "notes.txt"
+    src.write_text("x")
+    store = tmp_path / "store"
+    seen = []
+    da = DropFilesArea(0, 0, store, "200x80", accept=[".png"], on_drop=seen.append)
+
+    da._ingest(str(src))
+
+    assert not store.exists()  # nothing was ever stored
+    assert da._error
+    assert "Rejected" in da._status
+    assert seen == []  # on_drop never fires for an all-rejected drop
+
+
+def test_accept_is_case_insensitive(tmp_path):
+    src = tmp_path / "photo.PNG"
+    src.write_bytes(b"x")
+    store = tmp_path / "store"
+    da = DropFilesArea(0, 0, store, "200x80", accept=[".png"])
+
+    da._ingest(str(src))
+
+    assert (store / "photo.PNG").exists()
+
+
+def test_on_validate_can_reject_a_file_that_accept_would_allow(tmp_path):
+    src = tmp_path / "big.png"
+    src.write_bytes(b"x" * 10)
+    store = tmp_path / "store"
+    da = DropFilesArea(0, 0, store, "200x80", accept=[".png"])
+    da.on_validate(lambda p: p.stat().st_size < 5)  # too big
+
+    da._ingest(str(src))
+
+    assert not store.exists()
+    assert "Rejected" in da._status
+
+
+def test_on_validate_alone_without_accept(tmp_path):
+    src = tmp_path / "ok.txt"
+    src.write_text("x")
+    store = tmp_path / "store"
+    da = DropFilesArea(0, 0, store, "200x80")
+    da.on_validate(lambda p: p.suffix == ".txt")
+
+    da._ingest(str(src))
+
+    assert (store / "ok.txt").exists()
+
+
+def test_partial_rejection_still_stores_the_accepted_files(tmp_path):
+    good = tmp_path / "a.png"
+    good.write_bytes(b"x")
+    bad = tmp_path / "b.txt"
+    bad.write_text("x")
+    store = tmp_path / "store"
+    da = DropFilesArea(0, 0, store, "200x80", accept=[".png"])
+
+    da._ingest(f"{good} {bad}")
+
+    assert (store / "a.png").exists()
+    assert not (store / "b.txt").exists()
+    assert not da._error  # partial success isn't reported as an error
+    assert "1 rejected" in da._status
+
+
+def test_accept_hint_shown_when_focused_with_no_recent_files():
+    app = App(full=False, size="800x300", style=Style(fg="white", bg="black"))
+    da = DropFilesArea(0, 0, "uploads/", "400x120", accept=[".png", ".jpg"])
+    app.add(da)
+    app.focus(da)
+
+    snap = app.snapshot()
+    assert "Accepts: .png, .jpg" in snap
 
 
 # ── rendering ──────────────────────────────────────────────────────────────────

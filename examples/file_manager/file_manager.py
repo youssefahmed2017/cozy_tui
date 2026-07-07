@@ -29,7 +29,8 @@ from cozy_tui import App, Style, clipboard
 from cozy_tui._width import text_width
 from cozy_tui.events import Key
 from cozy_tui.widget import Widget
-from cozy_tui.widgets import Box, Button, Label, MenuItem, MenuSeparator, RightClickMenu
+from cozy_tui.widgets import (Box, Button, Label, MenuItem, MenuSeparator,
+                              RightClickMenu)
 
 # ── pure helpers (unit-tested in tests/test_file_manager.py) ────────────────────
 
@@ -132,7 +133,11 @@ class FileManager(Widget):
 
         def done(entries):
             self.cwd = path.resolve()
-            up = [] if self.cwd.parent == self.cwd else [Entry(self.cwd.parent, is_up=True)]
+            up = (
+                []
+                if self.cwd.parent == self.cwd
+                else [Entry(self.cwd.parent, is_up=True)]
+            )
             self.entries = up + entries
             self.index = self.scroll = 0
             self.status = f"{len(entries)} item{'s' * (len(entries) != 1)}"
@@ -151,7 +156,9 @@ class FileManager(Widget):
         if e.is_dir:
             self.load(e.path)
         else:
-            self.status = f"{e.name} — {human_size(e.size)} (files aren't opened in this demo)"
+            self.status = (
+                f"{e.name} — {human_size(e.size)} (files aren't opened in this demo)"
+            )
 
     def _move(self, delta):
         if self.entries:
@@ -281,8 +288,14 @@ class FileManager(Widget):
     # ── overlays ───────────────────────────────────────────────────────────────
 
     def _confirm(self, message, on_yes):
-        box = Box(0, 0, "520x110", title="Confirm", border="bold",
-                  style=Style(fg="white", bg="black"))
+        box = Box(
+            0,
+            0,
+            "520x110",
+            title="Confirm",
+            border="bold",
+            style=Style(fg="white", bg="black"),
+        )
         box.add(Label(2, 1, message))
         box.add(
             Button(2, 3, "Delete", style=Style(fg="white", bg="red")).on_click(
@@ -299,28 +312,62 @@ class FileManager(Widget):
             self._clamp()
         e = self.selected
         real = e is not None and not e.is_up
-        menu = RightClickMenu([
-            MenuItem("Open", icon="📂" if e and e.is_dir else "📄",
-                     on_select=lambda i: self._open(), enabled=e is not None),
-            MenuItem("Copy path", icon="📋", on_select=lambda i: self.copy_path(),
-                     enabled=real),
-            MenuSeparator(),
-            MenuItem("Copy", on_select=lambda i: self.set_clip("copy"), enabled=real),
-            MenuItem("Cut", on_select=lambda i: self.set_clip("cut"), enabled=real),
-            MenuItem("Paste", on_select=lambda i: self.paste(),
-                     enabled=self.clip is not None),
-            MenuSeparator(),
-            MenuItem("Rename…", shortcut="F2", on_select=lambda i: self.rename(),
-                     enabled=real),
-            MenuItem("Delete", icon="🗑", shortcut="Del", on_select=lambda i: self.delete(),
-                     enabled=real),
-            MenuSeparator(),
-            MenuItem("New", icon="✨", submenu=[
-                MenuItem("File…", on_select=lambda i: self.new_entry(folder=False)),
-                MenuItem("Folder…", on_select=lambda i: self.new_entry(folder=True)),
-            ]),
-            MenuItem("Refresh", shortcut="F5", on_select=lambda i: self.load(self.cwd)),
-        ])
+        menu = RightClickMenu(
+            [
+                MenuItem(
+                    "Open",
+                    icon="📂" if e and e.is_dir else "📄",
+                    on_select=lambda i: self._open(),
+                    enabled=e is not None,
+                ),
+                MenuItem(
+                    "Copy path",
+                    icon="📋",
+                    on_select=lambda i: self.copy_path(),
+                    enabled=real,
+                ),
+                MenuSeparator(),
+                MenuItem(
+                    "Copy", on_select=lambda i: self.set_clip("copy"), enabled=real
+                ),
+                MenuItem("Cut", on_select=lambda i: self.set_clip("cut"), enabled=real),
+                MenuItem(
+                    "Paste",
+                    on_select=lambda i: self.paste(),
+                    enabled=self.clip is not None,
+                ),
+                MenuSeparator(),
+                MenuItem(
+                    "Rename…",
+                    shortcut="F2",
+                    on_select=lambda i: self.rename(),
+                    enabled=real,
+                ),
+                MenuItem(
+                    "Delete",
+                    icon="🗑",
+                    shortcut="Del",
+                    on_select=lambda i: self.delete(),
+                    enabled=real,
+                ),
+                MenuSeparator(),
+                MenuItem(
+                    "New",
+                    icon="✨",
+                    submenu=[
+                        MenuItem(
+                            "File…", on_select=lambda i: self.new_entry(folder=False)
+                        ),
+                        MenuItem(
+                            "Folder…", on_select=lambda i: self.new_entry(folder=True)
+                        ),
+                    ],
+                ),
+                MenuItem(
+                    "Refresh", shortcut="F5", on_select=lambda i: self.load(self.cwd)
+                ),
+            ]
+        )
         menu.open_at(self.app, col, row)
 
     # ── input ──────────────────────────────────────────────────────────────────
@@ -397,7 +444,7 @@ class FileManager(Widget):
         path = str(self.cwd)
         avail = cols - 4
         if text_width(path) > avail:
-            path = "…" + path[-(avail - 1):]
+            path = "…" + path[-(avail - 1) :]
         canvas.write(0, 0, " " * cols, HEADER)
         canvas.write(1, 0, f"📂 {path}", HEADER)
 
@@ -424,8 +471,11 @@ class FileManager(Widget):
             icon = "↩ " if e.is_up else ("📁" if e.is_dir else "📄")
             canvas.write(1, y, icon, text)
             size_str = "" if e.is_dir else human_size(e.size)
-            time_str = "" if e.is_up else time.strftime("%Y-%m-%d %H:%M",
-                                                        time.localtime(e.mtime))
+            time_str = (
+                ""
+                if e.is_up
+                else time.strftime("%Y-%m-%d %H:%M", time.localtime(e.mtime))
+            )
             name_w = cols - 4 - SIZE_W - TIME_W - 2
             canvas.write(4, y, self._clip_name(e.name, name_w), text)
             canvas.write(cols - TIME_W - SIZE_W - 2, y, size_str.rjust(SIZE_W), text)
@@ -434,7 +484,9 @@ class FileManager(Widget):
         # footer: status on the left, position + clipboard on the right
         fy = self._rows - 1
         canvas.write(0, fy, " " * cols, FOOTER)
-        left = self.status or "Enter: open · Backspace: up · right-click: menu · Esc: quit"
+        left = (
+            self.status or "Enter: open · Backspace: up · right-click: menu · Esc: quit"
+        )
         canvas.write(1, fy, self._clip_name(left, cols - 22), FOOTER)
         pos = f"{self.index + 1}/{len(self.entries)}" if self.entries else "0/0"
         if self.clip:
