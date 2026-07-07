@@ -903,6 +903,70 @@ class App:
             return self._hit_widget(modal.widget, col, row)
         return self._hit_test(col, row)
 
+    def _dispatch_input(self, key) -> None:
+        """Route one parsed input event through App's normal input semantics:
+        mouse events to `_dispatch_mouse`, everything else (a `Key.*`
+        constant, a plain character, or a `Paste`) through the modal /
+        global-key-handler / focused-widget chain. `run()` calls this with
+        whatever `read_key()` returned; it's also the extension point for a
+        frontend with no real terminal underneath (see `_internal/ctui_web`)
+        that already has a parsed event and wants the same routing `run()`
+        gets, without going through `read_key()`/a terminal at all."""
+        if isinstance(key, (MouseClick, MouseDrag, MouseRelease, MouseMove)):
+            self._dispatch_mouse(key)
+            return
+        if self._default_logs and key not in (Key.SCROLL_UP, Key.SCROLL_DOWN):
+            self.debug(f"Pressed on key: {key}")
+        modal = self._topmost_modal()
+        if modal is not None:
+            # A modal captures all keys: no global handlers, no scroll.
+            if key in (Key.ESC, Key.F12) and modal.close_on_escape:
+                self.close_overlay(modal.widget)
+            elif key == Key.TAB:
+                self._cycle_focus(1)
+            elif key == Key.SHIFT_TAB:
+                self._cycle_focus(-1)
+            elif key == Key.CTRL_C and not (
+                self.focused and getattr(self.focused, "cursor", False)
+            ):
+                self.quit()
+            elif self.focused:
+                self.focused.on_key(key)
+            return
+        if key == Key.CTRL_C:
+            # Text inputs (cursor=True) handle Ctrl+C for copy; everything
+            # else treats it as quit.
+            if self.focused and getattr(self.focused, "cursor", False):
+                self.focused.on_key(key)
+            else:
+                self.quit()
+        elif key in (
+            Key.SCROLL_UP,
+            Key.SCROLL_DOWN,
+            Key.PAGE_UP,
+            Key.PAGE_DOWN,
+            Key.CTRL_UP,
+            Key.CTRL_DOWN,
+        ):
+            # A focused scrollable widget (ScrollView) consumes the wheel
+            # / page keys; otherwise they scroll the whole base UI.
+            if getattr(self.focused, "scrollable", False):
+                self.focused.on_key(key)
+            elif key in (Key.SCROLL_UP, Key.PAGE_UP, Key.CTRL_UP):
+                self._scroll(-3)
+            else:
+                self._scroll(3)
+        elif key == Key.TAB:
+            self._cycle_focus(1)
+        elif key == Key.SHIFT_TAB:
+            self._cycle_focus(-1)
+        elif key in self._key_handlers:
+            result = self._key_handlers[key]()
+            if result == "quit":
+                self._should_quit = True
+        elif self.focused:
+            self.focused.on_key(key)
+
     def _dispatch_mouse(self, event):
         """Route a mouse event to the global hook then the widget under it.
         Coordinates are adjusted for scroll (overlays are screen-fixed) before
@@ -1129,60 +1193,9 @@ class App:
                 key = read_key()
                 if not key:  # None or "" from focus/resize console events
                     continue
-                if isinstance(key, (MouseClick, MouseDrag, MouseRelease, MouseMove)):
-                    self._dispatch_mouse(key)
-                    continue
-                if self._default_logs and key not in (Key.SCROLL_UP, Key.SCROLL_DOWN):
-                    self.debug(f"Pressed on key: {key}")
-                modal = self._topmost_modal()
-                if modal is not None:
-                    # A modal captures all keys: no global handlers, no scroll.
-                    if key in (Key.ESC, Key.F12) and modal.close_on_escape:
-                        self.close_overlay(modal.widget)
-                    elif key == Key.TAB:
-                        self._cycle_focus(1)
-                    elif key == Key.SHIFT_TAB:
-                        self._cycle_focus(-1)
-                    elif key == Key.CTRL_C and not (
-                        self.focused and getattr(self.focused, "cursor", False)
-                    ):
-                        self.quit()
-                    elif self.focused:
-                        self.focused.on_key(key)
-                    continue
-                if key == Key.CTRL_C:
-                    # Text inputs (cursor=True) handle Ctrl+C for copy; everything
-                    # else treats it as quit.
-                    if self.focused and getattr(self.focused, "cursor", False):
-                        self.focused.on_key(key)
-                    else:
-                        self.quit()
-                elif key in (
-                    Key.SCROLL_UP,
-                    Key.SCROLL_DOWN,
-                    Key.PAGE_UP,
-                    Key.PAGE_DOWN,
-                    Key.CTRL_UP,
-                    Key.CTRL_DOWN,
-                ):
-                    # A focused scrollable widget (ScrollView) consumes the wheel
-                    # / page keys; otherwise they scroll the whole base UI.
-                    if getattr(self.focused, "scrollable", False):
-                        self.focused.on_key(key)
-                    elif key in (Key.SCROLL_UP, Key.PAGE_UP, Key.CTRL_UP):
-                        self._scroll(-3)
-                    else:
-                        self._scroll(3)
-                elif key == Key.TAB:
-                    self._cycle_focus(1)
-                elif key == Key.SHIFT_TAB:
-                    self._cycle_focus(-1)
-                elif key in self._key_handlers:
-                    result = self._key_handlers[key]()
-                    if result == "quit" or self._should_quit:
-                        break
-                elif self.focused:
-                    self.focused.on_key(key)
+                self._dispatch_input(key)
+                if self._should_quit:
+                    break
         except (KeyboardInterrupt, EOFError):
             # EOFError: stdin was closed out from under us (e.g. redirected from
             # a closed pipe) — nothing left to read, so shut down cleanly rather
