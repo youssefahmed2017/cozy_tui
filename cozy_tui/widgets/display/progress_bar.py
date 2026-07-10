@@ -16,13 +16,13 @@ class ProgressBar(Widget):
         progress=0,
         *,
         width=20,
-        min=0,
-        max=100,
+        minimum=0,
+        maximum=100,
         style: Style | None = None,
     ):
         super().__init__(x, y, style, name="Progress Bar")
-        self.min = min
-        self.max = max
+        self.min = minimum
+        self.max = maximum
         self._value = self._clamp(progress)
         self.width = width
         self.fill = fill

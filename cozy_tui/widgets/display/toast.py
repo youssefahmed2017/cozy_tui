@@ -2,12 +2,14 @@ from cozy_tui._width import clip_text, text_width
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
 
-# level -> (border/icon color, default icon)
-_LEVELS = {
-    "info": ("bright_cyan", "ℹ"),
-    "success": ("bright_green", "✓"),
-    "warning": ("bright_yellow", "⚠"),
-    "error": ("bright_red", "✗"),
+# level -> default icon. The border/icon *color* instead comes from the
+# active theme's same-named role (theme.info/success/warning/error), so
+# switching themes re-colors toasts too.
+_ICONS = {
+    "info": "ℹ",
+    "success": "✓",
+    "warning": "⚠",
+    "error": "✗",
 }
 
 
@@ -26,11 +28,12 @@ class Toast(Widget):
 
     def __init__(self, message, *, level="info", icon=None, corner="bottom-right"):
         super().__init__(0, 0, name="Toast")
+        from cozy_tui.theme import get_theme  # local: theme.py builds on Style
+
         self.message = message
-        self.level = level if level in _LEVELS else "info"
-        color, default_icon = _LEVELS[self.level]
-        self.color = color
-        self.icon = default_icon if icon is None else icon
+        self.level = level if level in _ICONS else "info"
+        self.color = getattr(get_theme(), self.level)
+        self.icon = _ICONS[self.level] if icon is None else icon
         self.corner = corner
 
     def _content_width(self, cols):

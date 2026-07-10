@@ -4,7 +4,7 @@
 
 Layouts are borderless containers that **automatically position their children** — you don't set `x`/`y` on children added to a layout. They inherit from `Widget` and can be placed anywhere a widget can (inside a `Box`, directly on `App`, or nested inside other layouts).
 
-All layouts support `.add(widget)` which returns `self` for chaining.
+All layouts support `.add(widget, flex=0)` which returns `self` for chaining — `VBox`/`HBox` only, see [Flex growth](#flex-growth-flex) below.
 
 ### `Layout` (base)
 
@@ -74,6 +74,29 @@ hbox.add(Button(0, 0, "OK", width=10, style=Style(fg="white", bg="green")))
 hbox.add(Button(0, 0, "Cancel", width=10, style=Style(fg="white", bg="red")))
 box.add(hbox)
 ```
+
+---
+
+### Flex growth (`flex=`)
+
+By default every child keeps its own natural size (`flex=0`) and `VBox`/`HBox` shrink to fit them, exactly as above. Pass `flex=N` (an integer `> 0`) to `.add()` to instead have that child **grow** to help fill the layout, proportional to its weight against every other flex-marked sibling:
+
+```python
+sidebar = VBox(0, 0)
+sidebar.add(Label(0, 0, "Files"))          # flex=0: stays its natural size
+sidebar.add(file_list, flex=1)             # flex=1: grows to fill what's left
+sidebar.add(status_bar)                    # flex=0: stays pinned right after file_list
+
+app.dock(sidebar, "left", margin=1)
+```
+
+**This only does anything once the layout itself has a known target size** — i.e. it's been docked (`app.dock(...)`/`box.dock(...)`) with a side other than its own natural fit, most usefully `"fill"`. An un-docked (or non-`"fill"`-docked without room to spare) `VBox`/`HBox` has no "leftover space" concept, so `flex=` children just render at their natural size, same as `flex=0` — harmless, not an error.
+
+Multiple flex children split whatever's left over **proportional to weight** (`flex=1` and `flex=2` split it 1:3 and 2:3), after every `flex=0` sibling's natural size and every gap (`gap=`, counted between *all* children, flex or not) is subtracted first. A child never shrinks below its own natural size — if the fixed children already exceed the layout's target size, flex children just get zero extra rather than going negative.
+
+`Grid` doesn't implement flex distribution — `flex=` is accepted (inherited from the shared `Layout.add()`) but silently ignored, same as an un-docked `VBox`/`HBox`.
+
+See [`_internal/textmesser.py`](../_internal/textmesser.py) for a worked example: a `flex=1` spacer `Label` between a status line and a Quit button pins Quit to the bottom of its `Box`, live, as the pane is resized by dragging the `Splitter`.
 
 ---
 
@@ -207,6 +230,8 @@ app.close_overlay(widget=None)   # topmost, or the overlay wrapping `widget`
 
 See [`examples/overlay/overlay.py`](../examples/overlay/overlay.py) for a dismissable confirm dialog.
 
+> **Why these are one self-contained widget, not composed from smaller ones.** A modal overlay routes *every* key to a single focused widget — there's no bubbling if that widget doesn't handle a key. So `PromptDialog`/`ConfirmDialog`/`FilePicker` (below), and the search palettes in [styling.md](styling.md#themes) and [interaction.md](interaction.md#command-palette), each implement their own text buffer and navigation directly rather than composing a real `Input` with a `ListView` inside one modal — that composition would need a hand-written wrapper deciding "is this a nav key → the list, else → the Input" anyway, for no less code than doing it directly.
+
 ### Text-entry prompt
 
 For the common case of "ask the user for a line of text", `app.prompt()` wraps the `PromptDialog` widget and the overlay plumbing into one call:
@@ -223,5 +248,38 @@ app.prompt(title, initial="", *, on_submit=None, on_cancel=None,
 ```
 
 Enter fires `on_submit(text)` and closes the dialog; Esc or a click outside fires `on_cancel()`. It's a centered, dimmed modal, so focus and input are confined to it. The underlying `PromptDialog` is also exported if you want to compose it yourself.
+
+### Confirmation dialog
+
+For "ask a Yes/No question", `app.confirm()` wraps `ConfirmDialog` the same way `app.prompt()` wraps `PromptDialog`:
+
+```python
+app.confirm("Delete this file?", default=False,
+            on_yes=lambda: delete(file),
+            on_no=lambda: None)
+```
+
+```python
+app.confirm(message, *, on_yes=None, on_no=None, yes_label="Yes", no_label="No",
+            default=True, width=40, close_on_click_outside=True)  # returns the ConfirmDialog
+```
+
+Left/Right (or Tab/Shift+Tab) move between the two buttons, Enter picks the highlighted one, `Y`/`N` pick directly, a click picks whichever button it lands on. Cancelling — Esc or a click outside — calls `on_no()` too, since "didn't confirm" should behave like "said no" for anything gated behind a confirmation.
+
+### File picker
+
+For "let the user browse to a file or folder", `app.pick_file()` wraps `FilePicker`:
+
+```python
+app.pick_file(mode="file", extensions=(".png", ".jpg"),
+              on_select=lambda path: load_image(path))
+```
+
+```python
+app.pick_file(start_dir=None, *, mode="file", extensions=None, on_select=None,
+              on_cancel=None, width=60, height=10, close_on_click_outside=True)  # returns the FilePicker
+```
+
+Opens rooted at `start_dir` (defaults to the current working directory). Type to filter entries *in the current directory* (not recursive, same live-filter pattern as the search palettes); Up/Down/Home/End move the cursor; Enter or a click on a directory (or `..`) navigates into it, on a file (`mode="file"`) picks it and closes. `mode="directory"` shows a "· Select this folder ·" entry instead of listing files, since otherwise there'd be no way to pick a directory without descending into it forever. `extensions` (e.g. `(".py", ".md")`) restricts which files are shown in file mode. A directory that can't be listed (permissions, or something deletes it mid-browse) shows a dimmed message instead of crashing — `..` stays available so you can back out. `on_select(path)` fires with a `pathlib.Path`; cancelling (Esc / click outside) fires `on_cancel()`.
 
 ---

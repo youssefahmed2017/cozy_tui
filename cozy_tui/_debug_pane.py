@@ -29,7 +29,13 @@ class _LiveLog(ScrollView):
 
 class DebugPane(Box):
     def __init__(self, app, x, y, size):
-        super().__init__(x, y, size, title="Debug Log", border="rounded")
+        # style=app.style (not a copy): matches every other overlay built on
+        # the active theme (ThemePalette, CommandPalette, ...) -- without it
+        # this defaulted to a bare, unthemed Style() regardless of the app's
+        # actual theme.
+        super().__init__(
+            x, y, size, title="Debug Log", border="rounded", style=app.style
+        )
         # Box grows to fit a non-lapping child's right edge, so a ScrollView
         # sized to the box's *own* full width (starting at x=1, inside the
         # border) would push the box one cell wider every time. Inset by one

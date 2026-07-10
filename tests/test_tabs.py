@@ -105,6 +105,29 @@ def test_only_active_panel_content_renders():
     assert "PANEL_TWO" in snap and "PANEL_ONE" not in snap
 
 
+def test_oversized_panel_content_is_clipped_not_bled_through():
+    # Regression: an active panel taller than Tabs' own assigned rectangle
+    # used to draw straight past it with no clipping, corrupting whatever
+    # was drawn after Tabs in z-order (typically a docked footer).
+    app = make_app()  # 80x30
+    footer = Label(0, 10, "FOOTER", Style())
+    app.add(footer)  # added first -> tabs (added after) draws over it if unclipped
+    tabs = Tabs(
+        0, 0, "800x40", animate=False
+    )  # only 4 cells tall (tab strip + 2 content rows)
+    panel = tabs.add_tab("One")
+    for i in range(20):  # far taller than the available slice
+        panel.add(Label(1, i, f"row{i}"))
+    app.add(tabs)
+
+    snap = app.snapshot()
+    assert "row0" in snap  # within the clip, visible
+    # row8 lands on the exact same absolute row as "FOOTER" (panel content
+    # starts 2 rows below the tab strip, so row(i) is at abs y = 2 + i).
+    assert "row8" not in snap  # clipped away, not drawn at all
+    assert "FOOTER" in snap  # ...so it never got the chance to overwrite this
+
+
 def test_dock_resize_sets_cell_size():
     tabs = Tabs(0, 0, "100x100")
     tabs.dock_resize(50, 20, 10)  # 50x20 cells at scale 10

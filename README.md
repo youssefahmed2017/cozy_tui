@@ -14,10 +14,10 @@ A lightweight, cross-platform Python TUI (Terminal User Interface) library. Buil
 Full documentation lives in [`docs/`](https://github.com/youssefahmed2017/cozy_tui/tree/master/docs) (GitHub) directory:
 
 - **[Core Concepts](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/concepts.md)** — the render loop, coordinate system, and widget lifecycle.
-- **[Widgets](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/widgets.md)** — every widget: `App`, `Box`, `Label`, `Hyperlink`, `Bindings`, `Text`, `Input`, `Button`, `Checkbox`, `MarkdownInput`, `DropFilesArea`, `ListView`, `CheckList`, `RadioSet`, `Dropdown`, `RightClickMenu`, `ProgressBar`, `Spinner`, `Toast`, `Table`, `Tabs`, `ScrollView`, `Collapsible`, `Tree`, `AnimatedLabel`, `TracebackView`.
-- **[Layouts, Dock & Overlays](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/layouts.md)** — `VBox`/`HBox`/`Grid`, `app.dock(...)`, and the overlay/modal layer (`open_overlay`, `app.prompt`).
-- **[Styling](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/styling.md)** — `Style`, colors, and text attributes.
-- **[Input & Interaction](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/interaction.md)** — key bindings, mouse support, focus, and scrolling.
+- **[Widgets](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/widgets.md)** — every widget: `App`, `Box`, `Label`, `Hyperlink`, `Bindings`, `Text`, `Input`, `Button`, `Checkbox`, `Slider`, `MarkdownInput`, `DropFilesArea`, `ListView`, `CheckList`, `RadioSet`, `RightClickMenu`, `MenuBar`, `Dropdown`, `ProgressBar`, `Spinner`, `Toast`, `Tooltip`, `Table`, `Tabs`, `ScrollView`, `Splitter`, `Collapsible`, `Tree`, `AnimatedLabel`, `TracebackView`.
+- **[Layouts, Dock & Overlays](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/layouts.md)** — `VBox`/`HBox`/`Grid`, `app.dock(...)`, and the overlay/modal layer (`open_overlay`, `app.prompt`, `app.confirm`, `app.pick_file`).
+- **[Styling](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/styling.md)** — `Style`, colors, text attributes, and `Theme`s.
+- **[Input & Interaction](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/interaction.md)** — key bindings, mouse support, focus, scrolling, and the Ctrl+P command palette.
 - **[Examples](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/examples.md)** — runnable demos in [`examples/`](examples).
 
 ---
@@ -28,12 +28,15 @@ Full documentation lives in [`docs/`](https://github.com/youssefahmed2017/cozy_t
 - **Very few dependencies** — the clipboard is built in (no `pyperclip`); the only third-party dependency is `rich`, used to render `Markdown`/`MarkdownInput` and to syntax-highlight `TracebackView`/`show_traceback`. Everything else is the standard library.
 - **Built-in clipboard** — `cozy_tui.clipboard.copy`/`paste` with native backends per platform (Win32 API, `pbcopy`/`pbpaste`, `wl-clipboard`/`xclip`/`xsel`, or OSC 52 fallback).
 - **Unicode-aware rendering** — a built-in `wcwidth`-style width layer keeps CJK/emoji (double-width) and combining marks (zero-width) aligned in the cell grid.
-- **Widgets**: `Button`, `Checkbox`, `Input`, `Label`, `Hyperlink`, `Bindings`, `AnimatedLabel`, `Text`, `Box`, `MarkdownInput`, `DropFilesArea`, `ListView`, `CheckList`, `RadioSet`, `Dropdown`, `RightClickMenu`, `ProgressBar`, `Spinner`, `Toast`, `Table`, `Tabs`, `ScrollView`, `Collapsible`, `Tree`, `TracebackView`
+- **Widgets**: `Button`, `Checkbox`, `Input`, `Slider`, `Label`, `Hyperlink`, `Bindings`, `AnimatedLabel`, `Text`, `Box`, `MarkdownInput`, `DropFilesArea`, `ListView`, `CheckList`, `RadioSet`, `RightClickMenu`, `MenuBar`, `Dropdown`, `ProgressBar`, `Spinner`, `Toast`, `Tooltip`, `Table`, `Tabs`, `ScrollView`, `Splitter`, `Collapsible`, `Tree`, `TracebackView`
+- **Themes**: a `Theme` bundles the accent/muted/semantic/selection colors most widgets and `app.toast(...)` draw from; switch with `set_theme(theme)`/`theme.activate()`, or interactively via the Ctrl+T searchable picker (over 20 built-in presets in `Theme.MODES`) — see [styling.md](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/styling.md#themes)
+- **Command palette**: Ctrl+P opens a Textual-style searchable list of commands (`app.register_command(...)` to add your own) — Quit, Change Theme, and Keys (a live keybindings legend) are built in
 - **Crash screens**: unhandled exceptions in `app.run()` automatically show a full-screen, scrollable, syntax-highlighted `TracebackView` with one-key clipboard copy (`App(catch_errors=False)` to get a plain propagating exception instead); call `cozy_tui.crash_screen.show_traceback(exc)` directly to get the same screen outside of `run()`
-- **Context menus**: `RightClickMenu` with icons, shortcut labels, and submenus — pop it up from `app.on_right_click(...)`
-- **Layouts**: `VBox`, `HBox`, `Grid` — auto-position children without manual x/y
+- **Context menus**: `RightClickMenu` with icons, shortcut labels, and submenus — pop it up from `app.on_right_click(...)`; `MenuBar` docks the same building blocks to the top of the screen as a File/Edit-style menu bar
+- **Layouts**: `VBox`, `HBox`, `Grid` — auto-position children without manual x/y, with `flex=` to grow docked children into leftover space; `Splitter` for a user-resizable two-pane divider
 - **Dock layout**: `app.dock(widget, "top"/"bottom"/"left"/"right"/"fill")` — edge-anchored regions that re-flow on resize
-- **Overlays & modals**: `app.open_overlay(widget)` floats a widget above the UI, dims the background, and confines focus/input — the basis for dialogs, menus, and tooltips
+- **Overlays & modals**: `app.open_overlay(widget)` floats a widget above the UI, dims the background, and confines focus/input — the basis for dialogs (`app.prompt`, `app.confirm`, `app.pick_file`), menus, and tooltips (`app.set_tooltip`)
+- **Input validation**: `Input(inp_type="number")` filters keystrokes to valid numbers as you type; `required=`/`validator=` plus `.error`/`.is_valid` for anything else, with automatic error-color styling
 - **Multi-line Input**: Enter or Shift+Enter to insert newlines, UP/DOWN to navigate lines
 - **Markdown preview**: `MarkdownInput` renders live Rich Markdown when unfocused
 - **Focus system**: Tab / Shift+Tab to cycle focus, click to focus with mouse

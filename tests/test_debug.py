@@ -107,6 +107,15 @@ def test_f12_opens_and_closes_the_pane():
     assert len(app._overlays) == 0
 
 
+def test_debug_pane_picks_up_the_apps_theme():
+    # Regression: DebugPane used to be built with Box's bare default style
+    # instead of the app's, so it never reflected the active theme.
+    app = make_app(debug=True)
+    app.style.bg = "magenta_bg"
+    app.toggle_debug_pane()
+    assert app._debug_pane.style is app.style
+
+
 def test_pane_shows_buffered_lines_and_syncs_live():
     app = make_app(debug=True)
     app.debug("line one")

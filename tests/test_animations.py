@@ -2,8 +2,13 @@ import re
 
 from cozy_tui import App, Style
 from cozy_tui.events import MouseMove
-from cozy_tui.widgets import (AnimatedLabel, Button, GlowAnimation,
-                              LevitateAnimation, RainbowAnimation)
+from cozy_tui.widgets import (
+    AnimatedLabel,
+    Button,
+    GlowAnimation,
+    LevitateAnimation,
+    RainbowAnimation,
+)
 
 
 def make_app(**kw):

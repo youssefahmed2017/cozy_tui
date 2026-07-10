@@ -7,8 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from cozy_tui import App, Style
 from cozy_tui.events import Key
-from cozy_tui.widgets import (Box, Button, CheckItem, CheckList, HBox, Input,
-                              Label)
+from cozy_tui.widgets import Box, Button, CheckItem, CheckList, HBox, Input, Label
 
 # ── Data layer ────────────────────────────────────────────────────────────────
 

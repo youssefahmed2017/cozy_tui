@@ -30,6 +30,18 @@ class Box(Widget):
         # but an empty/decorative box only becomes a Tab stop when focusable=True.
         self.focusable = focusable
         self.width, self.height = map(int, size.split("x"))
+        # Stable floor for _layout()'s wrap-growth (never touched by
+        # dock_resize(), unlike self.height): a "top"/"bottom"-docked box's
+        # natural_height() is queried to reserve a dock band *before*
+        # dock_resize() runs, so if that computation instead floored on the
+        # live self.height, a one-time bad reservation (e.g. on the very
+        # first frame, before self.width had converged to the terminal's
+        # real width) would get baked into self.height by dock_resize(),
+        # which _layout() would then use as *next* frame's floor too --
+        # permanently inflating it instead of converging back down once the
+        # real width was known. self.height keeps its normal job (the box's
+        # actual current render size); this is only _layout()'s minimum.
+        self._min_height = self.height
         self.border = self.BORDERS[border]
         self.children = []
         self._bounds = (0, 0, 0, 0)  # last drawn (x, y, w, h) in cells, for hit-testing
@@ -37,11 +49,36 @@ class Box(Widget):
             fg="bright_white", bg=self.style.raw_bg, styles=["bold"]
         )
 
+    def _fill_docked(self) -> bool:
+        # True only for side="fill" -- that's the one dock side whose
+        # dock_resize() assigns self.width/height *directly* (see
+        # dock_layout's fill branch), never derived from this box's own
+        # natural_width/height() output, so it's safe to trust as a floor
+        # here. Every other side's assigned size *is* derived from a
+        # previous natural_width/height() call (via the dock band
+        # reservation), so trusting it back would reopen the same feedback
+        # loop _min_height exists to avoid -- see __init__ and _layout().
+        dock = getattr(self, "_dock", None)
+        return dock is not None and dock[0] == "fill"
+
     def natural_width(self, scale):
-        return self.width // scale + 2
+        # Runs the same layout pass draw() uses, so a Box whose content grows
+        # it wider (a non-lapping child past its edge) or taller (a lapping
+        # child wrapping) is measured correctly by anything sizing around it
+        # -- notably the dock system, which reserves a "top"/"bottom"/"left"/
+        # "right" band from natural_width/height() *before* dock_resize() is
+        # called, so an unaware size here previously let wrapped content grow
+        # right past whatever band had already been reserved for it.
+        width, _height = self._layout(scale)
+        if self._fill_docked():
+            width = max(width, self.width // scale)
+        return width + 2
 
     def natural_height(self, scale):
-        return self.height // scale + 2
+        _width, height = self._layout(scale)
+        if self._fill_docked():
+            height = max(height, self.height // scale)
+        return height + 2
 
     def dock_resize(self, w, h, scale):
         # Grow to fill the assigned slice; the border eats 2 cells each way.
@@ -63,10 +100,14 @@ class Box(Widget):
 
         return top, bottom, v
 
-    def _layout(self, canvas):
-        scale = canvas.SCALE
+    def _layout(self, scale):
         width = max(self.width // scale, len(self.text) + 3)
-        height = self.height // scale
+        # Always floors on the immutable _min_height, never the live
+        # self.height -- self.height already *is* min_height + a previous
+        # total_extra once this box has ever been "top"/"bottom"-docked (see
+        # __init__), so flooring on it here would add that total_extra a
+        # second time on top of itself, every single frame.
+        height = self._min_height // scale
 
         # Reset layout state for all children
         for child in self.children:
@@ -110,7 +151,9 @@ class Box(Widget):
 
     def draw(self, canvas):
         self._apply_docks(canvas)
-        width, height = self._layout(canvas)
+        width, height = self._layout(canvas.SCALE)
+        if self._fill_docked():  # self.height is authoritative here, see _fill_docked()
+            height = max(height, self.height // canvas.SCALE)
         self._bounds = (self.abs_x, self.abs_y, width + 2, height + 2)
         middle_height = (self.height // canvas.SCALE) // 2
         focused = self._has_focused(canvas)

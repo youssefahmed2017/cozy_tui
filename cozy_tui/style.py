@@ -38,12 +38,15 @@ class Style:
 
 def selection_style(dim: bool = False) -> Style:
     """The focused-row highlight style shared by ListView, RadioSet, CheckList,
-    Table, Tree, Dropdown, Checkbox, and RightClickMenu: a solid inverted block
-    for the item under the cursor. `dim=True` gives the softer variant used for
-    "selected but not the cursor row" (bold foreground, no background fill)."""
-    if dim:
-        return Style(fg="white", styles=["bold"])
-    return Style(fg="black", bg="white", styles=["bold"])
+    Table, Tree, Dropdown, Checkbox, RightClickMenu, Slider, and MenuBar: a
+    solid inverted block for the item under the cursor. `dim=True` gives the
+    softer variant used for "selected but not the cursor row" (bold
+    foreground, no background fill). Colors come from the active theme's
+    `selection_fg`/`selection_bg` (see `cozy_tui.theme`) -- imported locally
+    to avoid a circular import, since theme.py itself builds on Style."""
+    from cozy_tui.theme import get_theme
+
+    return get_theme().selection_style(dim)
 
 
 class Cell:

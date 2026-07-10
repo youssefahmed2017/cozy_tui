@@ -11,6 +11,11 @@
 | Ctrl+C | Exit the app |
 | Scroll Up / Page Up / Ctrl+Up | Scroll content up |
 | Scroll Down / Page Down / Ctrl+Down | Scroll content down |
+| Ctrl+T | Open the searchable theme picker (see [styling.md](styling.md#themes)) |
+| Ctrl+P | Open the command palette (see [below](#command-palette)) |
+| F12 | Toggle the debug pane (no-op unless `App(debug=True)`) — always reaches the pane even while a modal is open |
+
+Any of these can be overridden with your own `app.on_key(...)` — the same key just gets registered again, replacing the default.
 
 ### Input widget
 
@@ -49,7 +54,7 @@ Available key constants in `cozy_tui.events.Key`:
 `ESC`, `ENTER`, `BACKSPACE`, `TAB`, `SHIFT_TAB`, `SHIFT_ENTER`,
 `UP`, `DOWN`, `LEFT`, `RIGHT`, `HOME`, `END`,
 `DELETE`, `INSERT`, `PAGE_UP`, `PAGE_DOWN`,
-`CTRL_UP`, `CTRL_DOWN`, `CTRL_LEFT`, `CTRL_RIGHT`, `CTRL_C`,
+`CTRL_UP`, `CTRL_DOWN`, `CTRL_LEFT`, `CTRL_RIGHT`, `CTRL_C`, `CTRL_T`, `CTRL_P`,
 `F1`–`F12`
 
 **Modifier combos.** Terminals only send Alt/Ctrl combined with another key, so use the helpers:
@@ -69,6 +74,23 @@ app.on_key(Key.ctrl(Key.F5), hard_refresh)  # Ctrl+F5 → "ctrl+F5"
 - `Key.ctrl(c)` → the actual control byte for a **letter** (`Key.ctrl("a") == Key.CTRL_A`), or a `"ctrl+<key>"` string otherwise (e.g. an F-key).
 - `Key.shift(c)` → `"shift+" + c` (used for F-keys).
 - **Modified F-keys** parse to canonical `"ctrl+F5"`, `"shift+F5"`, `"ctrl+shift+F12"` … The modifier order is always `ctrl`, `alt`, `shift`, and the helpers compose in that order — `Key.ctrl(Key.shift(Key.F5)) == "ctrl+shift+F5"`.
+
+### Command palette
+
+**Ctrl+P** opens a Textual-style command palette by default on every `App` — type to filter by name or description, Up/Down to move, Enter or a click to run the highlighted command, Esc/click-outside to cancel. `App` registers a few built-ins this way: **Quit**, **Change Theme** (opens the theme picker above), **Keys** (opens a read-only `Bindings("auto")` legend of every currently-registered global key binding), and — only when `debug=True` — **Toggle Debug Pane**.
+
+```python
+app.register_command(name, callback, *, description="")
+```
+
+Register your own — `callback` is invoked with no arguments when the command is picked, after the palette has already closed. Re-registering an existing name (including one of the built-ins above) overrides it:
+
+```python
+app.register_command("Reset Form", reset_form, description="Clear every field back to its default")
+app.register_command("Quit", confirm_before_quitting, description="Quit the application")  # overrides the default
+```
+
+`app.open_command_palette()` is what Ctrl+P calls — trigger it yourself from a menu item or button.
 
 ---
 

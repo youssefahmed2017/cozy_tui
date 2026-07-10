@@ -87,6 +87,8 @@ class Key:
     CTRL_A      = "\x01"
     CTRL_V      = "\x16"
     CTRL_X      = "\x18"
+    CTRL_T      = "\x14"
+    CTRL_P      = "\x10"
     SHIFT_TAB   = "SHIFT_TAB"
     SHIFT_ENTER = "SHIFT_ENTER"
     SHIFT_LEFT  = "SHIFT_LEFT"

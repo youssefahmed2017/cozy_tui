@@ -80,18 +80,21 @@ def parse_dropped_paths(text: str) -> list[str]:
     return [os.path.expanduser(t) for t in _tokenize(text) if t]
 
 
-def _unique_path(path: Path) -> Path:
-    """A non-existing path near ``path`` — appends ' (1)', ' (2)', … on a clash,
-    so a drop never overwrites an existing file."""
-    if not path.exists():
-        return path
+def _unique_path(path: Path, reserved=frozenset()) -> Path:
+    """A non-existing, unreserved path near ``path`` — appends ' (1)', ' (2)',
+    … on a clash, so a drop never overwrites an existing file. ``reserved``
+    additionally excludes destinations already claimed by an in-flight
+    copy/move that hasn't reached disk yet (see ``DropFilesArea._ingest``) --
+    without it, two drops of a same-named file arriving close enough
+    together could both resolve to the same destination before either
+    worker's copy finishes, and one would silently clobber the other."""
     stem, suffix = path.stem, path.suffix
+    candidate = path
     i = 1
-    while True:
+    while candidate.exists() or candidate in reserved:
         candidate = path.with_name(f"{stem} ({i}){suffix}")
-        if not candidate.exists():
-            return candidate
         i += 1
+    return candidate
 
 
 # ── widget ───────────────────────────────────────────────────────────────────────
@@ -159,6 +162,11 @@ class DropFilesArea(Widget):
         self._pending = ""  # path text typed / raw-dropped, filed on Enter
         self._app = None  # set to the canvas (App) each draw, for workers/redraw
         self._wc = self._hc = 0
+        # Destinations claimed by a copy/move that's started but not finished
+        # yet -- only ever touched from the main thread (_ingest, and the
+        # run_worker on_result/on_error callbacks, which the App always fires
+        # on the main thread), so no lock is needed.
+        self._reserved: set = set()
 
     def on_drop(self, func):
         """Register a callback fired after a successful drop. Receives the list of
@@ -237,10 +245,19 @@ class DropFilesArea(Widget):
             )
             return
 
+        # Resolved and reserved here, on the main thread, before any worker
+        # starts -- not inside work() on the background thread, where two
+        # concurrent drops of a same-named file could both see the same
+        # not-yet-existing destination and race to write it.
+        dest_pairs = []
+        for src in accepted:
+            dest = _unique_path(self.storage_location / src.name, self._reserved)
+            self._reserved.add(dest)
+            dest_pairs.append((src, dest))
+
         def work():
             stored = []
-            for src in accepted:
-                dest = _unique_path(self.storage_location / src.name)
+            for src, dest in dest_pairs:
                 if self.move:
                     shutil.move(str(src), str(dest))
                 elif src.is_dir():
@@ -251,6 +268,7 @@ class DropFilesArea(Widget):
             return stored
 
         def done(stored):
+            self._reserved.difference_update(dest for _src, dest in dest_pairs)
             self._recent = [p.name for p in stored] + self._recent
             del self._recent[self._MAX_RECENT :]
             verb = "Moved" if self.move else "Copied"
@@ -266,6 +284,7 @@ class DropFilesArea(Widget):
                 self._on_drop(stored)
 
         def fail(err):
+            self._reserved.difference_update(dest for _src, dest in dest_pairs)
             self._set_status(
                 f"{'Move' if self.move else 'Copy'} failed: {err}", error=True
             )

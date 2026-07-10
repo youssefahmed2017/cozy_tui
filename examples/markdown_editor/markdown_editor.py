@@ -21,7 +21,10 @@ SAMPLE = """\
 - **Bold**, *italic*, `inline code`
 - Blockquotes, lists, headings, code blocks
 
-> *Tab now to see this rendered!*
+> *Made with:*
+```python
+cozy_tui
+```
 """
 
 OUTPUT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output.md")
@@ -38,7 +41,7 @@ class StatusBar(Widget):
         self._bar_width = width
 
     def natural_width(self, scale):
-        return self._bar_fwidth
+        return self._bar_width
 
     def draw(self, canvas):
         text = self.editor.value
@@ -98,7 +101,10 @@ box.add(btn_row)
 
 box.add(
     Label(
-        2, 6, "Tab preview  •  Ctrl+S save  •  ESC quit", style=Style(fg="bright_black")
+        2,
+        6,
+        f"Tab preview  •  Ctrl+S save  •  ESC quit  •  Saved files in {OUTPUT_FILE}",
+        style=Style(fg="bright_black"),
     )
 )
 

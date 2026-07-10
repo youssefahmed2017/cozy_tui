@@ -79,7 +79,21 @@ def test_backdrop_dims_background_cells():
     app.open_overlay(dialog, dim=True, center=True)
     paint(app)
     # (0, 0) is outside the centered dialog, so it should be greyed by the scrim.
-    assert app.buffer[0][0].style is app._backdrop_style
+    cell_style = app.buffer[0][0].style
+    assert cell_style.fg == "bright_black"
+    assert cell_style.bg == app.style.bg
+
+
+def test_backdrop_tracks_a_theme_switch_applied_after_the_overlay_opens():
+    # The scrim must be recomputed from the *current* app.style every draw,
+    # not cached once at App() construction -- otherwise it stays stuck on
+    # whatever theme was active when the app was built.
+    app, _ = base_with_button()
+    dialog, _ = dialog_with_ok()
+    app.open_overlay(dialog, dim=True, center=True)
+    app.style.bg = "magenta_bg"
+    paint(app)
+    assert app.buffer[0][0].style.bg == "magenta_bg"
 
 
 def test_non_modal_overlay_does_not_confine_focus():

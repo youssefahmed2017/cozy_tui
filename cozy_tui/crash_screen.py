@@ -18,8 +18,7 @@ from cozy_tui.clipboard import copy
 from cozy_tui.events import Key
 from cozy_tui.style import Style
 from cozy_tui.widgets import Label, ScrollView
-from cozy_tui.widgets.display.traceback_view import (TracebackView,
-                                                     format_traceback)
+from cozy_tui.widgets.display.traceback_view import TracebackView, format_traceback
 
 __all__ = ["show_traceback"]
 

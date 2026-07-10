@@ -23,10 +23,16 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
         multiline=False,
         masked=False,
         masked_symbol="*",
+        inp_type="text",
+        required=False,
+        validator=None,
     ):
-        super().__init__(x, y, style, name="Input")
+        Widget.__init__(self=self, x=x, y=y, style=style, name="Input")
+        if inp_type not in ("text", "number"):
+            raise ValueError('inp_type must be "text" or "number"')
+
         self.laps = True
-        self.width = width
+        self.width = max(1, width)
         self.placeholder = placeholder
         self.value = ""
         self.cursor_pos = 0
@@ -37,10 +43,30 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
         self.multiline = multiline
         self.masked = masked
         self.masked_symbol = masked_symbol
+        self.type = inp_type
+        self.required = required
+        # Optional callable(value) -> True (valid) / False (invalid, generic
+        # message) / an error message string. Checked after the built-in
+        # required/type rules, so it only needs to cover its own business
+        # logic (e.g. an email format, a range check).
+        self.validator = validator
+        # Nothing shows as invalid until the user actually interacts --
+        # required=True on a fresh, empty field shouldn't open already red.
+        self._touched = False
         self._overwrite = False
         self._sel_anchor: int | None = None
         self._masked_cache_key: str | None = None  # identity-cached masked display
         self._masked_cache_val: str = ""
+        # error's identity-cached the same way: it's read from _normal_style/
+        # _focused_style on every draw() -- including ones driven by an
+        # unrelated animation elsewhere in the app (Tabs glide, ScrollView
+        # momentum, Spinner, the cursor blink) -- so without this, a
+        # validator= callable gets re-invoked ~30x/second for as long as any
+        # of those run, even though self.value hasn't changed since the last
+        # check. Sentinel object() (never `is` a real value) so the very
+        # first call always misses the cache.
+        self._error_cache_key: tuple = (object(), None)
+        self._error_cache_val: str | None = None
         self._undo_stack = deque(maxlen=_HistoryMixin._MAX_HISTORY)
         self._redo_stack: list = []
         self._last_action: str | None = None
@@ -173,12 +199,81 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
             h = 1
         return self.abs_x <= col < self.abs_x + w and self.abs_y <= row < self.abs_y + h
 
+    # ── validation ───────────────────────────────────────────────────────────
+
+    # Transient states a number field naturally passes through mid-typing
+    # (a bare sign or decimal point) -- not yet a complete number, but not
+    # something to flag as an error either.
+    _NUMBER_IN_PROGRESS = ("", "-", ".", "-.")
+
+    @property
+    def error(self) -> str | None:
+        """The current validation error message, or ``None`` if valid.
+        Always ``None`` until the value has actually changed at least once --
+        a fresh, untouched ``required=True`` field shouldn't open already
+        red. Checked in order: ``required``, the built-in ``type``
+        constraint, then ``validator`` (which only needs to cover its own
+        business logic, not these).
+
+        Cached against ``(self.value, self._touched)`` -- similar in spirit
+        to ``_display_value``'s masked-cache in ``_input_draw.py`` -- since
+        this is read from ``_normal_style``/``_focused_style`` on every
+        ``draw()``, including ones driven by an unrelated animation
+        elsewhere in the app; without the cache, a slow ``validator`` would
+        get re-invoked on every such frame even though nothing here changed."""
+        key = (self.value, self._touched)
+        if key == self._error_cache_key:
+            return self._error_cache_val
+        result = self._compute_error()
+        self._error_cache_key = key
+        self._error_cache_val = result
+        return result
+
+    def _compute_error(self) -> str | None:
+        if not self._touched:
+            return None
+        if self.required and not self.value:
+            return "Required"
+        if self.type == "number" and self.value not in self._NUMBER_IN_PROGRESS:
+            try:
+                float(self.value)
+            except ValueError:
+                return "Not a valid number"
+        if self.validator is not None:
+            # Unlike most callbacks in this library (which only fire on a
+            # discrete user action), `error` -- and therefore `validator` --
+            # runs on every draw frame via _normal_style/_focused_style, so a
+            # raising validator would crash the render loop continuously
+            # rather than just failing once; worth guarding specifically here.
+            try:
+                result = self.validator(self.value)
+            except Exception as exc:
+                return str(exc) or "Invalid"
+            if result is False:
+                return "Invalid"
+            if isinstance(result, str):
+                return result
+        return None
+
+    @property
+    def is_valid(self) -> bool:
+        return self.error is None
+
+    def _error_color(self) -> str:
+        from cozy_tui.theme import get_theme  # local: theme.py builds on Style
+
+        return get_theme().error
+
     # ── styles ───────────────────────────────────────────────────────────────
 
     def _normal_style(self):
+        if self.error is not None:
+            return Style(fg=self._error_color(), bg=self.style.raw_bg)
         return self.style
 
     def _focused_style(self):
+        if self.error is not None:
+            return Style(fg="black", bg=self._error_color())
         return Style(fg="black", bg="white")
 
     def _placeholder_style(self, focused: bool = False):

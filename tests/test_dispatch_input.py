@@ -53,13 +53,22 @@ def test_modal_esc_closes_it_when_close_on_escape():
     assert app._topmost_modal() is None
 
 
-def test_modal_f12_also_closes_it():
-    app = make_app()
+def test_modal_f12_toggles_debug_pane_instead_of_closing_it():
+    # F12 must always reach the debug pane (App.toggle_debug_pane is a no-op
+    # without debug=True) rather than being treated as a second "close this
+    # modal" key -- otherwise F12 could never open the debug pane while any
+    # modal (ConfirmDialog, FilePicker, CommandPalette, ...) happens to be open.
+    app = make_app(debug=True)
     dlg = Button(0, 0, "dlg")
     app.open_overlay(dlg, close_on_escape=True)
 
     app._dispatch_input(Key.F12)
-    assert app._topmost_modal() is None
+    assert app._topmost_modal() is not None  # the modal is still open
+    assert app._debug_pane is not None  # and the debug pane opened
+
+    app._dispatch_input(Key.F12)
+    assert app._debug_pane is None  # toggles closed again
+    assert app._topmost_modal() is not None
 
 
 def test_modal_confines_tab_to_itself():

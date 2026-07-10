@@ -85,9 +85,13 @@ def _app_with_bindings():
 def test_auto_explicit_app_builds_sections():
     app = _app_with_bindings()
     b = Bindings(0, 0, app)  # explicit app form
-    # 2 headers + 4 binds + 1 blank spacer = 7 rows
-    assert b.natural_height(1) == 7 + 2
-    assert b._key_w == text_width("Enter")  # widest shown key ("↑","↓","Enter","Esc")
+    # App() registers its own "App" section (Ctrl+T: Change theme, Ctrl+P:
+    # Command palette) before the fixture's bindings, so: 3 headers + 6 binds
+    # + 2 blank spacers = 11 rows.
+    assert b.natural_height(1) == 11 + 2
+    assert b._key_w == text_width(
+        "Ctrl+T"
+    )  # widest shown key (also "↑","↓","Enter","Esc")
 
 
 def test_auto_relabels_keys_and_skips_undescribed():

@@ -1,27 +1,99 @@
 """Interactive Cozy TUI showcase — run it with ``python -m cozy_tui`` or
 ``cozy-tui demo``.
 
-A multi-page tour: an animated header, a sidebar menu (↑/↓ to switch pages),
-a content area, and a footer hint bar. Tab moves focus into the current page,
-Enter/Space activate the focused control, and Esc quits.
+A multi-page tour: a top MenuBar, an animated header, a sidebar menu (↑/↓ to
+switch pages), a content area, and a footer hint bar. Tab moves focus into
+the current page, Enter/Space activate the focused control. Ctrl+T opens a
+searchable theme picker (or use the Dropdown on the Selection page, or
+File/View in the MenuBar) -- header/footer/tabs and every accented/muted
+label recolor live. Ctrl+P opens the command palette. Quitting (Esc, File >
+Quit, the right-click menu, or the palette) always asks for confirmation
+first.
 """
 
 import time
 
-from cozy_tui import App, Style
+from cozy_tui import App, Style, Theme
 from cozy_tui import __version__ as _VERSION
+from cozy_tui import get_theme
 from cozy_tui.events import Key
-from cozy_tui.widgets import (AnimatedLabel, Bindings, Box, Button, Checkbox,
-                              CheckItem, CheckList, Dropdown, GlowAnimation,
-                              Hyperlink, Input, Label, ListItem, ListView,
-                              MenuItem, MenuSeparator, RadioItem, RadioSet,
-                              RightClickMenu, Spinner, Table, Tabs, Tree)
+from cozy_tui.widget import Widget
+from cozy_tui.widgets import (
+    AnimatedLabel,
+    Bindings,
+    Box,
+    Button,
+    Checkbox,
+    CheckItem,
+    CheckList,
+    Dropdown,
+    GlowAnimation,
+    HBox,
+    Hyperlink,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    MenuBar,
+    MenuItem,
+    MenuSeparator,
+    RadioItem,
+    RadioSet,
+    RightClickMenu,
+    Slider,
+    Spinner,
+    Splitter,
+    Table,
+    Tabs,
+    Tree,
+    VBox,
+)
 
 GITHUB = "https://github.com/youssefahmed2017/cozy_tui"
 PYPI = "https://pypi.org/project/cozy-tui/"
-MUTED = Style(fg="bright_black")
-ACCENT = Style(fg="bright_cyan")
-OK = Style(fg="bright_green")
+# Start from the active theme's colors and are mutated in place (by
+# _sync_theme_visuals() in main()) on a theme switch -- every Label built
+# from these shares the Style object, not a copy, so they all recolor.
+MUTED = Style(fg=get_theme().muted)
+ACCENT = Style(fg=get_theme().accent)
+OK = Style(fg=get_theme().success)
+
+
+class _FlexPanel(Widget):
+    """Demo-only: a borderless block that paints its whole assigned rectangle
+    with `style`'s background and a centered label -- used by page_flex() so
+    growth from VBox/HBox `flex=` is actually *visible* as a solid colored
+    area, not just three widgets sitting closer together.
+
+    Deliberately not a `Box`: `Box` sizes itself in "virtual pixels" (divided
+    by App.SCALE, typically 10) while VBox/HBox always query children's
+    natural_width/height at scale=1 during layout -- nesting a `Box` inside a
+    VBox/HBox misreads its size by a factor of ~10. This widget stores its
+    size in plain cells instead, like Label/Input/Button already do, so it
+    measures and grows correctly as a flex child.
+    """
+
+    def __init__(self, x, y, w, h, label, style):
+        super().__init__(x, y, style, name="FlexPanel")
+        self.w = w
+        self.h = h
+        self.label = label
+
+    def natural_width(self, scale):
+        return self.w
+
+    def natural_height(self, scale):
+        return self.h
+
+    def dock_resize(self, w, h, scale):
+        self.w = max(1, w)
+        self.h = max(1, h)
+
+    def draw(self, canvas):
+        mid = self.h // 2
+        for row in range(self.h):
+            text = self.label.center(self.w)[: self.w] if row == mid else " " * self.w
+            canvas.write(self.abs_x, self.abs_y + row, text, self.style)
 
 
 # ── content pages ────────────────────────────────────────────────────────────
@@ -47,7 +119,12 @@ def page_welcome(app, box):
             12,
             {
                 "Navigation": {"↑ / ↓": "Switch page", "Tab": "Focus a control"},
-                "Global": {"Enter / Space": "Activate", "Esc": "Quit"},
+                "Global": {
+                    "Enter / Space": "Activate",
+                    "Ctrl+T": "Change theme",
+                    "Ctrl+P": "Command palette",
+                    "Esc": "Quit (asks to confirm)",
+                },
                 "Debug": {"F12": "Toggle debug log"},
             },
             title="Keys",
@@ -64,6 +141,16 @@ def page_inputs(app, box):
     box.add(Input(9, 5, 26, placeholder="secret", masked=True))
     box.add(Checkbox(2, 7, "Subscribe to updates"))
     box.add(Checkbox(2, 8, "Enable telemetry"))
+
+    box.add(Label(40, 3, "Volume (Slider):", ACCENT))
+    volume = Slider(40, 4, minimum=0, maximum=100, value=70, step=1, width=24)
+    box.add(volume)
+    volume_label = Label(40, 6, "", MUTED)
+    volume.on_change(lambda v: setattr(volume_label, "text", f"volume: {v}"))
+    volume_label.text = f"volume: {volume.get()}"
+    box.add(volume_label)
+    app.set_tooltip(volume, "Left/Right to adjust, or drag the handle")
+
     out = Label(2, 11, "", OK)
     # Hover reacts per-widget: on_enter/on_leave opt just this button into
     # mouse-motion tracking — no app-wide flag needed.
@@ -95,18 +182,17 @@ def page_selection(app, box):
         )
     )
     box.add(Label(2, 7, "Theme (Dropdown):", ACCENT))
-    box.add(
-        Dropdown(
-            2,
-            8,
-            [
-                ListItem("Dark", "dark"),
-                ListItem("Light", "light"),
-                ListItem("Solarized", "sol"),
-            ],
-            placeholder="choose...",
-        )
+    theme_dropdown = Dropdown(
+        2,
+        8,
+        [ListItem(mode.title(), mode) for mode in Theme.MODES],
+        placeholder="choose...",
     )
+    theme_dropdown.set(get_theme().mode)
+    # Just activates the theme; header/footer/tabs/ACCENT/MUTED/OK are
+    # re-synced by main()'s periodic poll, the same path Ctrl+T/Ctrl+P use.
+    theme_dropdown.on_change(lambda mode: Theme(mode=mode).activate())
+    box.add(theme_dropdown)
 
     box.add(Label(28, 1, "Toppings (CheckList):", ACCENT))
     box.add(
@@ -159,6 +245,108 @@ def page_data(app, box):
     widgets.add("Hyperlink")
     proj.add("app.py")
     box.add(tree)
+
+
+def page_layout(app, box):
+    box.add(Label(2, 1, "Splitter: drag the ┃ bar to resize these two panes.", ACCENT))
+
+    # left/right share app.style (same object, not a copy) so a theme switch
+    # recolors them too, the same reason header/footer/tabs do in main().
+    left = Box(0, 0, "1x1", title="Font Size", border="rounded", style=app.style)
+    left.add(Label(2, 1, "A Slider inside a Splitter pane:"))
+    size_slider = Slider(2, 2, minimum=8, maximum=32, value=14, step=1, width=24)
+    left.add(size_slider)
+    size_label = Label(2, 4, "", MUTED)
+    left.add(size_label)
+    size_slider.on_change(lambda v: setattr(size_label, "text", f"font-size: {v}px"))
+    size_label.text = f"font-size: {size_slider.get()}px"
+
+    right = Box(0, 0, "1x1", title="Ratio", border="rounded", style=app.style)
+    right.add(Label(2, 1, "Drag the bar, or click it then", MUTED))
+    right.add(Label(2, 2, "Left/Right/Home/End.", MUTED))
+    ratio_label = Label(2, 4, "", MUTED)
+    right.add(ratio_label)
+
+    splitter = Splitter(2, 3, "740x180", left, right, min_size=20)
+    box.add(splitter)
+
+    def _refresh_ratio():
+        ratio_label.text = f"ratio: {splitter.get_ratio():.2f}"
+
+    app.every(0.1, _refresh_ratio)
+    _refresh_ratio()
+
+
+def page_flex(app, box):
+    box.add(
+        Label(
+            2,
+            1,
+            "Flex layout: VBox/HBox `.add(widget, flex=N)` grows children by weight.",
+            ACCENT,
+        )
+    )
+    box.add(
+        Label(
+            2,
+            2,
+            "1:2:3 ratio below, live on resize -- a plain VBox/HBox can't do this:",
+            ACCENT,
+        )
+    )
+
+    weights_row = HBox(2, 4, gap=1)
+    weighted = []
+    for n, color in ((1, "blue"), (2, "magenta"), (3, "green")):
+        panel = _FlexPanel(0, 0, 1, 3, "", Style(fg="white", bg=color, styles=["bold"]))
+        weights_row.add(panel, flex=n)
+        weighted.append((panel, n))
+    box.add(weights_row)
+
+    def _resize_weights_row():
+        # This page is a Tabs panel, which has no dock() of its own (unlike a
+        # real Box) -- so the row's target width is driven directly off the
+        # live terminal width instead. That's what proves the 1:2:3 ratio is
+        # actually recomputed on a resize, not three widgets that just
+        # happen to look proportional right now.
+        avail_w = max(3, app.cols - weights_row.abs_x - 2)
+        weights_row.dock_resize(avail_w, 3, app.SCALE)
+        weights_row.natural_width(
+            app.SCALE
+        )  # force _arrange() so panel.w is fresh below
+        for panel, n in weighted:
+            panel.label = f"flex={n} ({panel.w}c)"
+
+    app.every(0.2, _resize_weights_row)
+    _resize_weights_row()
+
+    box.add(
+        Label(
+            2,
+            8,
+            "Fixed frame: header/footer pinned, flex=1 fills the middle, live:",
+            ACCENT,
+        )
+    )
+
+    frame = Box(2, 9, "300x40", title="fixed frame", border="rounded", style=app.style)
+    frame_col = VBox(0, 0)
+    frame_col.add(Label(0, 0, "Header (flex=0)", ACCENT))
+    # VBox only redistributes its main axis (height); the cross axis (width)
+    # isn't stretched, so the panel's baseline width is set directly to span
+    # the frame instead of relying on flex for that dimension too.
+    content = _FlexPanel(
+        0,
+        0,
+        26,
+        1,
+        "flex=1 -- grows to fill",
+        Style(fg="black", bg="bright_cyan", styles=["bold"]),
+    )
+    frame_col.add(content, flex=1)
+    frame_col.add(Label(0, 0, "Footer (flex=0)", MUTED))
+    frame.dock(frame_col, "fill")
+    box.add(frame)
 
 
 def page_overlays(app, box):
@@ -216,8 +404,24 @@ def page_overlays(app, box):
 
         app.run_worker(lambda: (time.sleep(1.5), 128)[1], on_result=done)
 
-    box.add(Button(2, 10, "Notify").on_click(notify))
+    notify_btn = Button(2, 10, "Notify").on_click(notify)
+    box.add(notify_btn)
+    app.set_tooltip(notify_btn, "Pops a toast, cycling info/success/warning/error")
     box.add(Button(13, 10, "Load data").on_click(load))
+
+    box.add(Label(2, 13, "Delete something (ConfirmDialog):", ACCENT))
+    confirm_out = Label(2, 15, "", MUTED)
+
+    def ask_delete(_b):
+        app.confirm(
+            "Delete the selected item?",
+            default=False,
+            on_yes=lambda: setattr(confirm_out, "text", "Deleted ✔"),
+            on_no=lambda: setattr(confirm_out, "text", "Cancelled"),
+        )
+
+    box.add(Button(2, 14, "Delete…").on_click(ask_delete))
+    box.add(confirm_out)
 
 
 def page_about(app, box):
@@ -236,21 +440,91 @@ PAGES = [
     ("Inputs", page_inputs),
     ("Selection", page_selection),
     ("Data", page_data),
+    ("Layout", page_layout),
+    ("Flex", page_flex),
     ("Overlays", page_overlays),
     ("About", page_about),
 ]
 
 
 def main() -> None:
-    app = App(
-        full=True,
-        style=Style(fg="white", bg="black"),
-        title="Cozy TUI Demo",
-    )
+    # No explicit style=: defaults to the active theme's style, so the demo
+    # itself picks up whatever theme was set before main() ran.
+    app = App(full=True, title="Cozy TUI Demo", debug=True)
     app.debug(f"Cozy TUI {_VERSION} demo started — F12 or right-click > Open Debugger")
     app.tick_interval = 0.06  # keep the animated header running
 
-    header = Box(0, 0, "10x10", title="✨ Cozy TUI", border="rounded")
+    def _confirm_quit():
+        # default=False: an accidental Enter highlights "No" first, so it
+        # takes a deliberate choice (or Y) to actually quit.
+        app.confirm("Quit the demo?", on_yes=app.quit, default=False)
+
+    def _open_file(_it):
+        app.pick_file(
+            on_select=lambda path: app.toast(f"Picked: {path}", level="success")
+        )
+
+    def _open_folder(_it):
+        app.pick_file(
+            mode="directory",
+            on_select=lambda path: app.toast(f"Folder: {path}", level="success"),
+        )
+
+    menu_bar = MenuBar(
+        0,
+        0,
+        [
+            (
+                "File",
+                [
+                    MenuItem("Open File…", icon="📄", on_select=_open_file),
+                    MenuItem("Open Folder…", icon="📁", on_select=_open_folder),
+                    MenuSeparator(),
+                    MenuItem(
+                        "Quit",
+                        icon="🚪",
+                        shortcut="Esc",
+                        on_select=lambda _it: _confirm_quit(),
+                    ),
+                ],
+            ),
+            (
+                "View",
+                [
+                    MenuItem(
+                        "Theme",
+                        icon="🎨",
+                        submenu=[
+                            MenuItem(
+                                mode.title(),
+                                on_select=lambda _it, m=mode: Theme(mode=m).activate(),
+                            )
+                            for mode in Theme.MODES
+                        ],
+                    ),
+                    MenuSeparator(),
+                    MenuItem(
+                        "Command Palette",
+                        icon="⌘",
+                        shortcut="Ctrl+P",
+                        on_select=lambda _it: app.open_command_palette(),
+                    ),
+                    MenuItem(
+                        "Toggle Debug Pane",
+                        icon="🐞",
+                        shortcut="F12",
+                        on_select=lambda _it: app.toggle_debug_pane(),
+                    ),
+                ],
+            ),
+        ],
+    )
+    app.dock(menu_bar, "top")
+
+    # header/footer/tabs share app.style (same object, not a copy): a theme
+    # switch mutates app.style once, and every widget pointing at it picks
+    # up the new colors on the next frame.
+    header = Box(0, 0, "10x10", title="✨ Cozy TUI", border="rounded", style=app.style)
     glow = GlowAnimation(color_template="blue", speed=0.08)
     header.add(
         AnimatedLabel(
@@ -262,21 +536,52 @@ def main() -> None:
     )
     app.dock(header, "top")
 
-    footer = Box(0, 0, "10x10", title="keys", border="rounded")
+    footer = Box(0, 0, "10x10", title="keys", border="rounded", style=app.style)
     hint = Label(1, 1, "", MUTED)
+    # Label wraps ("laps") onto extra lines by default when it's wider than
+    # its Box, growing the Box's own border to fit -- but footer's height is
+    # fixed by the dock system (based on its un-wrapped size), so a wrapped
+    # 2nd line pushed the bottom border off-screen instead. This footer is a
+    # single-line status bar: it should truncate on narrow terminals, not wrap.
+    hint.laps = False
     footer.add(hint)
     app.dock(footer, "bottom")
 
     # Each page is a tab; only the active panel is drawn, focusable, and clickable.
-    tabs = Tabs(0, 0, "10x10", accent="bright_cyan")
+    tabs = Tabs(0, 0, "10x10", style=app.style, accent=get_theme().accent)
     for name, builder in PAGES:
         builder(app, tabs.add_tab(name))
     app.dock(tabs, "fill")
 
+    # Theme can change from several places (Ctrl+T's palette, Ctrl+P's
+    # "Change Theme" command, the MenuBar's View > Theme, the Selection
+    # page's Theme Dropdown) -- rather than hooking every one of them
+    # individually, a periodic poll notices whenever the active theme's mode
+    # has actually changed and re-syncs everything that doesn't read it
+    # fresh every frame.
+    _last_synced_mode = {"mode": get_theme().mode}
+
+    def _sync_theme_visuals():
+        theme = get_theme()
+        app.style.fg = theme.style.fg
+        app.style.bg = theme.style.bg  # already carries Style's "_bg" suffix
+        ACCENT.fg = theme.accent
+        MUTED.fg = theme.muted
+        OK.fg = theme.success
+        tabs.accent = theme.accent
+        app.invalidate()
+        _last_synced_mode["mode"] = theme.mode
+
+    def _poll_theme():
+        if get_theme().mode != _last_synced_mode["mode"]:
+            _sync_theme_visuals()
+
+    app.every(0.15, _poll_theme)
+
     def on_tab(index):
         hint.text = (
             f"  {PAGES[index][0]}     ←/→ or click: switch tab    Tab: into panel    "
-            "Right-click: menu    Enter/Space: activate    Esc: quit"
+            "Right-click: menu    Enter/Space: activate    Esc: quit (confirms)"
         )
         app.debug(f"switched to tab {index!r}: {PAGES[index][0]}")
 
@@ -295,9 +600,18 @@ def main() -> None:
                 ],
             ),
             MenuSeparator(),
-            MenuItem("Quit", icon="🚪", shortcut="Esc", on_select=lambda i: app.quit()),
+            MenuItem(
+                "Change Theme",
+                icon="🎨",
+                shortcut="Ctrl+T",
+                on_select=lambda _: app.open_theme_palette(),
+            ),
             MenuItem(
                 "Open Debugger", icon="🐞", on_select=lambda _: app.toggle_debug_pane()
+            ),
+            MenuSeparator(),
+            MenuItem(
+                "Quit", icon="🚪", shortcut="Esc", on_select=lambda i: _confirm_quit()
             ),
         ]
     )
@@ -308,8 +622,12 @@ def main() -> None:
 
     app.on_right_click(on_right_click)
 
+    # App registers its own "Quit" -> self.quit by default; re-registering
+    # the same name overrides it, so Ctrl+P's Quit confirms too.
+    app.register_command("Quit", _confirm_quit, description="Quit the application")
+
     app.focus(tabs.bar)
-    app.on_key(Key.ESC, lambda: "quit")
+    app.on_key(Key.ESC, _confirm_quit)
     app.run()
 
 

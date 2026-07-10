@@ -3,8 +3,15 @@ with the widget itself on activation (keyboard Enter/Space or mouse click),
 alongside the widget's own value-carrying callback (on_select/on_toggle/…)."""
 
 from cozy_tui.events import Key
-from cozy_tui.widgets import (CheckList, Dropdown, ListItem, ListView,
-                              RadioSet, Table, Tree)
+from cozy_tui.widgets import (
+    CheckList,
+    Dropdown,
+    ListItem,
+    ListView,
+    RadioSet,
+    Table,
+    Tree,
+)
 
 
 def test_listview_on_click_fires_widget_on_enter_and_click():

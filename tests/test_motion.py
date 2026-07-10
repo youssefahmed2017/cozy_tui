@@ -3,8 +3,16 @@
 import pytest
 
 import cozy_tui.motion as motion
-from cozy_tui.motion import (Tween, ease_in, ease_in_out, ease_out,
-                             ease_out_quad, lerp, lerp_color, linear)
+from cozy_tui.motion import (
+    Tween,
+    ease_in,
+    ease_in_out,
+    ease_out,
+    ease_out_quad,
+    lerp,
+    lerp_color,
+    linear,
+)
 
 
 def test_easings_hit_their_endpoints():

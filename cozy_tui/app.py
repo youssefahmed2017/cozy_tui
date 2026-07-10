@@ -10,8 +10,15 @@ from cozy_tui._console import enable_raw, flush_input, restore, wait_input
 from cozy_tui._dock import SIDES, dock_layout
 from cozy_tui._width import char_width
 from cozy_tui.ansi import style_esc
-from cozy_tui.events import (Key, MouseClick, MouseDrag, MouseMove,
-                             MouseRelease, kbhit, read_key)
+from cozy_tui.events import (
+    Key,
+    MouseClick,
+    MouseDrag,
+    MouseMove,
+    MouseRelease,
+    kbhit,
+    read_key,
+)
 from cozy_tui.style import Cell, Style
 
 # Sentinel stored in _prev_cells to mark a cell that has never been rendered.
@@ -95,10 +102,17 @@ class App:
         debug_log_path: str | None = None,
         default_logs: bool = True,
     ):
-        # A literal Style() default would be one mutable object shared by every
-        # App() call that omits `style` — mutating one app's .style would then
-        # leak into every other such app. Build a fresh one instead.
-        self.style = style if style is not None else Style(bg="black", fg="white")
+        if style is not None:
+            self.style = style
+        else:
+            # Derive a *copy* of the active theme's base style (cozy_tui.theme),
+            # not the same instance -- otherwise every App() built with no
+            # explicit style= would share one mutable Style, and mutating one
+            # app's .style would leak into every other such app.
+            from cozy_tui.theme import get_theme
+
+            t_style = get_theme().style
+            self.style = Style(fg=t_style.fg, bg=t_style.raw_bg, styles=t_style.styles)
         self.full = full
         # None (the default) defers to COZY_TUI_DEBUG=1, set by `cozy-tui run
         # --debug script.py` — so a script needs no code change to opt in from
@@ -183,8 +197,6 @@ class App:
         # Clip-rectangle stack (in abs content coords): write() drops cells that
         # fall outside the top rect. ScrollView pushes its viewport onto it.
         self._clip_stack: list = []
-        raw_bg = self.style.raw_bg
-        self._backdrop_style = Style(fg="bright_black", bg=raw_bg)
         self.title = title
         if debug:
             self.on_key(
@@ -193,6 +205,39 @@ class App:
                 description="Toggle debug log",
                 section="Debug",
             )
+        self.on_key(
+            Key.CTRL_T,
+            self.open_theme_palette,
+            description="Change theme",
+            section="App",
+        )
+        # name -> Command, insertion order preserved (a Python dict); built-ins
+        # go first, so they lead the palette unless a user overrides one by
+        # re-registering the same name.
+        self._commands: dict = {}
+        self.register_command("Quit", self.quit, description="Quit the application")
+        self.register_command(
+            "Change Theme",
+            self.open_theme_palette,
+            description="Change the current color theme",
+        )
+        self.register_command(
+            "Keys",
+            self._show_keys,
+            description="Show a summary of available keybindings",
+        )
+        if debug:
+            self.register_command(
+                "Toggle Debug Pane",
+                self.toggle_debug_pane,
+                description="Open or close the debug log panel",
+            )
+        self.on_key(
+            Key.CTRL_P,
+            self.open_command_palette,
+            description="Command palette",
+            section="App",
+        )
 
     def _init_size(self, size=None):
         if self.full:
@@ -392,15 +437,108 @@ class App:
             title, initial, on_submit=_submit, width=width, style=self.style
         )
         self.open_overlay(
-            dialog,
-            modal=True,
-            dim=True,
-            center=True,
-            close_on_escape=True,
-            close_on_click_outside=close_on_click_outside,
-            on_close=_on_close,
+            dialog, close_on_click_outside=close_on_click_outside, on_close=_on_close
         )
         return dialog
+
+    def confirm(
+        self,
+        message,
+        *,
+        on_yes=None,
+        on_no=None,
+        yes_label="Yes",
+        no_label="No",
+        default=True,
+        width=40,
+        close_on_click_outside=True,
+    ):
+        """Open a Yes/No confirmation modal. Left/Right (or Tab) move between
+        the buttons, Enter picks the highlighted one, Y/N pick directly, a
+        click picks whichever button it lands on. ``on_yes()``/``on_no()``
+        (each optional, no arguments) fire when the matching choice is made;
+        cancelling -- Esc or a click outside -- calls ``on_no()`` too, since
+        "didn't confirm" should behave like "said no" for anything gated
+        behind a confirmation. Returns the ``ConfirmDialog`` widget."""
+        from cozy_tui.widgets.selection.confirm_dialog import ConfirmDialog
+
+        state = {"chosen": False}
+
+        def _choose(yes):
+            state["chosen"] = True
+            self.close_overlay(dialog)
+            if yes:
+                if on_yes is not None:
+                    on_yes()
+            elif on_no is not None:
+                on_no()
+
+        def _on_close(_widget):
+            if not state["chosen"] and on_no is not None:
+                on_no()
+
+        dialog = ConfirmDialog(
+            message,
+            yes_label=yes_label,
+            no_label=no_label,
+            default=default,
+            on_choose=_choose,
+            width=width,
+            style=self.style,
+        )
+        self.open_overlay(
+            dialog, close_on_click_outside=close_on_click_outside, on_close=_on_close
+        )
+        return dialog
+
+    def pick_file(
+        self,
+        start_dir=None,
+        *,
+        mode="file",
+        extensions=None,
+        on_select=None,
+        on_cancel=None,
+        width=60,
+        height=10,
+        close_on_click_outside=True,
+    ):
+        """Open a modal file/directory picker rooted at ``start_dir``
+        (defaults to the current working directory). ``mode="file"``
+        (default) lets you browse into directories and pick a file;
+        ``mode="directory"`` shows a "Select this folder" entry instead of
+        listing files, for picking a directory itself. ``extensions`` (e.g.
+        ``(".py", ".md")``) restricts which files are shown in file mode.
+        ``on_select(path)`` fires with a ``pathlib.Path`` when something is
+        chosen and closes the picker; cancelling -- Esc or a click outside --
+        calls ``on_cancel()``. Returns the ``FilePicker`` widget."""
+        from cozy_tui.widgets.selection.file_picker import FilePicker
+
+        state = {"picked": False}
+
+        def _choose(path):
+            state["picked"] = True
+            self.close_overlay(picker)
+            if on_select is not None:
+                on_select(path)
+
+        def _on_close(_widget):
+            if not state["picked"] and on_cancel is not None:
+                on_cancel()
+
+        picker = FilePicker(
+            start_dir,
+            mode=mode,
+            extensions=extensions,
+            on_select=_choose,
+            width=width,
+            height=height,
+            style=self.style,
+        )
+        self.open_overlay(
+            picker, close_on_click_outside=close_on_click_outside, on_close=_on_close
+        )
+        return picker
 
     def toast(
         self, message, *, level="info", duration=3.0, icon=None, corner="bottom-right"
@@ -424,6 +562,43 @@ class App:
         if toast in self._toasts:
             self._toasts.remove(toast)
             self.close_overlay(toast)
+
+    def set_tooltip(self, widget, text: str, *, delay: float = 0.4) -> None:
+        """Show `text` in a small floating bubble anchored just below `widget`
+        while the mouse hovers over it, after `delay` seconds (so a quick
+        pass-through doesn't flash one), and hide it the instant the mouse
+        leaves. Wires `widget.on_enter`/`on_leave` to do this -- which also
+        opts `widget` into hover tracking, same as calling those yourself --
+        so it replaces any enter/leave handler already registered on
+        `widget` (each is a single callback slot, like `on_click`)."""
+        state = {"timer": None, "tip": None}
+
+        def _hide(_w=None) -> None:
+            if state["timer"] is not None:
+                self.cancel(state["timer"])
+                state["timer"] = None
+            if state["tip"] is not None:
+                self.close_overlay(state["tip"])
+                state["tip"] = None
+
+        def _open() -> None:
+            from cozy_tui.widgets.display.tooltip import Tooltip
+
+            state["timer"] = None
+            tip = Tooltip(
+                widget, text
+            )  # Tooltip's own default style (a high-contrast callout)
+            state["tip"] = tip
+            self.open_overlay(
+                tip, modal=False, dim=False, center=False, close_on_escape=False
+            )
+
+        def _show(_w) -> None:
+            _hide()  # defensive: shouldn't already be showing, but don't double-open
+            state["timer"] = self.after(delay, _open)
+
+        widget.on_enter(_show)
+        widget.on_leave(_hide)
 
     def debug(self, *values, sep: str = " ") -> None:
         """Append a debug message — safe to call while the raw-mode/alt-screen
@@ -467,6 +642,101 @@ class App:
 
         self.open_overlay(pane, center=False, on_close=_on_close)
 
+    def cycle_theme(self) -> None:
+        """Advance the process-wide active theme (`cozy_tui.theme`) to the next
+        built-in mode, wrapping from the last back to the first, and repaint.
+        Not bound by default (Ctrl+T opens `open_theme_palette` instead) --
+        call this yourself, or register it on your own key, for a plain
+        one-shot-per-press cycle instead of a searchable list. Widgets that
+        share this app's `.style` object (rather than their own copy) pick up
+        the new base colors on the next frame; a widget with its own style
+        needs to opt in the same way `selection_style()` already does."""
+        from cozy_tui.theme import Theme, get_theme
+
+        modes = Theme.MODES
+        current = get_theme().mode
+        idx = modes.index(current) if current in modes else -1
+        theme = Theme(mode=modes[(idx + 1) % len(modes)]).activate()
+        self.style.fg = theme.style.fg
+        self.style.bg = theme.style.bg  # already carries Style's "_bg" suffix
+        self.invalidate()
+
+    def open_theme_palette(
+        self, *, width=36, height=8, close_on_click_outside=True
+    ) -> None:
+        """Open a searchable Ctrl+T palette -- type to filter, Up/Down to
+        move, Enter or a click to pick, Esc/click-outside to cancel -- listing
+        every built-in `cozy_tui.theme` mode. Picking one activates it,
+        mutates this app's own `.style` in place, and repaints (same effect
+        as `cycle_theme()`, just from a deliberate choice instead of a
+        cycle). Call it yourself to trigger the same palette from a menu item
+        or button."""
+        from cozy_tui.theme import Theme, get_theme
+        from cozy_tui.widgets.selection.theme_palette import ThemePalette
+
+        def _pick(mode):
+            theme = Theme(mode=mode).activate()
+            self.style.fg = theme.style.fg
+            self.style.bg = theme.style.bg  # already carries Style's "_bg" suffix
+            self.invalidate()
+            self.close_overlay(palette)
+
+        palette = ThemePalette(
+            Theme.MODES,
+            current=get_theme().mode,
+            on_select=_pick,
+            width=width,
+            height=height,
+            style=self.style,
+        )
+        self.open_overlay(palette, close_on_click_outside=close_on_click_outside)
+
+    def register_command(self, name: str, callback, *, description: str = "") -> None:
+        """Register (or, re-using an existing `name`, override) an entry in
+        the Ctrl+P command palette (`open_command_palette`). `callback` is
+        invoked with no arguments when the command is picked, after the
+        palette has already closed. `App` itself registers a few built-ins
+        this way ("Quit", "Change Theme", "Keys", and -- only when
+        `debug=True` -- "Toggle Debug Pane"), so overriding one of those names
+        replaces it."""
+        from cozy_tui.widgets.selection.command_palette import Command
+
+        self._commands[name] = Command(name, callback, description=description)
+
+    def open_command_palette(
+        self, *, width=52, height=6, close_on_click_outside=True
+    ) -> None:
+        """Open a searchable Ctrl+P palette -- type to filter by name or
+        description, Up/Down to move, Enter or a click to run the highlighted
+        command, Esc/click-outside to cancel -- listing every command
+        registered with `register_command` (including App's own built-ins).
+        Call it yourself to trigger the same palette from a menu item or
+        button."""
+        from cozy_tui.widgets.selection.command_palette import CommandPalette
+
+        def _run(command):
+            self.close_overlay(palette)
+            if command.callback is not None:
+                command.callback()
+
+        palette = CommandPalette(
+            list(self._commands.values()),
+            on_select=_run,
+            width=width,
+            height=height,
+            style=self.style,
+        )
+        self.open_overlay(palette, close_on_click_outside=close_on_click_outside)
+
+    def _show_keys(self) -> None:
+        """Open the "Keys" command: a read-only Bindings("auto") legend of
+        every currently-registered global key binding, as a dismissable
+        modal overlay."""
+        from cozy_tui.widgets.display.bindings import Bindings
+
+        legend = Bindings(0, 0, self, title="Keys")
+        self.open_overlay(legend, close_on_click_outside=True)
+
     def _topmost_modal(self):
         for entry in reversed(self._overlays):
             if entry.modal:
@@ -489,7 +759,10 @@ class App:
 
     def _apply_backdrop(self):
         """Gray every already-drawn cell (chars kept) as a scrim behind a modal."""
-        style = self._backdrop_style
+        # Recomputed from self.style every call (like every other raw_bg use in
+        # this codebase) rather than cached, so the scrim tracks the active
+        # theme's background even after a theme switch post-__init__.
+        style = Style(fg="bright_black", bg=self.style.raw_bg)
         for row in self.buffer:
             for cell in row:
                 cell.style = style
@@ -919,8 +1192,15 @@ class App:
             self.debug(f"Pressed on key: {key}")
         modal = self._topmost_modal()
         if modal is not None:
-            # A modal captures all keys: no global handlers, no scroll.
-            if key in (Key.ESC, Key.F12) and modal.close_on_escape:
+            # A modal captures all keys: no global handlers, no scroll --
+            # except F12, which always reaches the debug pane (a no-op if
+            # debug=False) rather than being swallowed as a second "close
+            # this modal" key. Otherwise F12 could never open the debug pane
+            # while any modal (there are many now: ConfirmDialog, FilePicker,
+            # CommandPalette, ThemePalette, ...) happens to be open.
+            if key == Key.F12:
+                self.toggle_debug_pane()
+            elif key == Key.ESC and modal.close_on_escape:
                 self.close_overlay(modal.widget)
             elif key == Key.TAB:
                 self._cycle_focus(1)

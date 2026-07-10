@@ -79,7 +79,9 @@ def test_run_executes_the_script_as_main(tmp_path, capsys):
 
 
 def test_run_forwards_argv_to_the_script(tmp_path, capsys):
-    script = _write_script(tmp_path, "import sys\nprint(sys.argv[0]); print(sys.argv[1:])")
+    script = _write_script(
+        tmp_path, "import sys\nprint(sys.argv[0]); print(sys.argv[1:])"
+    )
     assert cli.main(["run", str(script), "foo", "--bar"]) == 0
     out = capsys.readouterr().out
     assert str(script) in out  # argv[0] printed as a plain string, not repr'd

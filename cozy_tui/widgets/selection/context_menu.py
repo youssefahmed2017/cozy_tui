@@ -140,9 +140,11 @@ class RightClickMenu(Widget):
 
     # ── opening / activating ────────────────────────────────────────────────────
 
-    def open_at(self, app, col: int, row: int):
+    def open_at(self, app, col: int, row: int, *, on_close=None):
         """Open the menu as a modal overlay with its top-left at (col, row),
-        flipping left/up when it would overflow the screen edge. Returns self."""
+        flipping left/up when it would overflow the screen edge. `on_close`
+        (optional) is called when the menu is dismissed, however that
+        happens -- Esc, a click outside, or a selection. Returns self."""
         self._app = app
         w = self.natural_width(app.SCALE)
         h = self.natural_height(app.SCALE)
@@ -150,7 +152,12 @@ class RightClickMenu(Widget):
         y = row if row + h <= app.rows else max(0, row - h)
         self.x, self.y = x, y
         app.open_overlay(
-            self, modal=True, dim=False, center=False, close_on_click_outside=True
+            self,
+            modal=True,
+            dim=False,
+            center=False,
+            close_on_click_outside=True,
+            on_close=on_close,
         )
         return self
 

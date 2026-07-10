@@ -9,16 +9,19 @@ class HBox(Layout):
         self.gap = gap
 
     def _arrange(self):
+        natural = [(c.natural_width(1), c.natural_height(1)) for c in self.children]
+        max_h = max((h for _w, h in natural), default=0)
+        extras = self._flex_extras([w for w, _h in natural], self._target_w, self.gap)
+
         cx = 0
-        max_h = 0
-        for child in self.children:
+        for i, child in enumerate(self.children):
+            w, h = natural[i]
+            final_w = w + extras[i]
+            if extras[i]:
+                child.dock_resize(final_w, h, 1)
             child.x = cx
             child.y = 0
             child._layout_y = 0
-            w = child.natural_width(1)
-            h = child.natural_height(1)
-            if h > max_h:
-                max_h = h
-            cx += w + self.gap
+            cx += final_w + self.gap
         self._computed_width = max(0, cx - self.gap) if self.children else 0
         self._computed_height = max_h

@@ -13,7 +13,7 @@ App(full=True, size="800x600", style=Style(...), catch_errors=True,
 |-----------|-------------------------------------------------------------------------------|
 | `full`    | `True` to use the full terminal size (recommended). `False` uses `size`.      |
 | `size`    | `"WxH"` string in virtual pixels when `full=False`; divide by `App.SCALE` (10) for characters. `"800x600"` = 80 cols × 60 rows. |
-| `style`   | Background style for the entire screen.                                       |
+| `style`   | Background style for the entire screen. Omit it to use the active [Theme](styling.md#themes)'s style instead — a fresh, independent `Style` copy, not shared between `App` instances. |
 | `title`   | Terminal Tab Title (defaulted to Cozy TUI App)                                |
 | `catch_errors` | An unhandled exception from `run()` shows a full-screen `TracebackView` crash view (see below) instead of propagating (terminal state is restored either way). Pass `False` for a script/test that wants `run()` to raise normally, or that has no real interactive terminal for the crash screen to block on (e.g. CI). |
 | `debug` | Enables `app.debug(...)` logging and the **F12** debug pane. `None` (default) resolves from the `COZY_TUI_DEBUG` env var (set by `cozy-tui run --debug script.py`); an explicit `True`/`False` always overrides it. |
@@ -33,6 +33,15 @@ app.quit()                  # Exit the app from anywhere (e.g. inside a callback
 app.run()                   # Start the event loop (blocking)
 app.debug(*values, sep=" ")  # print()-equivalent that's safe under raw mode; no-op unless debug is on
 app.toggle_debug_pane()      # Open/close the F12 debug-log pane yourself (menu item, button, ...)
+
+app.confirm(message, on_yes=, on_no=)   # Yes/No modal — see layouts.md#confirmation-dialog
+app.pick_file(start_dir=None, mode="file", on_select=)  # file/folder browser — see layouts.md#file-picker
+app.set_tooltip(widget, text)           # hover tooltip on a widget — see the Tooltip section above
+
+app.open_theme_palette()     # Ctrl+T by default — searchable theme picker, see styling.md#themes
+app.cycle_theme()            # advance to the next built-in theme mode (not bound by default)
+app.open_command_palette()   # Ctrl+P by default — searchable list of registered commands
+app.register_command(name, callback, description="")  # add/override a Ctrl+P palette entry
 ```
 
 **Debugging:**
@@ -831,6 +840,44 @@ renders roughly as (borders drawn with box-drawing glyphs):
 
 ---
 
+### `MenuBar`
+
+A horizontal row of top-level labels ("File", "Edit", …), each opening a dropdown menu built from the same `MenuItem`/`MenuSeparator` building blocks as `RightClickMenu` — a click/Down/Enter simply opens a `RightClickMenu` positioned right below the label, so submenus, icons, shortcuts, and disabled items all work the same way.
+
+```python
+MenuBar(x, y, menus, *, style=None, gap=2)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `menus` | List of `(label, items)` pairs, where `items` is whatever `RightClickMenu` accepts (a list of `MenuItem`/`MenuSeparator`) |
+| `gap` | Blank columns between top-level labels (default `2`) |
+
+Left/Right move between top-level labels; Down/Enter/Space (or a click) open the highlighted one. Once open, Esc or a click outside closes it — matching every other dropdown/menu in this library, a click that lands on a *different* label while one is already open just closes the first (a second click opens the new one).
+
+**Example:**
+
+```python
+from cozy_tui.widgets import MenuBar, MenuItem, MenuSeparator
+
+bar = MenuBar(0, 0, [
+    ("File", [
+        MenuItem("New", icon="📄", on_select=lambda it: new_file()),
+        MenuSeparator(),
+        MenuItem("Quit", icon="🚪", shortcut="Esc", on_select=lambda it: app.quit()),
+    ]),
+    ("Edit", [
+        MenuItem("Copy", shortcut="Ctrl+C", on_select=lambda it: do_copy()),
+    ]),
+])
+app.dock(bar, "top")
+```
+
+> Unlike `Box`/`Splitter`/other containers, `MenuBar`'s menus are data (`MenuItem` lists), not child widgets — so there's nothing for Tab to dive into, and `MenuBar` is always an ordinary Tab stop.
+
+---
+
 ### `Dropdown`
 
 A collapsed header that opens a `ListView` popup when activated. Only one row tall when closed; expands downward when open.
@@ -926,6 +973,104 @@ box.add(bar)
 
 ---
 
+### `Slider`
+
+A draggable numeric control — the interactive counterpart to `ProgressBar`. Click or drag anywhere on the track to jump the handle straight there; when focused, arrow keys nudge it.
+
+```python
+Slider(x, y, minimum=0, maximum=100, value=None, step=1, *,
+       width=20, page_step=None, show_value=True, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `minimum`, `maximum` | Range bounds (int or float; `minimum` must be `<= maximum`) |
+| `value` | Initial value (default: `minimum`) |
+| `step` | Amount Left/Right/Up/Down move by |
+| `width` | Total width in characters, including the value label when `show_value=True` |
+| `page_step` | Amount PageUp/PageDown move by. Defaults to `max(step, (maximum - minimum) // 10)`. |
+| `show_value` | Draw the current value right of the track (`True` by default) |
+
+**Reading / setting the value:**
+
+```python
+s.get()                 # current value
+s.set(value)            # set directly (clamped to minimum–maximum)
+s.increment(amount=None)  # += step (or amount)
+s.decrement(amount=None)  # -= step (or amount)
+```
+
+**Callbacks:**
+
+```python
+s.on_change(func)   # func(value) — fires when the value actually changes (not on a clamp that leaves it unchanged)
+```
+
+**Key bindings (when focused):** Left/Down — decrement, Right/Up — increment, Page Up/Down — jump by `page_step`, Home/End — jump to `minimum`/`maximum`.
+
+**Mouse:** click or drag anywhere on the track jumps the handle to that position, snapped to the nearest `step`.
+
+Floats work the same as ints — the value label's width is reserved from whichever of `minimum`/`maximum`/`step` needs the most decimal places, so the bar never jitters as the value's printed width changes.
+
+**Example:**
+
+```python
+from cozy_tui.widgets import Slider
+
+volume = Slider(2, 2, minimum=0, maximum=100, value=70, step=1, width=30)
+volume.on_change(lambda v: status.set_text(f"volume: {v}"))
+box.add(volume)
+```
+
+---
+
+### `Splitter`
+
+Two panes divided by a 1-cell bar you can drag to resize them. `orientation="horizontal"` (default) places the panes side by side with a vertical bar; `"vertical"` stacks them with a horizontal bar.
+
+```python
+Splitter(x, y, size, first, second, *,
+         orientation="horizontal", ratio=0.5, min_size=1, step=1, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `size` | `"WIDTHxHEIGHT"` in virtual pixels — ÷ `App.SCALE` (10) for cells, like `Box`. A **docked** `Splitter` fills its slice instead. |
+| `first`, `second` | The two pane widgets. Each is resized every frame via its own `dock_resize(w, h, scale)`, so panes built from `Box`/`ScrollView`/another `Splitter` grow to fill their share; fixed-size widgets keep their own size and are simply clipped to it. |
+| `orientation` | `"horizontal"` (side by side) or `"vertical"` (stacked) |
+| `ratio` | Initial split, `0.0`–`1.0` (default `0.5`, i.e. even) |
+| `min_size` | Minimum cells either pane can be squeezed to |
+| `step` | Cells the keyboard nudges the bar by |
+
+**Reading / setting the split:**
+
+```python
+splitter.get_ratio()        # current split, 0.0-1.0
+splitter.set_ratio(ratio)   # set directly (clamped)
+```
+
+**Keyboard (once the bar itself is focused):** Left/Right (horizontal) or Up/Down (vertical) nudge the bar by `step`; Home/End snap it to the `min_size` extent on either side.
+
+**Mouse:** drag the bar to resize freely.
+
+> **Tab dives into whichever pane has focusable content first**, matching every other container in this library — so if either pane holds something focusable, Tab never stops on the bar itself; click it directly to grab it for the keyboard. When neither pane has anything focusable, the bar becomes an ordinary Tab stop.
+
+**Example:**
+
+```python
+from cozy_tui.widgets import Box, Splitter
+
+left = Box(0, 0, "1x1", title="Files", border="rounded")
+right = Box(0, 0, "1x1", title="Preview", border="rounded")
+splitter = Splitter(0, 0, "1x1", left, right, min_size=20)
+app.dock(splitter, "fill", margin=1)
+```
+
+> `"1x1"` placeholder sizes are normal here — a docked (or `Splitter`-paned) `Box` grows to fill whatever slice it's assigned via `dock_resize`, so the constructor size never actually applies.
+
+---
+
 ### `Spinner`
 
 A small animated activity indicator — the idiomatic "working…" companion to `run_worker`. Non-focusable; show one while a background task runs and remove it in the worker's `on_result`. It animates smoothly on its own (via `request_frame`), so the app does **not** need `tick_interval` set.
@@ -968,7 +1113,7 @@ app.toast(message, *, level="info", duration=3.0, icon=None, corner="bottom-righ
 | Parameter | Description |
 |-----------|-------------|
 | `message` | Text shown in the toast. |
-| `level` | `"info"` / `"success"` / `"warning"` / `"error"` — sets the accent color and a default icon (ℹ / ✓ / ⚠ / ✗). |
+| `level` | `"info"` / `"success"` / `"warning"` / `"error"` — picks the accent color from the active [Theme](styling.md#themes) (`theme.info`/`success`/`warning`/`error`) and a default icon (ℹ / ✓ / ⚠ / ✗). |
 | `duration` | Seconds before it auto-dismisses. `0` makes it sticky (no timer). |
 | `icon` | Override the level's default icon. |
 | `corner` | `"bottom-right"` (default), `"bottom-left"`, `"top-right"`, `"top-left"`. |
@@ -980,6 +1125,34 @@ Auto-dismissal is driven by the App's timer primitives (`app.after` / `app.every
 ```python
 app.toast("Saved successfully.", level="success")
 app.toast("Upload failed.", level="error", duration=5.0)
+```
+
+---
+
+### `Tooltip` / `app.set_tooltip`
+
+A small floating one-line text bubble anchored to another widget, shown on hover. Usually created via **`app.set_tooltip(...)`** rather than constructed directly — like `Toast`, it's non-modal and non-focusable, so it never steals focus or blocks input; whatever's under it stays fully interactive while it's showing.
+
+```python
+app.set_tooltip(widget, text, *, delay=0.4)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `widget` | The widget to anchor the tooltip to and watch for hover. |
+| `text` | The tooltip's text. |
+| `delay` | Seconds the mouse must stay over `widget` before the tooltip shows (default `0.4`) — a quick pass-through never flashes one. |
+
+Position is recomputed every frame from `widget`'s current position — right below it by default, flipped above/clamped left if that would run off the screen edge — so it tracks a moving or resizing anchor correctly.
+
+`set_tooltip` wires `widget.on_enter`/`on_leave` under the hood (see [Hover / motion events](interaction.md#hover--motion-events)), which also opts `widget` into hover tracking — so it replaces any enter/leave handler already registered on that widget (each is a single callback slot, like `on_click`).
+
+**Example:**
+
+```python
+save_btn = Button(2, 10, "Save").on_click(save)
+box.add(save_btn)
+app.set_tooltip(save_btn, "Write the current file to disk")
 ```
 
 ---

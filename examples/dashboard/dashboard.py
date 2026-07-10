@@ -22,8 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from cozy_tui import App, Style
 from cozy_tui.events import Key
-from cozy_tui.widgets import (Box, Button, Label, ProgressBar, ScrollView,
-                              Spinner, Tabs)
+from cozy_tui.widgets import Box, Button, Label, ProgressBar, ScrollView, Spinner, Tabs
 
 ACCENT = Style(fg="bright_cyan")
 MUTED = Style(fg="bright_black")

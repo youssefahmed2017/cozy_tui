@@ -1,6 +1,7 @@
 from cozy_tui.events import Key
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
+from cozy_tui.widgets.selection._search_palette import draw_panel_frame
 
 
 class PromptDialog(Widget):
@@ -50,12 +51,7 @@ class PromptDialog(Widget):
         panel, border, dim = self._palette()
         x, y, w = self.abs_x, self.abs_y, self.width
         h = self.natural_height(1)
-        canvas.write(x, y, "╭" + "─" * w + "╮", border)
-        canvas.write(x, y + h - 1, "╰" + "─" * w + "╯", border)
-        for i in range(h - 2):
-            canvas.write(x, y + 1 + i, "│", border)
-            canvas.write(x + 1, y + 1 + i, " " * w, panel)
-            canvas.write(x + w + 1, y + 1 + i, "│", border)
+        draw_panel_frame(canvas, x, y, w, h, border, panel)
         canvas.write(x + 1, y + 1, (" " + self.title).ljust(w)[:w], border)
         line = "> " + self.text
         line = line[-(w - 2) :] if len(line) > w - 2 else line

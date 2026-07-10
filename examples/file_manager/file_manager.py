@@ -29,8 +29,7 @@ from cozy_tui import App, Style, clipboard
 from cozy_tui._width import text_width
 from cozy_tui.events import Key
 from cozy_tui.widget import Widget
-from cozy_tui.widgets import (Box, Button, Label, MenuItem, MenuSeparator,
-                              RightClickMenu)
+from cozy_tui.widgets import Box, Button, Label, MenuItem, MenuSeparator, RightClickMenu
 
 # ── pure helpers (unit-tested in tests/test_file_manager.py) ────────────────────
 

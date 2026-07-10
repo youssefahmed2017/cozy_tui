@@ -1,5 +1,5 @@
 from cozy_tui import App, Style
-from cozy_tui.widgets import Box
+from cozy_tui.widgets import Box, Label
 
 
 def make_app():
@@ -40,6 +40,52 @@ def test_fill_box_grows_to_its_slice():
     app.dock(main, "fill")
     app._apply_docks()
     # A docked Box resizes to fill: footprint (interior + border) == screen.
+    assert main.natural_width(app.SCALE) == app.cols
+    assert main.natural_height(app.SCALE) == app.rows
+
+
+def test_bottom_docked_box_with_wrapping_content_converges_and_stays_stable():
+    # Regression: a "top"/"bottom"-docked Box's natural_height() is queried
+    # to reserve a dock band *before* dock_resize() runs, using whatever
+    # self.width currently is (possibly still the tiny constructor value, on
+    # the very first frame). A lapping (word-wrapping) child whose wrap
+    # count is computed from that too-narrow width used to produce a huge
+    # reservation that got baked into self.height by dock_resize() -- and
+    # then *stayed* baked in forever, because that inflated self.height was
+    # itself used as next frame's floor, even once self.width had converged
+    # to the real (wide) terminal width and the wrap count would otherwise
+    # have been small.
+    app = make_app()  # 80x24
+    footer = Box(0, 0, "10x10", title="keys", border="rounded")
+    hint = Label(1, 1, "word " * 40)  # wraps to a handful of lines, not one huge count
+    footer.add(hint)
+    app.dock(footer, "bottom")
+
+    heights = []
+    for _ in range(4):
+        app._apply_docks()
+        app.render()
+        heights.append(footer.height)
+
+    # Stable from the very first frame -- no transient spike, no runaway growth.
+    assert len(set(heights)) == 1
+    assert heights[0] < 200  # sanity bound well under the old runaway (2000px+)
+    # The bottom border must actually be visible (not pushed off-screen).
+    x, y, w, h = footer._bounds
+    assert 0 <= y + h - 1 < app.rows
+
+
+def test_fill_docked_box_still_grows_to_its_slice_with_wrapping_content():
+    # A "fill" dock assigns self.height directly, bypassing natural_height()
+    # entirely -- confirms that path (unlike "bottom") is unaffected and a
+    # fill box still fills the screen even with a wrapping child inside.
+    app = make_app()  # 80x24
+    main = Box(0, 0, "10x10", title="Main")
+    main.add(Label(1, 1, "word " * 40))
+    app.dock(main, "fill")
+    for _ in range(3):
+        app._apply_docks()
+        app.render()
     assert main.natural_width(app.SCALE) == app.cols
     assert main.natural_height(app.SCALE) == app.rows
 

@@ -258,7 +258,16 @@ class Tabs(Widget):
         if self._anim_ease() is None:
             # settled (or not animating): reveal the active tab's content.
             self._transitioning = False
+            # Clipped to Tabs' own assigned rectangle (like ScrollView/Splitter
+            # already clip their content) -- otherwise a panel taller than the
+            # available space bleeds straight through past the tab strip into
+            # whatever's drawn after Tabs (typically a docked footer),
+            # corrupting both instead of the overflow just being invisible.
+            canvas.push_clip(
+                self.abs_x, self.abs_y, self.abs_x + self._wc, self.abs_y + self._hc
+            )
             self._panels[self.active].draw(canvas)
+            canvas.pop_clip()
         else:
             # mid-switch: keep the content area empty while the underline glides;
             # the new panel is revealed only once the animation finishes.
