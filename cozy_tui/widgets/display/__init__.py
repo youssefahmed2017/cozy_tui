@@ -7,6 +7,7 @@ from .animated_label import (
 )
 from .bindings import Bindings
 from .hyperlink import Hyperlink
+from .image import Image
 from .label import Label
 from .markdown import Markdown
 from .progress_bar import ProgressBar
@@ -25,6 +26,7 @@ __all__ = [
     "LevitateAnimation",
     "Bindings",
     "Hyperlink",
+    "Image",
     "Markdown",
     "ProgressBar",
     "Spinner",

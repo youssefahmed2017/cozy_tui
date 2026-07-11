@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from collections import deque
+from pathlib import Path
 
 from cozy_tui._console import enable_raw, flush_input, restore, wait_input
 from cozy_tui._dock import SIDES, dock_layout
@@ -269,6 +270,17 @@ class App:
             self.open_command_palette,
             description="Command palette",
             section="App",
+        )
+        self.on_key(
+            Key.CTRL_S,
+            self._quick_screenshot,
+            description="Save screenshot (SVG)",
+            section="App",
+        )
+        self.register_command(
+            "Save Screenshot",
+            self._quick_screenshot,
+            description="Export the current screen as a standalone SVG file",
         )
 
     def _init_size(self, size=None):
@@ -1179,6 +1191,82 @@ class App:
         return "\n".join(
             "".join(cell.char for cell in row).rstrip() for row in self.buffer
         )
+
+    def export_svg(self, path=None, *, title=None, frame=None) -> str:
+        """Render the current screen as a standalone SVG document (colors and
+        text styles baked in, not just plain text like `snapshot()`). `frame`
+        ("macos"/"windows"/"gnome") wraps it in a fake OS window -- titlebar,
+        rounded corners, drop shadow -- so it reads as a screenshot instead
+        of text floating in a corner. If `path` is given, also write it
+        there. Returns the SVG source either way."""
+        from cozy_tui import _export
+
+        self._compose()
+        svg = _export.render_svg(self, title=title, frame=frame)
+        if path is not None:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(svg)
+        return svg
+
+    def export_html(
+        self, path=None, *, title=None, frame=None, standalone=False
+    ) -> str:
+        """Render the current screen as a standalone HTML document. `frame`
+        is the same fake-OS-window wrapping as `export_svg`. `standalone=True`
+        goes further: a dark, centered page around it (responsive -- it
+        scrolls instead of overflowing on narrow viewports) so opening the
+        file looks presentable on its own, not just when embedded. If `path`
+        is given, also write it there. Returns the HTML source either way."""
+        from cozy_tui import _export
+
+        self._compose()
+        html = _export.render_html(
+            self, title=title, frame=frame, standalone=standalone
+        )
+        if path is not None:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(html)
+        return html
+
+    def save_screenshot(
+        self, path=None, *, format=None, frame=None, standalone=False
+    ) -> str:
+        """Save the current screen as an SVG or HTML file and return the path
+        written. `format` ("svg"/"html") is inferred from `path`'s suffix when
+        given; with no `path` it defaults to "svg" and an auto-named,
+        timestamped file under `~/.cozy_tui/screenshots/` (created if
+        missing) -- a stable spot outside the project instead of littering
+        whatever directory the app happens to be run from. `frame`/`standalone`
+        are forwarded to `export_svg`/`export_html` (`standalone` only applies
+        to the "html" format). Bound to Ctrl+S by default (see
+        `App.__init__`), which shows a confirmation (or error) toast either
+        way -- never raises out of the key handler."""
+        import time as _time
+        from pathlib import Path
+
+        if path is None:
+            format = format or "svg"
+            screenshots_dir = Path.home() / ".cozy_tui" / "screenshots"
+            screenshots_dir.mkdir(parents=True, exist_ok=True)
+            name = _time.strftime("cozy_tui_%Y%m%d_%H%M%S.") + format
+            path = str(screenshots_dir / name)
+        elif format is None:
+            format = path.rsplit(".", 1)[-1].lower() if "." in path else "svg"
+        if format not in ("svg", "html"):
+            raise ValueError(f'format must be "svg" or "html", got {format!r}')
+        if format == "svg":
+            self.export_svg(path, frame=frame)
+        else:
+            self.export_html(path, frame=frame, standalone=standalone)
+        return path
+
+    def _quick_screenshot(self) -> None:
+        try:
+            path = self.save_screenshot(frame="macos")
+        except OSError as exc:
+            self.toast(f"Screenshot failed: {exc}", level="error")
+            return
+        self.toast(f"Saved to {path}", level="success")
 
     def render(self):
         if self._debug_log is None:

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-pip install -e .[dev]        # editable install with pytest
+pip install -e .[dev]        # editable install with pytest + Pillow (for the Image widget's tests)
 python -m pytest -q          # run the whole suite
 python -m pytest tests/test_render.py -q          # one file
 python -m pytest tests/test_render.py::test_name  # one test
@@ -34,7 +34,7 @@ Clipboard tests self-skip when no platform backend is available (see `tests/test
 
 ## Architecture
 
-`cozy_tui` is a from-scratch TUI library. The only third-party dependency is `rich` (used to render `Markdown`/`MarkdownInput` and to syntax-highlight `TracebackView`/`crash_screen.show_traceback`); everything else — input parsing, clipboard, unicode width — is hand-rolled on the standard library. Targets Python 3.10+.
+`cozy_tui` is a from-scratch TUI library. The only *required* third-party dependency is `rich` (used to render `Markdown`/`MarkdownInput` and to syntax-highlight `TracebackView`/`crash_screen.show_traceback`); everything else — input parsing, clipboard, unicode width — is hand-rolled on the standard library. `Pillow` is an *optional* dependency (`pip install cozy-tui[image]`), needed only by the `Image` widget — see "Image widget" below for how it stays lazily imported so the base install never requires it. Targets Python 3.10+.
 
 ### Render loop (`app.py`)
 `App.run()` is the single event loop. Each frame:
@@ -96,11 +96,21 @@ The whole panel is **non-modal**, always — Elements needs to hover/click the *
 ### Unicode width (`_width.py`)
 A built-in `wcwidth`-style layer: `char_width(ch)` returns 0 (combining/ZWJ — dropped by `write`), 1, or 2 (CJK/emoji — the trailing cell is blanked to stay grid-aligned). This keeps the cell grid honest without a `wcwidth` dependency.
 
+### Image widget (`widgets/display/image.py`)
+Renders a raster image via 2x2 "quadrant" truecolor blocks: each cell packs *four* source pixels, split by luminance into two representative colors (fg/bg), drawn with whichever of the 16 Unicode Block Elements glyphs (`▘▝▖▗▀▄▌▐▚▞▛▜▙▟█` + space — all in the same widely-supported `2580–259F` range, confirmed width-1 in `_width.py`'s tables) best matches which quadrants are the brighter half (`_quadrant_cell()`) — double the effective resolution of plain upper-half-block rendering, in both directions. Colors are plain `Style(fg="rgb(r,g,b)", bg="rgb(r,g,b)")` — `ansi.py`'s existing `_color_codes()`/`_truecolor_sgr()` already downgrade `"rgb(...)"` to 256/16-color at the active depth, the same reuse principle as the SVG/HTML export's `resolve_rgb()` (no separate color table). Sizing follows `Box`/`ScrollView`/`Splitter`'s `"WIDTHxHEIGHT"` virtual-pixel-string convention (`resize("800x700")`, ÷ `App.SCALE` for cells); with no explicit size, it auto-fits to a default `_DEFAULT_COLS`-cell width with height derived from the source's own aspect ratio times `_CELL_ASPECT` (0.5 — terminal cells are ~2x taller than wide, so this keeps a square/wide source from rendering into a visibly stretched box; this factor applies regardless of the sub-cell technique, unlike an earlier version of this widget which mistakenly assumed half-block's 2x vertical sub-sampling canceled it out).
+
+**Caching is the point of this widget** — `draw()` never re-runs Pillow's resize/pixel-sampling every frame; `_rebuild_cache(cols, rows)` (a rows×cols matrix of prebuilt `(glyph, Style)` pairs) only reruns when the target cell size actually changes or a mutator (`load_img`/`crop`/`blur`) sets `self._dirty`. A Pillow-esque fluent builder (`load_img`/`resize`/`crop`/`blur`/`save`/`render`, every mutator returning `self`) sits alongside the plain `Image(x, y, "cat.png")` constructor form. `crop(top=, left=, bottom=, right=)` trims pixels off each named edge (not Pillow's absolute box tuple). `Pillow` is lazily imported (`_ensure_pillow()`) only inside methods that actually touch pixels — never at module import time — so `from cozy_tui.widgets import Image` always succeeds even without Pillow installed; only calling `load_img`/the constructor with a source raises, with an install hint (`pip install cozy-tui[image]`).
+
 ### Background work
 `app.run_worker(func, on_result=, on_error=)` runs `func` on a daemon thread; results are queued and the callbacks fire on the **main thread** from the event loop (never touch the UI from a worker thread directly).
 
 ### Clipboard (`clipboard.py`)
 Built-in, no `pyperclip`. Picks a native backend per platform (Win32 API, `pbcopy`/`pbpaste`, `wl-clipboard`/`xclip`/`xsel`) with an OSC 52 fallback. `clipboard.backend()` reports the chosen one.
+
+### Screen export (`_export.py`)
+`App.export_svg`/`export_html` render the *current* screen (call `_compose()` first, as these do) into a standalone, colors-and-styles-baked-in SVG/HTML document — `snapshot()` with the visuals kept, for docs/READMEs/issue reports. `App.save_screenshot(path=None, format=None)` writes one to disk (format inferred from `path`'s extension, defaulting to an auto-timestamped `.svg` under `~/.cozy_tui/screenshots/`, created if missing) and is what **Ctrl+S** (`App._quick_screenshot`, bound unconditionally like Ctrl+T/Ctrl+P, not gated on `debug=True`) calls, reporting success/failure via a toast rather than raising out of the key handler. Colors resolve through `ansi.resolve_rgb()` — the same lookup the real terminal renderer uses to downgrade truecolor/256-color values — so every color form (named, `#rrggbb`, `rgb(R,G,B)`, `color(N)`) works with no separate export-only color table. Both renderers walk `App.buffer` emitting maximal same-style runs per row (mirroring the diff-renderer's own run-based thinking) rather than one element per cell; SVG runs use `textLength`/`lengthAdjust="spacingAndGlyphs"` to keep the monospace grid aligned even across wide glyphs.
+
+`frame=` ("macos"/"windows"/"gnome", default `None`) wraps the raw grid in a fake OS window — titlebar (traffic-light dots / window buttons / a single close button, per `_FRAMES`), rounded corners, and a drop shadow (SVG: `feDropShadow` + a `clipPath` so square cell content still gets rounded corners; HTML: `box-shadow`/`border-radius`/`overflow:hidden` on a wrapping div) — so an export reads as a window screenshot instead of text floating in a corner. `export_html(standalone=True)` goes one step further: a dark, centered page around the (possibly framed) terminal, responsive via `overflow:auto` (scrolls rather than breaking layout on narrow viewports) — and gives even a frameless terminal its own soft rounded/shadowed box, so opening the file directly is presentable too. `App._quick_screenshot` (Ctrl+S) passes `frame="macos"` by default for exactly this reason.
 
 ### Rich bridging (`_rich_bridge.py`)
 Shared by every widget that borrows Rich's rendering instead of reimplementing it (`Markdown`, `TracebackView`): `to_cozy_style(rich_style, base)` converts a resolved `rich.style.Style` into a `cozy_tui.style.Style`, mapping colors down to the 16 named ANSI colors (via `cozy_color()`) regardless of Rich's original color space — `ansi.py`'s own depth-aware downgrading takes it from there. Widgets render through a headless `rich.console.Console` (`console.render_lines(...)`), never printing Rich's own ANSI output to stdout, so it composes with the raw-mode/alt-screen renderer instead of corrupting it. `TracebackView` (`widgets/display/traceback_view.py`) applies this to `rich.traceback.Traceback`; `crash_screen.show_traceback(exc)` wraps it into a ready-made full-screen crash view (Esc quits, C copies via `clipboard.copy`).

@@ -100,7 +100,12 @@ def test_palette_scrolls_when_matches_exceed_height():
 
 def test_default_commands_are_registered():
     app = make_app()
-    assert list(app._commands.keys()) == ["Quit", "Change Theme", "Keys"]
+    assert list(app._commands.keys()) == [
+        "Quit",
+        "Change Theme",
+        "Keys",
+        "Save Screenshot",
+    ]
 
 
 def test_toggle_devtools_command_only_registered_when_debug():
@@ -120,7 +125,7 @@ def test_register_command_adds_and_overrides_by_name():
     assert app._commands["My Thing"].description == "does a thing"
 
     app.register_command("My Thing", lambda: calls.append("mine2"))
-    assert len(app._commands) == 4  # still one entry, not two
+    assert len(app._commands) == 5  # still one entry, not two
     app._commands["My Thing"].callback()
     assert calls == ["mine2"]
 

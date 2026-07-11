@@ -6,11 +6,12 @@ switch pages), a content area, and a footer hint bar. Tab moves focus into
 the current page, Enter/Space activate the focused control. Ctrl+T opens a
 searchable theme picker (or use the Dropdown on the Selection page, or
 File/View in the MenuBar) -- header/footer/tabs and every accented/muted
-label recolor live. Ctrl+P opens the command palette. Quitting (Esc, File >
-Quit, the right-click menu, or the palette) always asks for confirmation
-first.
+label recolor live. Ctrl+P opens the command palette. Ctrl+S saves the current
+screen as a standalone SVG file. Quitting (Esc, File > Quit, the right-click
+menu, or the palette) always asks for confirmation first.
 """
 
+import os
 import time
 
 from cozy_tui import App, Style, Theme
@@ -30,6 +31,7 @@ from cozy_tui.widgets import (
     GlowAnimation,
     HBox,
     Hyperlink,
+    Image,
     Input,
     Label,
     ListItem,
@@ -52,6 +54,9 @@ from cozy_tui.widgets import (
 
 GITHUB = "https://github.com/youssefahmed2017/cozy_tui"
 PYPI = "https://pypi.org/project/cozy-tui/"
+# Bundled next to this file (not a relative "cat.jpg") so `cozy-tui demo`
+# finds it regardless of the caller's current directory.
+CAT_JPG = os.path.join(os.path.dirname(__file__), "cat.png")
 # Start from the active theme's colors and are mutated in place (by
 # _sync_theme_visuals() in main()) on a theme switch -- every Label built
 # from these shares the Style object, not a copy, so they all recolor.
@@ -114,23 +119,33 @@ def page_welcome(app, box):
     box.add(Hyperlink(2, 8, "★ Star on GitHub", GITHUB))
     box.add(Hyperlink(24, 8, "Cozy TUI on PyPI", PYPI))
     box.add(Label(2, 10, f"version {_VERSION}", MUTED))
-    box.add(
-        Bindings(
-            2,
-            12,
-            {
-                "Navigation": {"↑ / ↓": "Switch page", "Tab": "Focus a control"},
-                "Global": {
-                    "Enter / Space": "Activate",
-                    "Ctrl+T": "Change theme",
-                    "Ctrl+P": "Command palette",
-                    "Esc": "Quit (asks to confirm)",
-                },
-                "Debug": {"F12": "Toggle Cozy DevTools"},
+    keys = Bindings(
+        2,
+        12,
+        {
+            "Navigation": {"↑ / ↓": "Switch page", "Tab": "Focus a control"},
+            "Global": {
+                "Enter / Space": "Activate",
+                "Ctrl+T": "Change theme",
+                "Ctrl+P": "Command palette",
+                "Ctrl+S": "Save screenshot (SVG)",
+                "Esc": "Quit (asks to confirm)",
             },
-            title="Keys",
-        )
+            "Debug": {"F12": "Toggle Cozy DevTools"},
+        },
+        title="Keys",
     )
+    box.add(keys)
+
+    # Beside the text (not stacked below the Keys legend) -- this page is a
+    # plain Box, not a ScrollView, so anything that makes the page taller
+    # than the terminal is simply unreachable, with no way to scroll to it.
+    # x=70 clears the widest line above ("Every frame is drawn..." ends at
+    # column 67); size is picked so the square photo renders at the correct
+    # proportions (cols : rows*2 == 1:1 for a 1:1 source, matching Image's
+    # own auto-fit math) instead of a taller box distorting it.
+    box.add(Label(70, 1, "Image (Pillow, cached quadrant blocks):", ACCENT))
+    box.add(Image(70, 2, CAT_JPG, size="480x240"))
 
 
 def page_inputs(app, box):
@@ -268,9 +283,7 @@ def page_data(app, box):
     proj.add("app.py")
     box.add(tree)
 
-    box.add(
-        Label(2, 17, "Table (width=): drag the bar or use ←/→ to scroll", ACCENT)
-    )
+    box.add(Label(2, 17, "Table (width=): drag the bar or use ←/→ to scroll", ACCENT))
     wide_tbl = Table(2, 18, width=34, show_border=True)
     wide_tbl.add_column("Package", width=14)
     wide_tbl.add_column("Kind", width=10)
@@ -532,6 +545,13 @@ def main() -> None:
                 [
                     MenuItem("Open File…", icon="📄", on_select=_open_file),
                     MenuItem("Open Folder…", icon="📁", on_select=_open_folder),
+                    MenuSeparator(),
+                    MenuItem(
+                        "Save Screenshot",
+                        icon="📸",
+                        shortcut="Ctrl+S",
+                        on_select=lambda _it: app._quick_screenshot(),
+                    ),
                     MenuSeparator(),
                     MenuItem(
                         "Quit",

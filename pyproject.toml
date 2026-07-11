@@ -30,7 +30,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+image = ["Pillow"]
+dev = ["pytest", "Pillow"]
 
 [project.scripts]
 cozy-tui = "cozy_tui.cli:main"
@@ -42,7 +43,7 @@ GitHub = "https://github.com/youssefahmed2017/cozy_tui"
 include = ["cozy_tui*"]
 
 [tool.setuptools.package-data]
-cozy_tui = ["py.typed"]
+cozy_tui = ["py.typed", "cat.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -85,6 +85,21 @@ def gather_checks(check_pypi: bool = True):
     except Exception as exc:
         checks.append(("color depth", str(exc), None))
 
+    try:
+        from importlib.metadata import version as _pkg_version
+
+        import PIL  # noqa: F401
+
+        checks.append(("Pillow (Image widget)", _pkg_version("Pillow"), True))
+    except Exception:
+        checks.append(
+            (
+                "Pillow (Image widget)",
+                "not installed (pip install cozy-tui[image])",
+                None,
+            )
+        )
+
     if check_pypi:
         try:
             latest = _latest_pypi_version()

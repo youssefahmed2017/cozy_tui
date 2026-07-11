@@ -86,9 +86,9 @@ def test_auto_explicit_app_builds_sections():
     app = _app_with_bindings()
     b = Bindings(0, 0, app)  # explicit app form
     # App() registers its own "App" section (Ctrl+T: Change theme, Ctrl+P:
-    # Command palette) before the fixture's bindings, so: 3 headers + 6 binds
-    # + 2 blank spacers = 11 rows.
-    assert b.natural_height(1) == 11 + 2
+    # Command palette, Ctrl+S: Save screenshot) before the fixture's bindings,
+    # so: 3 headers + 7 binds + 2 blank spacers = 12 rows.
+    assert b.natural_height(1) == 12 + 2
     assert b._key_w == text_width(
         "Ctrl+T"
     )  # widest shown key (also "↑","↓","Enter","Esc")

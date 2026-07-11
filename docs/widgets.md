@@ -165,6 +165,49 @@ box.add(Hyperlink(2, 2, "cozy_tui on PyPI", "https://pypi.org/project/cozy-tui/"
 
 ---
 
+### `Image`
+
+Renders a raster image in the terminal via 2x2 "quadrant" truecolor blocks (each cell packs four source pixels, split into two representative colors and drawn with whichever of 16 Unicode Block Elements glyphs — `▘▝▖▗▀▄▌▐▚▞▛▜▙▟█` — best matches the brighter quadrants), so it reads as a recognizable picture rather than ASCII art. Requires Pillow: `pip install cozy-tui[image]` — `from cozy_tui.widgets import Image` always works without it installed; only actually loading an image raises, with that install hint.
+
+```python
+Image(x, y, source=None, *, size=None, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `source` | Optional image file path, loaded immediately |
+| `size` | Optional `"WIDTHxHEIGHT"` virtual-pixel string (÷ `App.SCALE` for cells) — same convention as `Box`/`ScrollView`/`Splitter`. Without it, the image auto-fits to a default cell width with height derived from its own aspect ratio (accounting for terminal cells being ~2x taller than wide, so square/wide images aren't stretched) |
+| `style` | Optional style override |
+
+A Pillow-esque fluent builder sits alongside the constructor — every method below returns `self`:
+
+| Method | Description |
+|--------|-------------|
+| `load_img(source)` | Load or replace the source image |
+| `reload()` | Re-read the current source file from disk |
+| `resize(size)` | Set the target cell size (`"WIDTHxHEIGHT"`) — doesn't touch the source pixels, just how many cells it's sampled down to |
+| `crop(*, top=0, left=0, bottom=0, right=0)` | Trim pixels off the given edges |
+| `blur(radius=2)` | Gaussian-blur the source image |
+| `save(path)` | Save the current (possibly cropped/resized/blurred) image to disk |
+| `render(x, y)` | Reposition the widget — drawing still happens through the normal `draw()` cycle once added to an `App` |
+
+The Pillow work (resize + pixel sampling) only reruns when the target cell size changes or a mutator marks the image dirty — not on every frame — so an `Image` on screen costs no more than blitting a prebuilt grid of glyphs and styles.
+
+**Example:**
+
+```python
+from cozy_tui.widgets import Image
+
+box.add(Image(2, 2, "cat.png", size="400x300"))
+
+# or the fluent builder:
+photo = Image().load_img("cat.png").resize("400x300").render(2, 2)
+box.add(photo)
+```
+
+---
+
 ### `Bindings`
 
 A self-sizing key-bindings legend — a bordered panel that lays out `key → description` rows with the keys aligned in a column. **You never give it a width or height**: it fits the widest key + description (and any section header or title).
