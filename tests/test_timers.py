@@ -49,5 +49,10 @@ def test_next_deadline_reports_the_soonest():
     app.after(2.0, lambda: None)
     app.after(0.5, lambda: None)
     d = app._next_timer_deadline(now)
-    assert 0.3 < d <= 0.5
+    # `after()` stamps its own deadline with a *later* time.monotonic() call
+    # than `now` above, so d is 0.5 plus whatever real time passed between
+    # the two calls -- a strict `<= 0.5` is flaky under CI scheduling jitter
+    # (observed d=0.500003...). 0.4-0.6 still clearly distinguishes this
+    # from the 2.0s timer, which is all this test is actually checking.
+    assert 0.4 <= d <= 0.6
     assert make_app()._next_timer_deadline(now) is None  # none scheduled

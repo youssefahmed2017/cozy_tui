@@ -1,4 +1,5 @@
 from .button import Button
+from .calendar import Calendar
 from .check_list import CheckItem, CheckList
 from .checkbox import Checkbox
 from .command_palette import Command, CommandPalette
@@ -17,6 +18,7 @@ from .tree import Tree, TreeNode
 
 __all__ = [
     "Button",
+    "Calendar",
     "Checkbox",
     "CheckList",
     "CheckItem",

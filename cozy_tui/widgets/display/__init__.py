@@ -6,6 +6,7 @@ from .animated_label import (
     RainbowAnimation,
 )
 from .bindings import Bindings
+from .diff import Diff
 from .hyperlink import Hyperlink
 from .image import Image
 from .label import Label
@@ -25,6 +26,7 @@ __all__ = [
     "RainbowAnimation",
     "LevitateAnimation",
     "Bindings",
+    "Diff",
     "Hyperlink",
     "Image",
     "Markdown",

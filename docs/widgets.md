@@ -815,6 +815,51 @@ box.add(rs)
 
 ---
 
+### `Calendar`
+
+A focusable month-view date picker backed by the standard library's `calendar` module — no new dependency. A moving keyboard **cursor** is separate from the committed **selection** (the same split `RadioSet` uses): moving the cursor never picks a date on its own, only Enter/Space or a click does.
+
+```python
+Calendar(x, y, *, selected=None, first_weekday=0, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `selected` | Initially selected `datetime.date`, or `None` (the default) — the cursor still starts on today's date either way, but nothing is picked until the user acts. |
+| `first_weekday` | `0` = Monday (default, matches `calendar`'s own default), `6` = Sunday-first layout. |
+
+**Reading / setting the selection:**
+
+```python
+cal.selected      # the picked datetime.date, or None
+cal.select(d)     # commit a selection and move the cursor/view there (fires on_select, not on_click)
+```
+
+**Callbacks:**
+
+```python
+cal.on_select(func)   # func(date) — called only on an actual pick, never on cursor movement (returns self)
+```
+
+**Key bindings (day view):** Left/Right — cursor by day (crosses month boundaries automatically), Up/Down — cursor by week, Ctrl+Left/Ctrl+Right — previous/next month (same day-of-month, clamped if shorter), Home/End — first/last day of the displayed month, Enter/Space — pick the day under the cursor.
+
+**Mouse:** clicking a day moves the cursor there and picks it in one step. Clicking the header's `‹`/`›` shifts the current view (by month/year/12-years, depending on the zoom level below) without touching the selection.
+
+**Zooming out (Windows `MonthCalendar`-style):** click the header itself (not the arrows) to zoom out — the day grid becomes a 12-month grid for the year, which zooms out once more to a 12-year grid. Clicking a month/year zooms back in (to days / to that year's months), landing on the same day-of-month or month, clamped if the target is shorter — picking a month or year is navigation, not a date pick, so `.selected` is untouched. Arrow-key navigation and Enter/Space work the same way inside either zoomed-out grid (a 0-11 cursor over the 12 cells); `Esc` steps back a level (day view ignores it — nothing to back out of).
+
+**Example:**
+
+```python
+from cozy_tui.widgets import Calendar
+
+cal = Calendar(2, 2)
+cal.on_select(lambda d: print("picked:", d))
+box.add(cal)
+```
+
+---
+
 ### `RightClickMenu` / `MenuItem` / `MenuSeparator`
 
 A floating context menu popped up at the cursor by a right-click. You don't
@@ -1197,6 +1242,35 @@ save_btn = Button(2, 10, "Save").on_click(save)
 box.add(save_btn)
 app.set_tooltip(save_btn, "Write the current file to disk")
 ```
+
+---
+
+### `Diff`
+
+Renders a colorized, line-level diff of two strings — a line-number gutter (a single running counter, not separate old/new-file counters), a `+`/`-`/blank marker, then the line itself, syntax-highlighted via Rich's `Syntax` (Pygments-backed — already a transitive dependency of `rich`, so nothing new to install). Changed rows get their whole width tinted toward red (removed) or green (added), like GitHub's diff view; the syntax colors sit on top of that tint. Uses the standard library's `difflib` for the diffing itself, so the only "new" machinery here is Rich's own highlighter, already bundled. Non-focusable and non-interactive, like `TracebackView`: it sizes itself to fit the whole diff and doesn't wrap or truncate long lines — wrap it in a `ScrollView` if the diff is taller than the screen.
+
+```python
+Diff(x, y, old_text, new_text, *, lexer="python", style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `old_text`, `new_text` | The two versions to diff, as plain strings (split into lines internally). |
+| `lexer` | Pygments lexer name for syntax highlighting (`"python"`, `"json"`, `"javascript"`, ...). `None` disables highlighting — plain colored text like before. |
+| `style` | Optional style override for the base text/background. |
+
+**Example:**
+
+```python
+from cozy_tui.widgets import Diff
+
+old_code = "class Button:\n    def click(self):\n        pass\n"
+new_code = "class Button:\n    def on_click(self):\n        pass\n\n    def hover(self):\n        ...\n"
+box.add(Diff(2, 2, old_code, new_code))
+box.add(Diff(2, 12, old_json, new_json, lexer="json"))
+```
+
+`cozy_tui.widgets.display.diff.diff_lines(old_text, new_text)` returns the underlying `[(tag, line), ...]` classification (`tag` is `"equal"`/`"delete"`/`"insert"`) if you want the raw diff without a widget.
 
 ---
 

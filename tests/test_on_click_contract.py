@@ -4,6 +4,7 @@ alongside the widget's own value-carrying callback (on_select/on_toggle/…)."""
 
 from cozy_tui.events import Key
 from cozy_tui.widgets import (
+    Calendar,
     CheckList,
     Dropdown,
     ListItem,
@@ -71,6 +72,14 @@ def test_dropdown_on_click_fires_widget_when_item_chosen():
     dd.on_key(Key.ENTER)  # open the popup
     dd._lv.on_key(Key.ENTER)  # choose the highlighted row
     assert got == [dd]
+
+
+def test_calendar_on_click_fires_widget_on_enter():
+    cal = Calendar(0, 0)
+    got = []
+    cal.on_click(got.append)
+    cal.on_key(Key.ENTER)
+    assert got == [cal]
 
 
 def test_on_click_still_carries_no_value_but_select_does():

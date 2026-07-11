@@ -173,6 +173,77 @@ def test_reload_rereads_the_same_source(tmp_path):
     assert img._pil_image.size != cropped_size  # back to the original, uncropped
 
 
+def test_rebuild_cache_uses_lanczos_resampling(tmp_path, monkeypatch):
+    calls = []
+    original_resize = PILImage.Image.resize
+
+    def spy_resize(self, size, resample=None, *a, **k):
+        calls.append(resample)
+        return original_resize(self, size, resample=resample, *a, **k)
+
+    monkeypatch.setattr(PILImage.Image, "resize", spy_resize)
+
+    app = make_app()
+    img = Image(0, 0, make_gradient(tmp_path), size="40x20")
+    app.add(img)
+    app.snapshot()
+    assert calls == [PILImage.Resampling.LANCZOS]
+
+
+# ── load_img_async: background-thread loading via App.run_worker ────────────
+
+
+def test_load_img_async_returns_self_immediately(tmp_path):
+    app = make_app()
+    img = Image()
+    result = img.load_img_async(make_gradient(tmp_path), app)
+    assert result is img
+
+
+def test_load_img_async_loads_and_calls_on_ready(tmp_path):
+    app = make_app()
+    path = make_gradient(tmp_path)
+    img = Image()
+    ready = []
+    img.load_img_async(path, app, on_ready=ready.append)
+    img._async_load_thread.join(timeout=2)
+    assert app._drain_workers() is True
+    assert img._pil_image is not None
+    assert ready == [img]
+
+
+def test_load_img_async_missing_pillow_shows_placeholder(missing_pillow, tmp_path):
+    app = make_app()
+    img = Image()
+    img.load_img_async(str(tmp_path / "cat.jpg"), app)  # path need not even exist
+    img._async_load_thread.join(timeout=2)
+    app._drain_workers()
+    assert img._pil_image is None
+    assert img._missing_pillow_message is not None
+
+
+def test_load_img_async_bad_path_calls_on_error(tmp_path):
+    app = make_app()
+    img = Image()
+    errors = []
+    img.load_img_async(
+        str(tmp_path / "does_not_exist.png"), app, on_error=errors.append
+    )
+    img._async_load_thread.join(timeout=2)
+    app._drain_workers()
+    assert len(errors) == 1
+    assert isinstance(errors[0], FileNotFoundError)
+
+
+def test_load_img_async_bad_path_toasts_when_no_on_error_given(tmp_path):
+    app = make_app()
+    img = Image()
+    img.load_img_async(str(tmp_path / "does_not_exist.png"), app)
+    img._async_load_thread.join(timeout=2)
+    app._drain_workers()
+    assert any(t.level == "error" for t in app._toasts)
+
+
 def test_quadrant_glyph_and_truecolor_styles(tmp_path):
     app = make_app()
     path = make_gradient(tmp_path)

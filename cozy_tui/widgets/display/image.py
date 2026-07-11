@@ -124,6 +124,10 @@ class Image(Widget):
     * ``Image().load_img("cat.png").resize("400x300").render(x, y)`` -- a
       Pillow-esque fluent builder; every mutator returns ``self``.
 
+    ``load_img_async(source, app)`` loads on a background thread instead
+    (via ``App.run_worker``), for a large image or a slow disk read that
+    shouldn't stall the render loop while it decodes.
+
     The Pillow work (resize + pixel sampling) only happens once per distinct
     (source, target cell size) -- see ``draw()`` -- not on every frame, so
     holding an Image on screen costs no more than blitting prebuilt styles.
@@ -139,6 +143,7 @@ class Image(Widget):
         self._cache_size: tuple[int, int] | None = None
         self._dirty = False
         self._missing_pillow_message: str | None = None
+        self._async_load_thread = None
         if source is not None:
             self.load_img(source)
         if size is not None:
@@ -166,6 +171,53 @@ class Image(Widget):
         self._pil_image = PILImage.open(source).convert("RGB")
         self._missing_pillow_message = None
         self._dirty = True
+        return self
+
+    def load_img_async(self, source, app, *, on_ready=None, on_error=None) -> "Image":
+        """Load `source` on a background thread (via `App.run_worker`) so a
+        large image or a slow disk read doesn't block the render loop while
+        it decodes. Returns `self` immediately -- nothing is loaded yet.
+        Needs `app` (the `App` this widget is/will be added to) since a
+        widget has no back-reference to its own app; the result is
+        delivered back and applied on the **main thread**, followed by
+        `run_worker`'s own re-render.
+
+        A missing Pillow install still degrades to the same warning
+        placeholder `load_img` shows. Any other failure (bad path, corrupt
+        file) calls `on_error(exc)` if given, else shows an error toast --
+        there's no caller left to raise back to once loading has moved to a
+        background thread."""
+        self._source = source
+
+        def _load():
+            PILImage = _ensure_pillow()
+            return PILImage.open(source).convert("RGB")
+
+        def _on_result(pil_image) -> None:
+            self._pil_image = pil_image
+            self._missing_pillow_message = None
+            self._dirty = True
+            if on_ready is not None:
+                on_ready(self)
+
+        def _on_error(exc) -> None:
+            if isinstance(exc, ImportError):
+                self._pil_image = None
+                self._missing_pillow_message = _MISSING_PILLOW_MSG
+                self._dirty = True
+                if on_ready is not None:
+                    on_ready(self)
+                return
+            if on_error is not None:
+                on_error(exc)
+            else:
+                app.toast(f"Image failed to load: {exc}", level="error")
+
+        # Stashed (not just fire-and-forget) so a caller -- or a test -- can
+        # `.join()` it to wait for the load deterministically.
+        self._async_load_thread = app.run_worker(
+            _load, on_result=_on_result, on_error=_on_error
+        )
         return self
 
     def reload(self) -> "Image":
@@ -258,9 +310,15 @@ class Image(Widget):
     # ── cache + draw ──────────────────────────────────────────────────────────
 
     def _rebuild_cache(self, cols: int, rows: int) -> None:
+        from PIL import Image as PILImage
+
         # 2 source pixels per cell in EACH direction: quadrant rendering
-        # samples a 2x2 block per cell, not just a top/bottom pair.
-        resized = self._pil_image.resize((cols * 2, rows * 2))
+        # samples a 2x2 block per cell, not just a top/bottom pair. LANCZOS
+        # (a high-quality windowed-sinc filter) noticeably sharpens detail on
+        # this kind of large downscale vs. Pillow's own resize() default.
+        resized = self._pil_image.resize(
+            (cols * 2, rows * 2), resample=PILImage.Resampling.LANCZOS
+        )
         pixels = resized.load()
         cache = []
         for cy in range(rows):

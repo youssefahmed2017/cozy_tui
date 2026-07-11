@@ -24,9 +24,11 @@ from cozy_tui.widgets import (
     Bindings,
     Box,
     Button,
+    Calendar,
     Checkbox,
     CheckItem,
     CheckList,
+    Diff,
     Dropdown,
     GlowAnimation,
     HBox,
@@ -260,6 +262,17 @@ def page_selection(app, box):
     box.add(search)
     box.add(search_out)
 
+    # To the right of the columns above (x=65 clears the widest line there,
+    # ~57 cols) -- computed from the Calendar's own height (5- vs 6-week
+    # months differ) rather than a guessed row number, so the output label
+    # never collides with it.
+    box.add(Label(65, 1, "Date (Calendar):", ACCENT))
+    cal = Calendar(65, 2)
+    cal_out = Label(65, 2 + cal.natural_height(app.SCALE) + 1, "", MUTED)
+    cal.on_select(lambda d: setattr(cal_out, "text", f"picked: {d}"))
+    box.add(cal)
+    box.add(cal_out)
+
 
 def page_data(app, box):
     box.add(Label(2, 1, "Table:", ACCENT))
@@ -294,6 +307,18 @@ def page_data(app, box):
     wide_tbl.add_row("Rich", "render", "★★★★★", "MIT", "Rich text and formatting")
     wide_tbl.add_row("Textual", "TUI", "★★★★★", "MIT", "Full-featured TUI framework")
     box.add(wide_tbl)
+
+    # To the right of the Table/Tree column (x=60 clears the widest line
+    # there, ~51 cols) rather than stacked below -- this page already runs
+    # to row 25, and stacking more below it risks the same "taller than the
+    # terminal, no way to scroll" problem the Image widget hit on Welcome.
+    box.add(Label(60, 1, "Diff:", ACCENT))
+    old_code = "class Button:\n    def click(self):\n        pass\n"
+    new_code = (
+        "class Button:\n    def on_click(self):\n        pass\n\n"
+        "    def hover(self):\n        ...\n"
+    )
+    box.add(Diff(60, 2, old_code, new_code))
 
 
 def page_layout(app, box):
