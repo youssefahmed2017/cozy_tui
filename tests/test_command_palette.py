@@ -103,11 +103,11 @@ def test_default_commands_are_registered():
     assert list(app._commands.keys()) == ["Quit", "Change Theme", "Keys"]
 
 
-def test_toggle_debug_pane_command_only_registered_when_debug():
+def test_toggle_devtools_command_only_registered_when_debug():
     app = make_app(debug=True)
-    assert "Toggle Debug Pane" in app._commands
+    assert "Toggle DevTools" in app._commands
     app2 = make_app(debug=False)
-    assert "Toggle Debug Pane" not in app2._commands
+    assert "Toggle DevTools" not in app2._commands
 
 
 def test_register_command_adds_and_overrides_by_name():

@@ -16,7 +16,7 @@ App(full=True, size="800x600", style=Style(...), catch_errors=True,
 | `style`   | Background style for the entire screen. Omit it to use the active [Theme](styling.md#themes)'s style instead — a fresh, independent `Style` copy, not shared between `App` instances. |
 | `title`   | Terminal Tab Title (defaulted to Cozy TUI App)                                |
 | `catch_errors` | An unhandled exception from `run()` shows a full-screen `TracebackView` crash view (see below) instead of propagating (terminal state is restored either way). Pass `False` for a script/test that wants `run()` to raise normally, or that has no real interactive terminal for the crash screen to block on (e.g. CI). |
-| `debug` | Enables `app.debug(...)` logging and the **F12** debug pane. `None` (default) resolves from the `COZY_TUI_DEBUG` env var (set by `cozy-tui run --debug script.py`); an explicit `True`/`False` always overrides it. |
+| `debug` | Enables `app.debug(...)` logging and the **F12** Cozy DevTools panel. `None` (default) resolves from the `COZY_TUI_DEBUG` env var (set by `cozy-tui run --debug script.py`); an explicit `True`/`False` always overrides it. |
 | `debug_log_path` | Also tail every `app.debug(...)` line to this file (only when `debug` is on) — handy for `tail -f` in a second terminal. |
 | `default_logs` | When `debug` is on, `App` automatically logs its own focus changes, key presses, and mouse clicks/drags via `app.debug(...)`. Pass `False` to keep the log for your own messages only. |
 
@@ -32,7 +32,7 @@ app.on_key(key, func)       # Register a global key handler
 app.quit()                  # Exit the app from anywhere (e.g. inside a callback)
 app.run()                   # Start the event loop (blocking)
 app.debug(*values, sep=" ")  # print()-equivalent that's safe under raw mode; no-op unless debug is on
-app.toggle_debug_pane()      # Open/close the F12 debug-log pane yourself (menu item, button, ...)
+app.toggle_devtools()        # Open/close the F12 Cozy DevTools panel yourself (menu item, button, ...)
 
 app.confirm(message, on_yes=, on_no=)   # Yes/No modal — see layouts.md#confirmation-dialog
 app.pick_file(start_dir=None, mode="file", on_select=)  # file/folder browser — see layouts.md#file-picker
@@ -57,7 +57,7 @@ app = App(debug=True, debug_log_path="app.log")
 app.debug("connected", user.id, "at", timestamp)
 ```
 
-Press **F12** for a live, scrollable view of the log — docked to the top-left corner, a quarter of the screen (Chrome-DevTools style), auto-scrolling as new lines arrive. Esc or F12 again closes it.
+Press **F12** for Cozy DevTools — a Chrome-style panel docked to the top-left corner with Elements (hover/click to inspect any widget, highlighted live), Console (this log, auto-scrolling as new lines arrive), Performance (FPS/timings), and Tree (the live widget hierarchy — click a node to inspect it) tabs, plus an always-visible status bar. Non-modal, so you can still interact with the rest of the app while it's open. F12 again closes it (Esc only resumes live tracking if Elements had frozen on a click).
 
 **Example:**
 

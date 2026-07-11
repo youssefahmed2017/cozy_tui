@@ -50,15 +50,20 @@ class Table(Widget):
 
     focusable = True
 
+    THUMB = "█"
+    TRACK = "─"
+
     def __init__(
         self,
         x,
         y,
         *,
+        width: int | None = None,
         height: int | None = None,
         show_header: bool = True,
         show_border: bool = False,
         style=None,
+        accent="bright_cyan",
     ):
         super().__init__(x, y, style, name="Table")
         self._columns: list[dict] = []
@@ -66,11 +71,16 @@ class Table(Widget):
         self._index: int = 0
         self._col_index: int = 0
         self._scroll_off: int = 0
+        self._col_scroll_off: int = 0
+        self.width = width
         self.height = height
         self.show_header = show_header
         self.show_border = show_border
+        self.accent = accent
         self._select_handler = None
         self._col_width_cache: list[int] | None = None
+        self._h_bar_row: int | None = None
+        self._dragging_h_bar: bool = False
 
     # ── column API ───────────────────────────────────────────────────────────
 
@@ -135,6 +145,7 @@ class Table(Widget):
         self._index = 0
         self._col_index = 0
         self._scroll_off = 0
+        self._col_scroll_off = 0
         self._col_width_cache = None
 
     # ── sort ─────────────────────────────────────────────────────────────────
@@ -213,6 +224,12 @@ class Table(Widget):
     def _visible_rows(self) -> int:
         return self.height or len(self._rows)
 
+    def _viewport_width(self) -> int:
+        return self.width if self.width is not None else self._total_width()
+
+    def _shows_h_bar(self) -> bool:
+        return self.width is not None and self._total_width() > self.width
+
     def _data_start_y(self) -> int:
         y = self.abs_y
         if self.show_border:
@@ -252,19 +269,38 @@ class Table(Widget):
         if not self._columns:
             return
         self._col_index = max(0, min(self._col_index + delta, len(self._columns) - 1))
+        self._clamp_col_scroll()
+
+    def _clamp_col_scroll(self) -> None:
+        viewport_w = self._viewport_width()
+        total_w = self._total_width()
+        max_off = max(0, total_w - viewport_w)
+        if max_off <= 0 or not self._columns:
+            self._col_scroll_off = 0
+            return
+        widths = self._col_widths()
+        border_offset = 1 if self.show_border else 0
+        start = border_offset + sum(widths[: self._col_index]) + self._col_index
+        end = start + widths[self._col_index]
+        if start < self._col_scroll_off:
+            self._col_scroll_off = start
+        elif end > self._col_scroll_off + viewport_w:
+            self._col_scroll_off = end - viewport_w
+        self._col_scroll_off = max(0, min(self._col_scroll_off, max_off))
 
     # ── Widget interface ──────────────────────────────────────────────────────
 
     def natural_width(self, scale) -> int:
-        return self._total_width()
+        return self._viewport_width()
 
     def natural_height(self, scale) -> int:
         header_rows = 2 if self.show_header else 0
         border_rows = 2 if self.show_border else 0
-        return header_rows + self._visible_rows() + border_rows
+        bar_rows = 1 if self._shows_h_bar() else 0
+        return header_rows + self._visible_rows() + border_rows + bar_rows
 
     def contains(self, col: int, row: int) -> bool:
-        w = self._total_width()
+        w = self._viewport_width()
         h = self.natural_height(1)
         return self.abs_x <= col < self.abs_x + w and self.abs_y <= row < self.abs_y + h
 
@@ -287,7 +323,22 @@ class Table(Widget):
                 if self._select_handler:
                     self._select_handler(self.selected_row)
 
+    def _bar_scroll_to(self, col: int) -> None:
+        viewport_w = self._viewport_width()
+        max_off = max(0, self._total_width() - viewport_w)
+        if max_off <= 0:
+            return
+        rel = col - self.abs_x
+        frac = rel / max(1, viewport_w - 1)
+        self._col_scroll_off = max(0, min(max_off, round(frac * max_off)))
+
     def on_mouse_click(self, col=None, row=None) -> None:
+        if row is not None and self._h_bar_row is not None and row == self._h_bar_row:
+            self._dragging_h_bar = True
+            if col is not None:
+                self._bar_scroll_to(col)
+            return
+        self._dragging_h_bar = False
         if row is None or not self._rows:
             return
         clicked = self._scroll_off + (row - self._data_start_y())
@@ -301,6 +352,30 @@ class Table(Widget):
             if self._select_handler:
                 self._select_handler(self.selected_row)
 
+    def on_mouse_drag(self, col=None, row=None) -> None:
+        if self._dragging_h_bar and col is not None:
+            self._bar_scroll_to(col)
+
+    def on_mouse_release(self, col=None, row=None) -> None:
+        self._dragging_h_bar = False
+
+    def _draw_h_scrollbar(self, canvas, x, row, viewport_w, total_w) -> None:
+        raw_bg = self.style.raw_bg
+        thumb = max(1, min(viewport_w, round(viewport_w * viewport_w / total_w)))
+        span = viewport_w - thumb
+        max_off = max(1, total_w - viewport_w)
+        pos = round(span * (self._col_scroll_off / max_off)) if max_off else 0
+        thumb_style = Style(fg=self.accent, bg=raw_bg)
+        track_style = Style(fg="bright_black", bg=raw_bg)
+        for c in range(viewport_w):
+            on_thumb = pos <= c < pos + thumb
+            canvas.write(
+                x + c,
+                row,
+                self.THUMB if on_thumb else self.TRACK,
+                thumb_style if on_thumb else track_style,
+            )
+
     def draw(self, canvas) -> None:
         is_focused = canvas.focused is self
         widths = self._col_widths()
@@ -310,12 +385,17 @@ class Table(Widget):
         n_cols = len(widths)
         total_w = self._total_width()
         vis = self._visible_rows()
+        viewport_w = self._viewport_width()
+        show_h_bar = self._shows_h_bar()
         x = self.abs_x
         y = self.abs_y
+        ox = x - self._col_scroll_off
         table_raw_bg = self.style.raw_bg
 
+        canvas.push_clip(x, y, x + viewport_w, y + self.natural_height(1))
+
         def write_row(row_y, cells, base_style, highlight_col: int | None = None):
-            cx = x
+            cx = ox
             if self.show_border:
                 canvas.write(cx, row_y, "│", self.style)
                 cx += 1
@@ -347,7 +427,7 @@ class Table(Widget):
             for w in widths[1:]:
                 hline += "┬" + "─" * w
             hline += "┐"
-            canvas.write(x, y, hline, self.style)
+            canvas.write(ox, y, hline, self.style)
             y += 1
 
         # Header
@@ -362,7 +442,7 @@ class Table(Widget):
                 sep += "┤"
             else:
                 sep = "─" * total_w
-            canvas.write(x, y, sep, self.style)
+            canvas.write(ox, y, sep, self.style)
             y += 1
 
         # Data rows
@@ -371,7 +451,7 @@ class Table(Widget):
             vy = y + row_off
 
             if idx >= len(self._rows):
-                canvas.write(x, vy, " " * total_w, self.style)
+                canvas.write(ox, vy, " " * total_w, self.style)
                 continue
 
             row = self._rows[idx]
@@ -398,4 +478,13 @@ class Table(Widget):
             for w in widths[1:]:
                 hline += "┴" + "─" * w
             hline += "┘"
-            canvas.write(x, y + vis, hline, self.style)
+            canvas.write(ox, y + vis, hline, self.style)
+
+        canvas.pop_clip()
+
+        if show_h_bar:
+            bar_y = y + vis + (1 if self.show_border else 0)
+            self._h_bar_row = bar_y
+            self._draw_h_scrollbar(canvas, x, bar_y, viewport_w, total_w)
+        else:
+            self._h_bar_row = None

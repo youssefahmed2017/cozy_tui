@@ -1,8 +1,11 @@
-"""App(debug=...): app.debug() logging + the F12 debug-log overlay pane.
+"""App(debug=...): app.debug() logging + the F12 Cozy DevTools panel's
+Console tab.
 
 Phase 0: a safe print()-equivalent for a raw-mode/alt-screen app (bare print()
-would corrupt the display). Phase 1: an in-app viewer for it, toggled by F12.
-default_logs: App's own automatic focus/key/click/drag logging on top of it.
+would corrupt the display). Phase 1: an in-app viewer for it, toggled by F12
+(see tests/test_devtools.py for the rest of the panel -- Elements/
+Performance/Tree, tab switching, the status bar). default_logs: App's own
+automatic focus/key/click/drag logging on top of it.
 """
 
 import os
@@ -69,7 +72,7 @@ def test_debug_log_path_is_ignored_without_debug_true():
     assert not os.path.exists("ignored.log")
 
 
-# ── Phase 1: the F12 pane ─────────────────────────────────────────────────────
+# ── Phase 1: the F12 panel's Console tab ─────────────────────────────────────
 
 
 def test_f12_bound_only_when_debug_true():
@@ -79,49 +82,50 @@ def test_f12_bound_only_when_debug_true():
 
 def test_f12_handler_is_the_public_toggle_method():
     # So other code (a menu item, a button, a custom key binding) can trigger
-    # the same pane without reaching into a private method.
+    # the same panel without reaching into a private method.
     app = make_app(debug=True)
-    assert app._key_handlers[Key.F12] == app.toggle_debug_pane
+    assert app._key_handlers[Key.F12] == app.toggle_devtools
 
 
-def test_toggle_debug_pane_is_a_noop_without_debug_true():
+def test_toggle_devtools_is_a_noop_without_debug_true():
     app = make_app(debug=False)
-    app.toggle_debug_pane()  # must not raise
-    assert app._debug_pane is None
+    app.toggle_devtools()  # must not raise
+    assert app._devtools_panel is None
     assert app._overlays == []
 
 
-def test_f12_opens_and_closes_the_pane():
+def test_f12_opens_and_closes_the_panel():
+    # Not an overlay -- a real docked Splitter pane (see
+    # tests/test_devtools.py for the rest of this). Opening it must not
+    # steal focus from the rest of the app (Elements needs to hover/click
+    # the real UI underneath it).
     app = make_app(debug=True)
     toggle = app._key_handlers[Key.F12]
 
     toggle()
-    assert app._debug_pane is not None
-    assert len(app._overlays) == 1
-    # Focus dives into the pane's scrollable log (Box.focusable=False, so the
-    # Box itself is skipped), so Up/Down scroll it, not the app underneath.
-    assert getattr(app.focused, "scrollable", False)
+    assert app._devtools_panel is not None
+    assert app.focused is None
 
     toggle()
-    assert app._debug_pane is None
-    assert len(app._overlays) == 0
+    assert app._devtools_panel is None
 
 
-def test_debug_pane_picks_up_the_apps_theme():
-    # Regression: DebugPane used to be built with Box's bare default style
-    # instead of the app's, so it never reflected the active theme.
+def test_devtools_panel_picks_up_the_apps_theme():
+    # Regression: the old DebugPane was once built with Box's bare default
+    # style instead of the app's, so it never reflected the active theme.
     app = make_app(debug=True)
     app.style.bg = "magenta_bg"
-    app.toggle_debug_pane()
-    assert app._debug_pane.style is app.style
+    app.toggle_devtools()
+    assert app._devtools_panel.style is app.style
 
 
-def test_pane_shows_buffered_lines_and_syncs_live():
+def test_console_tab_shows_buffered_lines_and_syncs_live():
     app = make_app(debug=True)
     app.debug("line one")
     app.debug("line two")
 
     app._key_handlers[Key.F12]()
+    app._devtools_tabs.select(1)  # Elements(0)/Console(1)/Performance(2)/Tree(3)
     snap = app.snapshot()
     assert "line one" in snap
     assert "line two" in snap
@@ -131,13 +135,15 @@ def test_pane_shows_buffered_lines_and_syncs_live():
     assert "line three" in app.snapshot()
 
 
-def test_esc_closes_the_pane_via_the_normal_modal_path():
+def test_esc_does_not_close_the_panel():
+    # Unlike the old modal DebugPane, DevTools is non-modal (Elements needs
+    # to hover/click the real app underneath) -- Esc only unfreezes a frozen
+    # Elements selection (see test_devtools.py); F12 is the only close key.
     app = make_app(debug=True)
     app._key_handlers[Key.F12]()
-    modal = app._topmost_modal()
-    assert modal is not None and modal.close_on_escape
-    app.close_overlay(modal.widget)
-    assert app._debug_pane is None
+    assert app._topmost_modal() is None
+    app._dispatch_input(Key.ESC)
+    assert app._devtools_panel is not None
 
 
 # ── default_logs: App's own automatic focus/key/click/drag logging ──────────

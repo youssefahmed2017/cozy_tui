@@ -91,8 +91,10 @@ class CommandPalette(_SearchPaletteMixin, Widget):
             self._activate()
 
     def draw(self, canvas) -> None:
+        from cozy_tui.theme import get_theme  # local: theme.py builds on Style
+
         raw_bg = self.style.raw_bg
-        border = Style(fg="bright_cyan", bg=raw_bg, styles=["bold"])
+        border = Style(fg=get_theme().accent, bg=raw_bg, styles=["bold"])
         dim = Style(fg="bright_black", bg=raw_bg)
         name_style = Style(fg=self.style.fg or "white", bg=raw_bg, styles=["bold"])
         x, y, w = self.abs_x, self.abs_y, self.width

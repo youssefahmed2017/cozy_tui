@@ -9,6 +9,7 @@ from .file_picker import FilePicker
 from .list_view import ListItem, ListView
 from .menu_bar import MenuBar
 from .radio_set import RadioItem, RadioSet
+from .search_bar import SearchBar
 from .slider import Slider
 from .table import Table, TableRow
 from .theme_palette import ThemePalette
@@ -32,6 +33,7 @@ __all__ = [
     "MenuBar",
     "RadioSet",
     "RadioItem",
+    "SearchBar",
     "Slider",
     "Table",
     "TableRow",

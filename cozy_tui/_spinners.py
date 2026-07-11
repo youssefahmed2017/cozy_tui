@@ -10,7 +10,7 @@ think in milliseconds or care which raw shape a preset started as.
 _RAW = {
     "dots": {"interval": 80, "frames": "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"},
     "line": {"interval": 130, "frames": ["-", "\\", "|", "/"]},
-    "normalDots": {"interval": 120, "frames": [".  ", ".. ", "...", "   "]},
+    "normalDots": {"interval": 150, "frames": [".  ", ".. ", "...", "   "]},
     "growVertical": {"interval": 120, "frames": "▁▃▄▅▆▇▆▅▄▃"},
     "bounce": {"interval": 120, "frames": "⠁⠂⠄⠂"},
     "arrow": {"interval": 100, "frames": "←↖↑↗→↘↓↙"},
@@ -213,6 +213,29 @@ _RAW = {
             "▰▰▰▰▰▰▱",
             "▰▰▰▰▰▰▰",
             "▰▱▱▱▱▱▱",
+        ],
+    },
+    "pulse": {
+        "interval": 100,
+        "frames": [
+            "○",
+            "◔",
+            "◑",
+            "◕",
+            "●",
+            "◕",
+            "◑",
+            "◔",
+            "○",
+        ],
+    },
+    "triangle": {
+        "interval": 100,
+        "frames": [
+            "◢",
+            "◣",
+            "◤",
+            "◥",
         ],
     },
 }

@@ -146,8 +146,28 @@ class Box(Widget):
                 child._layout_y = total_extra
                 group_extra = max(group_extra, overflow_extra.get(id(child), 0))
             total_extra += group_extra
+        height += total_extra
 
-        return width, height + total_extra
+        # Grow height to fit every child's bottom edge -- symmetric to how
+        # width already grows from non-lapping children's right edge above.
+        # Without this, a box built at a placeholder size and sized entirely
+        # by dock_resize() (e.g. a Splitter pane, which sets self.height but
+        # never _min_height -- see __init__) collapses to _min_height's floor
+        # whenever its children fit the (correctly grown) width without
+        # needing to wrap: nothing else ever grows height for them, so a
+        # child positioned below row 0 draws past the box's own bottom
+        # border instead of being enclosed by it.
+        for child in self.children:
+            # -1: content rows are 1..height (row 0 is the border -- see
+            # draw()'s own interior-fill loop, `abs_y + 1 + j` for
+            # `j in range(height)`, i.e. rows abs_y+1..abs_y+height), so a
+            # child's *last* occupied row is what must fit within `height`,
+            # not one past it.
+            child_bottom = child.y + child._layout_y + child.natural_height(scale) - 1
+            if child_bottom > height:
+                height = child_bottom
+
+        return width, height
 
     def draw(self, canvas):
         self._apply_docks(canvas)

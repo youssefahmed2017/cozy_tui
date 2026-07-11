@@ -40,6 +40,7 @@ from cozy_tui.widgets import (
     RadioItem,
     RadioSet,
     RightClickMenu,
+    SearchBar,
     Slider,
     Spinner,
     Splitter,
@@ -125,7 +126,7 @@ def page_welcome(app, box):
                     "Ctrl+P": "Command palette",
                     "Esc": "Quit (asks to confirm)",
                 },
-                "Debug": {"F12": "Toggle debug log"},
+                "Debug": {"F12": "Toggle Cozy DevTools"},
             },
             title="Keys",
         )
@@ -223,6 +224,27 @@ def page_selection(app, box):
         )
     )
 
+    box.add(Label(2, 13, "Widgets (SearchBar, fuzzy):", ACCENT))
+    widget_names = [
+        "Button", "Checkbox", "Slider", "Input", "ListView", "Dropdown",
+        "CheckList", "RadioSet", "Table", "Tree", "Tabs", "Splitter",
+        "MenuBar", "RightClickMenu", "Toast", "Tooltip", "ScrollView",
+        "Collapsible", "ProgressBar", "Spinner", "SearchBar",
+    ]  # fmt: skip
+    search_out = Label(2, 21, "", MUTED)
+    search = SearchBar(
+        2,
+        14,
+        widget_names,
+        width=30,
+        height=6,
+        placeholder="try 'cl' or 'rcm'...",
+        fuzzy_searching=True,
+    )
+    search.on_select(lambda v: setattr(search_out, "text", f"picked: {v}"))
+    box.add(search)
+    box.add(search_out)
+
 
 def page_data(app, box):
     box.add(Label(2, 1, "Table:", ACCENT))
@@ -245,6 +267,20 @@ def page_data(app, box):
     widgets.add("Hyperlink")
     proj.add("app.py")
     box.add(tree)
+
+    box.add(
+        Label(2, 17, "Table (width=): drag the bar or use ←/→ to scroll", ACCENT)
+    )
+    wide_tbl = Table(2, 18, width=34, show_border=True)
+    wide_tbl.add_column("Package", width=14)
+    wide_tbl.add_column("Kind", width=10)
+    wide_tbl.add_column("Stars", width=9, align="right")
+    wide_tbl.add_column("License", width=12)
+    wide_tbl.add_column("Description", width=24)
+    wide_tbl.add_row("Cozy TUI", "TUI", "★★★★", "MIT", "From-scratch terminal UI")
+    wide_tbl.add_row("Rich", "render", "★★★★★", "MIT", "Rich text and formatting")
+    wide_tbl.add_row("Textual", "TUI", "★★★★★", "MIT", "Full-featured TUI framework")
+    box.add(wide_tbl)
 
 
 def page_layout(app, box):
@@ -423,6 +459,23 @@ def page_overlays(app, box):
     box.add(Button(2, 14, "Delete…").on_click(ask_delete))
     box.add(confirm_out)
 
+    box.add(Label(2, 17, "Delete with Undo (Toast actions):", ACCENT))
+    undo_out = Label(2, 19, "", MUTED)
+
+    def delete_with_undo(_b):
+        def undo():
+            undo_out.text = "Restored ↩"
+
+        app.toast(
+            "Item deleted",
+            actions=[("Undo", undo), ("Dismiss", None)],
+            duration=5.0,
+        )
+        undo_out.text = "Deleted -- Undo in the toast, or wait 5s"
+
+    box.add(Button(2, 18, "Delete item…").on_click(delete_with_undo))
+    box.add(undo_out)
+
 
 def page_about(app, box):
     box.add(Label(2, 1, "Cozy TUI", ACCENT))
@@ -451,7 +504,7 @@ def main() -> None:
     # No explicit style=: defaults to the active theme's style, so the demo
     # itself picks up whatever theme was set before main() ran.
     app = App(full=True, title="Cozy TUI Demo", debug=True)
-    app.debug(f"Cozy TUI {_VERSION} demo started — F12 or right-click > Open Debugger")
+    app.debug(f"Cozy TUI {_VERSION} demo started — F12 or right-click > Open DevTools")
     app.tick_interval = 0.06  # keep the animated header running
 
     def _confirm_quit():
@@ -510,10 +563,10 @@ def main() -> None:
                         on_select=lambda _it: app.open_command_palette(),
                     ),
                     MenuItem(
-                        "Toggle Debug Pane",
+                        "Toggle DevTools",
                         icon="🐞",
                         shortcut="F12",
-                        on_select=lambda _it: app.toggle_debug_pane(),
+                        on_select=lambda _it: app.toggle_devtools(),
                     ),
                 ],
             ),
@@ -607,7 +660,7 @@ def main() -> None:
                 on_select=lambda _: app.open_theme_palette(),
             ),
             MenuItem(
-                "Open Debugger", icon="🐞", on_select=lambda _: app.toggle_debug_pane()
+                "Open DevTools", icon="🐞", on_select=lambda _: app.toggle_devtools()
             ),
             MenuSeparator(),
             MenuItem(

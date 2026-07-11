@@ -13,7 +13,7 @@
 | Scroll Down / Page Down / Ctrl+Down | Scroll content down |
 | Ctrl+T | Open the searchable theme picker (see [styling.md](styling.md#themes)) |
 | Ctrl+P | Open the command palette (see [below](#command-palette)) |
-| F12 | Toggle the debug pane (no-op unless `App(debug=True)`) — always reaches the pane even while a modal is open |
+| F12 | Toggle Cozy DevTools (no-op unless `App(debug=True)`) — always reaches it even while a modal is open |
 
 Any of these can be overridden with your own `app.on_key(...)` — the same key just gets registered again, replacing the default.
 

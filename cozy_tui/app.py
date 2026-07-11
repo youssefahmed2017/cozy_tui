@@ -51,7 +51,8 @@ class _Timer:
 class _Overlay:
     """A widget layered above the base UI. `modal` confines keyboard/mouse input
     to it (and, with `dim`, grays the background); a non-modal overlay is purely
-    visual (e.g. a tooltip). `prev_focus` is restored when the overlay closes."""
+    visual (e.g. a tooltip, an actionable Toast's buttons). `prev_focus` is
+    restored when the overlay closes."""
 
     __slots__ = (
         "widget",
@@ -133,7 +134,6 @@ class App:
         # only when debug=True) or tail `debug_log_path` from another terminal.
         self._debug_log = deque(maxlen=_DEBUG_LOG_MAXLEN) if debug else None
         self._debug_seq = 0
-        self._debug_pane = None
         # Auto-logs focus changes, key presses, and mouse clicks/drags
         # via app.debug() — meaningless (and never checked) unless debug=True
         # too. Pass default_logs=False to keep app.debug() for your own
@@ -145,6 +145,38 @@ class App:
                 self._debug_file = open(debug_log_path, "a", encoding="utf-8")
             except OSError:
                 self._debug_file = None
+        # F12 Cozy DevTools panel state (see _devtools.py). _devtools_active
+        # gates both the Elements-tab mouse takeover in _dispatch_mouse and
+        # the Esc-to-unfreeze branch in _dispatch_input; _devtools_tabs is
+        # the panel's inner Tabs instance, checked for
+        # `selected_title == "Elements"`. _selection_seq is bumped whenever
+        # the selected widget/frozen-state changes so the Elements tab only
+        # rebuilds its rows on an actual change, like _LiveLog's _debug_seq.
+        self._devtools_active = False
+        self._devtools_panel = None
+        self._devtools_tabs = None
+        # The _AppContentPane wrapping the app's own pre-existing top-level
+        # widgets while DevTools is open (see toggle_devtools) -- add()
+        # redirects into its .children instead of self.widgets whenever this
+        # is set, so anything the app adds mid-session still lands in the
+        # right place instead of becoming an orphaned second top-level item.
+        self._devtools_content_pane = None
+        self._devtools_splitter = None
+        self._devtools_prev_focus = None
+        self._selected_widget = None
+        self._selection_frozen = False
+        self._selection_seq = 0
+        # Timings are only ever computed when debug=True (render()/_compose()
+        # check self._debug_log is not None before touching perf_counter at
+        # all), so a non-debug app pays nothing beyond these zero-cost
+        # scalars. Read by the DevTools panel's Performance tab.
+        self._last_frame_ms = 0.0
+        self._last_render_ms = 0.0
+        self._debug_layout_ms = 0.0
+        self._last_mouse_pos = (0, 0)
+        # Rolling render() timestamps for FPS (see _current_fps) -- a real
+        # deque, so (like _debug_log) only allocated when debug=True.
+        self._frame_times: deque = deque(maxlen=30) if debug else None
         # Whether any-motion tracking (?1003h, needed for hover/MouseMove) is
         # currently enabled at the terminal. Driven by per-widget mouse_moves:
         # the App turns it on when a live widget wants motion and never floods
@@ -201,8 +233,8 @@ class App:
         if debug:
             self.on_key(
                 Key.F12,
-                self.toggle_debug_pane,
-                description="Toggle debug log",
+                self.toggle_devtools,
+                description="Toggle Cozy DevTools",
                 section="Debug",
             )
         self.on_key(
@@ -228,9 +260,9 @@ class App:
         )
         if debug:
             self.register_command(
-                "Toggle Debug Pane",
-                self.toggle_debug_pane,
-                description="Open or close the debug log panel",
+                "Toggle DevTools",
+                self.toggle_devtools,
+                description="Open or close Cozy DevTools",
             )
         self.on_key(
             Key.CTRL_P,
@@ -290,7 +322,17 @@ class App:
         self.scroll_y = max(0, min(self.scroll_y + delta, max_scroll))
 
     def add(self, widget):
-        self.widgets.append(widget)
+        # While DevTools is open, self.widgets holds only the wrapping
+        # Splitter (see toggle_devtools) -- redirect into the wrapped app
+        # content instead, so a widget added mid-session (e.g. from a timer
+        # or worker callback) lands alongside the rest of the real app
+        # instead of becoming an orphaned, undocked second top-level item.
+        target = (
+            self._devtools_content_pane.children
+            if self._devtools_content_pane is not None
+            else self.widgets
+        )
+        target.append(widget)
         self._ensure_motion_mode()
 
     # ── mouse-motion tracking ─────────────────────────────────────────────────
@@ -366,10 +408,12 @@ class App:
 
         A **modal** overlay confines keyboard focus and mouse input to itself
         (and, with `dim`, grays the background); a **non-modal** overlay is purely
-        visual, e.g. a tooltip. `center` re-centres the widget on screen every
-        frame (use a `Box` for a dialog). `close_on_escape` / `close_on_click_outside`
-        give light dismissal. Overlays are screen-fixed (ignore scrolling).
-        Returns `widget`.
+        visual, e.g. a tooltip or an actionable Toast's buttons. `center`
+        re-centres the widget on screen every frame (use a `Box` for a
+        dialog). `close_on_escape` / `close_on_click_outside` give light
+        dismissal. Whatever was focused before a modal overlay opens is
+        restored when it closes. Overlays are screen-fixed (ignore
+        scrolling). Returns `widget`.
         """
         widget.parent = None
         entry = _Overlay(
@@ -541,21 +585,61 @@ class App:
         return picker
 
     def toast(
-        self, message, *, level="info", duration=3.0, icon=None, corner="bottom-right"
+        self,
+        message,
+        *,
+        level="info",
+        duration=3.0,
+        icon=None,
+        corner="bottom-right",
+        actions=None,
     ):
         """Pop a transient notification that auto-dismisses after ``duration``
         seconds. ``level`` is ``"info"``/``"success"``/``"warning"``/``"error"``
         (sets color + default icon). Stacks with other toasts in ``corner``.
+
+        ``actions`` is an optional list of ``(label, callback)`` pairs
+        rendered as clickable ``[ Label ]`` buttons under the message, e.g.
+        ``[("Undo", restore_item), ("Dismiss", None)]`` -- ``callback=None``
+        means the action just closes the toast. Clicking one fires its
+        callback (if given) and dismisses this toast; it never moves
+        ``app.focused``, so it can't steal focus from whatever you were
+        actually working in. While ``actions`` is given, hovering the toast
+        pauses its auto-dismiss timer (restarting it in full once the mouse
+        leaves) so reaching for a button doesn't get the toast pulled out
+        from under the cursor mid-click.
+
         Returns the :class:`Toast` widget."""
         from cozy_tui.widgets.display.toast import Toast
 
-        toast = Toast(message, level=level, icon=icon, corner=corner)
+        toast = Toast(message, level=level, icon=icon, corner=corner, actions=actions)
         self._toasts.append(toast)
         self.open_overlay(
             toast, modal=False, dim=False, center=False, close_on_escape=False
         )
-        if duration and duration > 0:
-            self.after(duration, lambda: self._dismiss_toast(toast))
+
+        if actions:
+
+            def _on_action(index):
+                _label, callback = actions[index]
+                if callback is not None:
+                    callback()
+                self._dismiss_toast(toast)
+
+            toast.on_action(_on_action)
+
+        state = {"timer": None}
+
+        def _arm():
+            if duration and duration > 0:
+                state["timer"] = self.after(
+                    duration, lambda: self._dismiss_toast(toast)
+                )
+
+        if actions:
+            toast.on_enter(lambda _t: self.cancel(state["timer"]))
+            toast.on_leave(lambda _t: _arm())
+        _arm()
         return toast
 
     def _dismiss_toast(self, toast):
@@ -618,29 +702,106 @@ class App:
             except Exception:
                 pass
 
-    def toggle_debug_pane(self) -> None:
-        """Open or close the F12 debug-log overlay. A no-op if the app wasn't
-        built with ``App(debug=True)`` (there is no log to show). Bound to
-        F12 automatically when `debug=True`; call it yourself to trigger it
-        from a menu item, button, or your own key binding instead."""
+    def toggle_devtools(self) -> None:
+        """Open or close the F12 Cozy DevTools panel: Elements (follows the
+        mouse -- see `_hit_any`, `_dispatch_mouse` -- and highlights
+        whatever it's pointing at via `_devtools.draw_highlight`; a click
+        freezes it on that widget without activating it, Esc while frozen
+        resumes live tracking), Console (the live debug log), Performance
+        (FPS/timings), and Tree (the live widget hierarchy -- clicking a
+        node selects and highlights it, without leaving the Tree tab; switch
+        to Elements yourself for the detail). A no-op if the app wasn't
+        built with ``App(debug=True)``.
+
+        Not an overlay -- a real docked pane, split from the app's own
+        content by a draggable `Splitter` (drag the bar, or focus it and use
+        Left/Right, exactly like any other `Splitter`), so the app visibly
+        shrinks to share the screen instead of being covered. Bound to F12
+        automatically when `debug=True`; call it yourself to trigger it from
+        a menu item, button, or your own key binding instead."""
         if self._debug_log is None:
             return
-        if self._debug_pane is not None:
-            self.close_overlay(self._debug_pane)
+        if self._devtools_active:
+            self._close_devtools()
             return
-        from cozy_tui._debug_pane import DebugPane
+        from cozy_tui._devtools import DevToolsPanel, _AppContentPane
+        from cozy_tui.widgets import Splitter
 
-        # Chrome-DevTools-style: docked to the top-left corner, a quarter of
-        # the screen (half width x half height) — not a centered dialog.
-        w = max(20, self.cols // 2)
-        h = max(6, self.rows // 2)
-        pane = DebugPane(self, 0, 0, f"{w * self.SCALE}x{h * self.SCALE}")
-        self._debug_pane = pane
+        self._devtools_active = True
+        self._selection_frozen = False
+        self._selected_widget = None
+        self._selection_seq += 1
+        self._devtools_prev_focus = self.focused
 
-        def _on_close(_widget):
-            self._debug_pane = None
+        content_pane = _AppContentPane(self.widgets)
+        for widget in content_pane.children:
+            widget.parent = content_pane
 
-        self.open_overlay(pane, center=False, on_close=_on_close)
+        panel = DevToolsPanel(self)
+        self._devtools_panel = panel
+        self._devtools_tabs = panel.tabs
+
+        # first=app content (left), second=DevTools (right); ratio=0.62
+        # gives the app the majority share by default -- drag from there.
+        splitter = Splitter(0, 0, "10x10", content_pane, panel, ratio=0.62, min_size=20)
+        self._devtools_splitter = splitter
+        self.widgets = []
+        self.dock(splitter, "fill")  # "fill", not a bare append: re-evaluated
+        # every frame, so a terminal resize is tracked live. Set only *after*
+        # dock()/add() has placed the splitter itself onto self.widgets --
+        # add() redirects into this pane once it's set (see App.add()), and
+        # the splitter must land as the sole top-level widget, not get
+        # nested inside the very pane it's meant to wrap.
+        self._devtools_content_pane = content_pane
+        self.invalidate()
+
+    def _close_devtools(self) -> None:
+        content_pane = self._devtools_content_pane
+        for widget in content_pane.children:
+            widget.parent = None
+        self.widgets = content_pane.children  # not the original snapshot --
+        # anything add()-ed mid-session (redirected into this pane, see
+        # App.add()) must not be lost when DevTools closes.
+        self._set_focused(self._devtools_prev_focus)
+        self._devtools_active = False
+        self._devtools_panel = None
+        self._devtools_tabs = None
+        self._devtools_content_pane = None
+        self._devtools_splitter = None
+        self._devtools_prev_focus = None
+        self._selection_frozen = False
+        self._selected_widget = None
+        self.invalidate()
+
+    def _current_fps(self) -> float:
+        """Rolling FPS over the last `_frame_times` (up to 30) render() calls.
+        Reads 0 with fewer than 2 samples, and near-zero whenever the app is
+        otherwise idle -- this engine renders on demand rather than on a
+        fixed cadence (see run()'s loop, which blocks in wait_input() until
+        something is actually due), so a low idle FPS is expected, not a
+        stall. It climbs while something keeps the loop busy: an animation,
+        the cursor blink, or the DevTools panel's own `request_frame`."""
+        if not self._frame_times or len(self._frame_times) < 2:
+            return 0.0
+        span = self._frame_times[-1] - self._frame_times[0]
+        if span <= 0:
+            return 0.0
+        return (len(self._frame_times) - 1) / span
+
+    def _count_widgets(self) -> int:
+        """Total live widget count: every base widget and overlay, descending
+        into each container's `.children`. Feeds the DevTools Performance
+        tab's "Widgets" figure."""
+
+        def _count(widget) -> int:
+            n = 1
+            for child in getattr(widget, "children", None) or ():
+                n += _count(child)
+            return n
+
+        total = sum(_count(w) for w in self.widgets)
+        total += sum(_count(e.widget) for e in self._overlays)
+        return total
 
     def cycle_theme(self) -> None:
         """Advance the process-wide active theme (`cozy_tui.theme`) to the next
@@ -697,7 +858,7 @@ class App:
         invoked with no arguments when the command is picked, after the
         palette has already closed. `App` itself registers a few built-ins
         this way ("Quit", "Change Theme", "Keys", and -- only when
-        `debug=True` -- "Toggle Debug Pane"), so overriding one of those names
+        `debug=True` -- "Toggle DevTools"), so overriding one of those names
         replaces it."""
         from cozy_tui.widgets.selection.command_palette import Command
 
@@ -998,10 +1159,16 @@ class App:
         terminal. Shared by render() and snapshot()."""
         self._anim_interval = None  # widgets re-request during draw() below
         self._clip_stack.clear()  # defensive: no clip leaks across frames
+        if self._debug_log is not None:
+            self._debug_layout_ms = 0.0  # accumulated by Layout.draw() below
         self.clear()
         self._apply_docks()
         for widget in self.widgets:
             widget.draw(self)
+        if self._devtools_active and self._selected_widget is not None:
+            from cozy_tui._devtools import draw_highlight
+
+            draw_highlight(self, self._selected_widget)
         self._draw_overlays()
 
     def snapshot(self) -> str:
@@ -1014,7 +1181,20 @@ class App:
         )
 
     def render(self):
-        self._compose()
+        if self._debug_log is None:
+            self._compose()
+        else:
+            # Timed only under App(debug=True): feeds the DevTools
+            # Performance tab's Frame/Render/FPS figures. "Frame" is the
+            # wall-clock gap since the previous render() call started (i.e.
+            # frame-to-frame cost, including idle time spent blocked in
+            # wait_input()); "Render" is _compose() alone.
+            frame_start = time.perf_counter()
+            if self._frame_times:
+                self._last_frame_ms = (frame_start - self._frame_times[-1]) * 1000
+            self._compose()
+            self._last_render_ms = (time.perf_counter() - frame_start) * 1000
+            self._frame_times.append(frame_start)
 
         # Safety net: a hover widget may have been added to a container (whose
         # add() the App can't intercept) or swapped in with a new page. Re-check
@@ -1143,17 +1323,22 @@ class App:
 
     # ── hit testing ───────────────────────────────────────────────────────────
 
-    def _hit_widget(self, widget, col, row):
-        """Deepest focusable descendant of `widget` (children first) at (col, row)."""
+    def _hit_widget(self, widget, col, row, require_focusable=True):
+        """Deepest descendant of `widget` (children first) at (col, row).
+        `require_focusable=True` (the default, used by click/hover dispatch)
+        only ever returns a `focusable` widget; `_hit_any` passes `False` so
+        the F3 inspector can point at *any* widget -- a plain Label or
+        decorative Box is worth inspecting even though it never receives
+        input."""
         if hasattr(widget, "children"):
             # Reversed: later-added (visually topmost) children win, matching
             # both draw order and the top-level policy in _hit_test — otherwise
             # overlapping siblings route clicks to the bottom-most one.
             for child in reversed(widget.children):
-                result = self._hit_widget(child, col, row)
+                result = self._hit_widget(child, col, row, require_focusable)
                 if result:
                     return result
-        if widget.focusable and widget.contains(col, row):
+        if (not require_focusable or widget.focusable) and widget.contains(col, row):
             return widget
         return None
 
@@ -1161,6 +1346,64 @@ class App:
         """Return the topmost focusable base widget whose box contains (col, row)."""
         for widget in reversed(self.widgets):
             result = self._hit_widget(widget, col, row)
+            if result:
+                return result
+        return None
+
+    def _hit_any(self, col: int, row: int):
+        """Return the topmost widget of *any* kind (focusable or not) whose
+        box contains (col, row) -- overlays first (topmost z-layer), then
+        base widgets, recursing through anything with `.children` (including
+        the `Splitter`/`_AppContentPane` DevTools wraps the app in while
+        open -- see `toggle_devtools`). Used only by the DevTools Elements
+        tab (`toggle_devtools`, `_dispatch_mouse`); everything else keeps
+        using `_hit_test`, which only ever targets something that can
+        actually receive input.
+
+        Never matches or recurses into `self._devtools_panel` itself --
+        Elements doesn't inspect the DevTools panel's own chrome, whether
+        that panel happens to be an overlay or (as it is now) a real widget
+        nested inside the Splitter."""
+
+        def _walk(widget):
+            if widget is self._devtools_panel:
+                return None
+            if hasattr(widget, "children"):
+                for child in reversed(widget.children):
+                    result = _walk(child)
+                    if result:
+                        return result
+            if widget.contains(col, row):
+                return widget
+            return None
+
+        for entry in reversed(self._overlays):
+            result = _walk(entry.widget)
+            if result:
+                return result
+        for widget in reversed(self.widgets):
+            result = _walk(widget)
+            if result:
+                return result
+        return None
+
+    def _hit_non_modal_overlay(self, col: int, row: int):
+        """Topmost non-modal overlay widget (focusable or not) whose box
+        contains (col, row), or `None`. Only ever called when no modal is
+        open (a modal already captures all mouse input exclusively, see
+        `_dispatch_click`) -- so every overlay here genuinely is non-modal.
+
+        Non-modal overlays (`Toast`, `Tooltip`) are otherwise mouse-
+        transparent: `_mouse_target`/`_hit_test` only ever look at the base
+        UI unless a modal is open. This is the one exception, giving an
+        overlay that wants clicks/hover (an actionable `Toast`'s buttons) a
+        first look, topmost z-layer first, before falling through to the
+        base UI -- see `_dispatch_mouse`. (DevTools isn't an overlay at all
+        -- see `App.toggle_devtools` -- so it never registers here; its own
+        tab bar/Tree are real focusable widgets reached by the ordinary
+        `_hit_test()` path below instead.)"""
+        for entry in reversed(self._overlays):
+            result = self._hit_widget(entry.widget, col, row, require_focusable=False)
             if result:
                 return result
         return None
@@ -1193,13 +1436,13 @@ class App:
         modal = self._topmost_modal()
         if modal is not None:
             # A modal captures all keys: no global handlers, no scroll --
-            # except F12, which always reaches the debug pane (a no-op if
+            # except F12, which always reaches Cozy DevTools (a no-op if
             # debug=False) rather than being swallowed as a second "close
-            # this modal" key. Otherwise F12 could never open the debug pane
-            # while any modal (there are many now: ConfirmDialog, FilePicker,
+            # this modal" key. Otherwise F12 could never open DevTools while
+            # any modal (there are many now: ConfirmDialog, FilePicker,
             # CommandPalette, ThemePalette, ...) happens to be open.
             if key == Key.F12:
-                self.toggle_debug_pane()
+                self.toggle_devtools()
             elif key == Key.ESC and modal.close_on_escape:
                 self.close_overlay(modal.widget)
             elif key == Key.TAB:
@@ -1212,6 +1455,12 @@ class App:
                 self.quit()
             elif self.focused:
                 self.focused.on_key(key)
+            return
+        if self._devtools_active and key == Key.ESC and self._selection_frozen:
+            # Resume live hover-tracking on the Elements tab; F12 (not Esc)
+            # is the only way to close DevTools entirely -- a symmetric
+            # open/close key.
+            self._selection_frozen = False
             return
         if key == Key.CTRL_C:
             # Text inputs (cursor=True) handle Ctrl+C for copy; everything
@@ -1253,11 +1502,88 @@ class App:
         either sees them."""
         modal = self._topmost_modal()
         event.row += 0 if modal else self.scroll_y
+        if isinstance(event, MouseMove) and self._debug_log is not None:
+            self._last_mouse_pos = (event.col, event.row)
+        # Elements mode: the DevTools panel is open, its own Elements tab is
+        # showing, and the event isn't over the panel's own chrome (a click
+        # on a *different* DevTools tab must reach the tab bar below instead
+        # of being treated as "select this widget" -- checked first via
+        # _hit_widget so a click on the panel itself never reaches here) or
+        # the Splitter's own divider bar between it and the app (Splitter.
+        # contains() only ever matches the bar itself, never either pane's
+        # own area -- see its docstring -- so this doesn't also exclude the
+        # real app content Elements needs to hover/click in the first pane).
+        elements_active = (
+            modal is None  # a modal (e.g. a ConfirmDialog) must never lose
+            # a click to Elements just because it's also open
+            and self._devtools_active
+            and self._devtools_tabs is not None
+            and self._devtools_tabs.selected_title == "Elements"
+            and not self._devtools_splitter.contains(event.col, event.row)
+            and self._hit_widget(
+                self._devtools_panel, event.col, event.row, require_focusable=False
+            )
+            is None
+        )
+        if elements_active:
+            # Inspecting takes over the mouse entirely -- like a modal takes
+            # over the keyboard -- so a click never activates the widget
+            # underneath and a hover never fires the app's own tooltips.
+            if isinstance(event, MouseMove):
+                if not self._selection_frozen:
+                    target = self._hit_any(event.col, event.row)
+                    if target is not self._selected_widget:
+                        self._selected_widget = target
+                        self._selection_seq += 1
+                return
+            if isinstance(event, MouseClick):
+                target = self._hit_any(event.col, event.row)
+                if target is not self._selected_widget:
+                    self._selected_widget = target
+                    self._selection_seq += 1
+                self._selection_frozen = True
+                return
+            return  # drag/release swallowed too while inspecting
+
+        # Coordinates mode: same guard shape as elements_active, but a click
+        # is a one-shot action (copy to the clipboard), not a UI mode to
+        # freeze/unfreeze -- so only MouseClick is handled; hover is left
+        # completely alone (the real app's own tooltips/hover effects keep
+        # working normally, unlike Elements, which deliberately takes over
+        # hover to preview a selection).
+        coords_active = (
+            modal is None
+            and self._devtools_active
+            and self._devtools_tabs is not None
+            and self._devtools_tabs.selected_title == "Coordinates"
+            and not self._devtools_splitter.contains(event.col, event.row)
+            and self._hit_widget(
+                self._devtools_panel, event.col, event.row, require_focusable=False
+            )
+            is None
+        )
+        if coords_active and isinstance(event, MouseClick):
+            from cozy_tui import clipboard
+
+            clipboard.copy(f"x={event.col}, y={event.row}")
+            self.toast(f"Copied x={event.col}, y={event.row}", level="success")
+            return  # swallow -- never activates the real widget underneath
         if self._mouse_handler is not None and self._mouse_handler(event):
             return  # consumed by the global hook
         if isinstance(event, MouseClick):
             if self._default_logs:
                 self.debug(f"Clicked on col: {event.col}, row: {event.row}")
+            # A non-modal overlay (an actionable Toast's buttons) gets first
+            # look at a left click, without ever touching self.focused --
+            # reusing the normal _dispatch_click path would _set_focused()
+            # it, silently stealing focus from whatever the user was
+            # actually working in. Right-click keeps its own path below
+            # (context menus over the base UI), unaffected.
+            if modal is None and event.btn == 0:
+                overlay_target = self._hit_non_modal_overlay(event.col, event.row)
+                if overlay_target is not None:
+                    overlay_target.on_mouse_click(event.col, event.row)
+                    return
             self._dispatch_click(event, modal)
         elif isinstance(event, MouseDrag):
             if self._default_logs:
@@ -1268,7 +1594,11 @@ class App:
             if self.focused is not None:
                 self.focused.on_mouse_release(event.col, event.row)
         elif isinstance(event, MouseMove):
-            target = self._mouse_target(event.col, event.row, modal)
+            target = None
+            if modal is None:
+                target = self._hit_non_modal_overlay(event.col, event.row)
+            if target is None:
+                target = self._mouse_target(event.col, event.row, modal)
             # Only widgets that opted into motion receive enter/leave.
             if target is not None and not target.mouse_moves:
                 target = None

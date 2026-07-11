@@ -1,3 +1,5 @@
+import time
+
 from cozy_tui.widget import Widget
 
 
@@ -110,7 +112,18 @@ class Layout(Widget):
 
     def draw(self, canvas):
         if self._dirty:
-            self._arrange()
+            # Timed only when App(debug=True) (canvas._debug_log is then a
+            # deque, never None) -- one attribute check for every other app,
+            # no perf_counter() calls at all. Feeds the DevTools Performance
+            # tab's "Layout" figure (see _devtools.py); accumulated rather
+            # than overwritten since multiple Layout containers may
+            # _arrange() within the same frame.
+            if getattr(canvas, "_debug_log", None) is not None:
+                start = time.perf_counter()
+                self._arrange()
+                canvas._debug_layout_ms += (time.perf_counter() - start) * 1000
+            else:
+                self._arrange()
         self._dirty = True  # re-dirty so next frame's natural_width/height recomputes
         for child in self.children:
             child.draw(canvas)

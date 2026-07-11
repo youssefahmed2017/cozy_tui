@@ -65,6 +65,20 @@ def test_modified_function_keys_ss3_form():
     assert feed("\x1b[1;2S") == "shift+F4"  # Shift+F4
 
 
+def test_ctrl_shift_d_via_csi_u():
+    # modifyOtherKeys/kitty-protocol form: CSI <codepoint> ; <mod> u.
+    # mod=6 is Ctrl+Shift; 68='D', 100='d'. General-purpose parsing, same
+    # category as CTRL_SHIFT_LEFT/RIGHT -- not tied to any particular binding.
+    assert feed("\x1b[68;6u") == Key.CTRL_SHIFT_D
+    assert feed("\x1b[100;6u") == Key.CTRL_SHIFT_D
+
+
+def test_plain_ctrl_d_is_unaffected_by_the_new_carve_out():
+    # mod=5 is plain Ctrl (no Shift) -- must still collapse to the ordinary
+    # control byte, not get swept up by the Ctrl+Shift+D special case.
+    assert feed("\x1b[100;5u") == Key.ctrl("d") == "\x04"
+
+
 def test_modifier_helpers_compose_for_fkeys():
     assert Key.ctrl(Key.F5) == "ctrl+F5"
     assert Key.alt(Key.F5) == "alt+F5"

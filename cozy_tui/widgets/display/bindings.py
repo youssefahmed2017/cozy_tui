@@ -40,9 +40,11 @@ class Bindings(Widget):
         self.title = title
         self.border = border
 
+        from cozy_tui.theme import get_theme  # local: theme.py builds on Style
+
         raw_bg = self.style.raw_bg
         self._border_style = Style(fg="bright_black", bg=raw_bg)
-        self._key_style = Style(fg="bright_cyan", bg=raw_bg, styles=["bold"])
+        self._key_style = Style(fg=get_theme().accent, bg=raw_bg, styles=["bold"])
         self._header_style = Style(fg="bright_yellow", bg=raw_bg, styles=["bold"])
         self._desc_style = Style(fg=self.style.fg or "white", bg=raw_bg)
 

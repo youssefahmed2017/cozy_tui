@@ -101,6 +101,7 @@ class Key:
     CTRL_RIGHT        = "CTRL_RIGHT"
     CTRL_SHIFT_LEFT   = "CTRL_SHIFT_LEFT"
     CTRL_SHIFT_RIGHT  = "CTRL_SHIFT_RIGHT"
+    CTRL_SHIFT_D      = "CTRL_SHIFT_D"
     CTRL_U            = "\x15"
     CTRL_Y            = "\x19"
     INSERT            = "INSERT"
@@ -193,6 +194,7 @@ _KEY_LABELS = {
     Key.CTRL_RIGHT: "Ctrl+→",
     Key.CTRL_SHIFT_LEFT: "Ctrl+Shift+←",
     Key.CTRL_SHIFT_RIGHT: "Ctrl+Shift+→",
+    Key.CTRL_SHIFT_D: "Ctrl+Shift+D",
     Key.SCROLL_UP: "Scroll↑",
     Key.SCROLL_DOWN: "Scroll↓",
 }
@@ -411,6 +413,9 @@ def _read_csi():
         # Ctrl+Shift+Z (modifier 6, codepoint 90='Z' or 122='z') → treat as redo
         if mod == 6 and cp in (90, 122):
             return Key.CTRL_Y
+        # Ctrl+Shift+D (modifier 6, codepoint 68='D' or 100='d') → perf overlay
+        if mod == 6 and cp in (68, 100):
+            return Key.CTRL_SHIFT_D
         # Ctrl+letter or Ctrl+Shift+letter → ASCII control code (chr(cp % 32))
         # Covers a-z (97-122) and A-Z (65-90); cp % 32 gives 1-26.
         if mod in (5, 6) and (65 <= cp <= 90 or 97 <= cp <= 122):

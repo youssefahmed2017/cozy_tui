@@ -42,8 +42,10 @@ class PromptDialog(Widget):
             self.text += key
 
     def _palette(self):
+        from cozy_tui.theme import get_theme  # local: theme.py builds on Style
+
         raw_bg = self.style.raw_bg
-        border = Style(fg="bright_cyan", bg=raw_bg, styles=["bold"])
+        border = Style(fg=get_theme().accent, bg=raw_bg, styles=["bold"])
         dim = Style(fg="bright_black", bg=raw_bg)
         return self.style, border, dim
 

@@ -229,3 +229,33 @@ def test_panes_are_clipped_to_their_slice():
     bar_col = sp.abs_x + sp._divider_at
     assert snap[bar_col] == "┃"
     assert "second" in snap
+
+
+def test_box_pane_built_at_placeholder_size_still_encloses_its_children():
+    # A Box pane meant to be sized entirely by dock_resize() (Splitter's
+    # documented pattern) is typically built with a tiny placeholder size
+    # like "1x1" -- _min_height then floors at 0 rows, and dock_resize()
+    # never touches _min_height, only self.height. Box._layout() used to
+    # only grow height via wrap-triggered overflow, so a Box whose children
+    # fit the (correctly grown) width without wrapping stayed at height=0:
+    # its bottom border drew one row below the top border, and children
+    # below that row rendered outside the box entirely instead of enclosed.
+    app = make_app(size="800x200")
+    left = Box(0, 0, "1x1", title="Left", border="rounded", style=app.style)
+    left.add(Label(2, 1, "first row"))
+    left.add(Label(2, 4, "fourth row"))  # nothing between rows 1 and 4 wraps
+    right = Box(0, 0, "1x1", title="Right", border="rounded", style=app.style)
+    right.add(Label(2, 1, "another row"))
+    sp = Splitter(0, 0, "780x160", left, right)
+    app.add(sp)
+    app.render()
+
+    # The bug collapsed height to 0 (just _min_height's floor): the bottom
+    # border drew one row below the top border and "fourth row" (y=4) never
+    # made it inside the box at all. Content rows are 1..height (row 0 is
+    # the border), so height must be at least 4 to include a child at y=4.
+    assert left._layout(app.SCALE)[1] >= 4
+    snap = app.snapshot()
+    assert "first row" in snap
+    assert "fourth row" in snap
+    assert "another row" in snap
