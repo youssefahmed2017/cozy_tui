@@ -90,6 +90,7 @@ class Key:
     CTRL_T      = "\x14"
     CTRL_P      = "\x10"
     CTRL_S      = "\x13"
+    CTRL_R      = "\x12"
     SHIFT_TAB   = "SHIFT_TAB"
     SHIFT_ENTER = "SHIFT_ENTER"
     SHIFT_LEFT  = "SHIFT_LEFT"

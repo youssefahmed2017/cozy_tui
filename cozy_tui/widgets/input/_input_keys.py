@@ -47,6 +47,10 @@ class _KeysMixin:
         return "".join(out)
 
     def _do_paste(self, text: str) -> None:
+        if self.mask is not None:
+            self._mask_paste(text)
+            self._touched = True
+            return
         self._save_history("edit")
         if self._sel_anchor is not None:
             self._delete_sel()
@@ -178,7 +182,9 @@ class _KeysMixin:
         # ── edit operations ──────────────────────────────────────────────────
 
         elif key == Key.BACKSPACE:
-            if self._sel_anchor is not None:
+            if self.mask is not None:
+                self._mask_backspace()
+            elif self._sel_anchor is not None:
                 self._save_history("edit")
                 self._delete_sel()
             elif self.cursor_pos > 0:
@@ -189,7 +195,9 @@ class _KeysMixin:
                 self.cursor_pos -= 1
 
         elif key == Key.DELETE:
-            if self._sel_anchor is not None:
+            if self.mask is not None:
+                self._mask_delete()
+            elif self._sel_anchor is not None:
                 self._save_history("edit")
                 self._delete_sel()
             elif self.cursor_pos < len(self.value):
@@ -215,11 +223,15 @@ class _KeysMixin:
                 self.cursor_pos = len(self.value)
 
         elif key == Key.CTRL_C:
+            if self.masked and not self._reveal_masked:
+                return  # never leak the real value while it's still hidden
             text = self._sel_text()
             if text:
                 _clipboard_set(text)
 
         elif key == Key.CTRL_X:
+            if self.masked and not self._reveal_masked:
+                return  # cutting both removes and copies -- same guard as Ctrl+C
             text = self._sel_text()
             if text:
                 self._save_history("edit")
@@ -237,6 +249,11 @@ class _KeysMixin:
             self._overwrite = not self._overwrite
             self.cursor_style = "block" if self._overwrite else "vertical"
 
+        # ── reveal masked value ────────────────────────────────────────────────
+
+        elif key == Key.CTRL_R and self.masked:
+            self._reveal_masked = not self._reveal_masked
+
         # ── undo / redo ───────────────────────────────────────────────────────
 
         elif key == Key.CTRL_U:
@@ -250,6 +267,10 @@ class _KeysMixin:
             and len(key) == 1
             and key.isprintable()
         ):
+            if self.mask is not None:
+                self._mask_insert_digit(key)
+                self._touched = True
+                return
             filtered = self._filter_type_text(key)
             if not filtered:
                 return  # disallowed by `type` (e.g. a letter in a "number" field)

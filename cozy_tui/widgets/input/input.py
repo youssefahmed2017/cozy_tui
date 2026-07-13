@@ -5,10 +5,18 @@ from cozy_tui.widget import Widget
 from cozy_tui.widgets.input._input_draw import _DrawMixin
 from cozy_tui.widgets.input._input_history import _HistoryMixin
 from cozy_tui.widgets.input._input_keys import _KeysMixin
+from cozy_tui.widgets.input._input_mask import _MaskMixin, mask_digit_count, mask_raw
 
 
-class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
+class Input(_HistoryMixin, _DrawMixin, _KeysMixin, _MaskMixin, Widget):
     focusable = True
+
+    # Reveal icon reservation: a 1-cell gap, then a 2-cell-wide slot for the
+    # glyph (a safe upper bound regardless of how a given terminal actually
+    # renders it -- the click hit-zone is this fixed region, not the glyph's
+    # true rendered width).
+    _ICON_GAP = 1
+    _ICON_WIDTH = 2
 
     def __init__(
         self,
@@ -26,10 +34,13 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
         inp_type="text",
         required=False,
         validator=None,
+        mask=None,
     ):
         Widget.__init__(self=self, x=x, y=y, style=style, name="Input")
         if inp_type not in ("text", "number"):
             raise ValueError('inp_type must be "text" or "number"')
+        if mask is not None and multiline:
+            raise ValueError("mask doesn't support multiline=True")
 
         self.laps = True
         self.width = max(1, width)
@@ -43,7 +54,15 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
         self.multiline = multiline
         self.masked = masked
         self.masked_symbol = masked_symbol
+        # Toggled by the eye icon / Ctrl+R (masked, single-line, unwrapped
+        # fields only -- see _draw_reveal_icon); reset to False as soon as
+        # this widget notices (in draw()) that it's no longer focused, so a
+        # revealed password doesn't linger on screen after tabbing away.
+        self._reveal_masked = False
         self.type = inp_type
+        # Takes over character-acceptance entirely when set -- type="number"'s
+        # own filtering is bypassed (set one or the other, not both).
+        self.mask = mask
         self.required = required
         # Optional callable(value) -> True (valid) / False (invalid, generic
         # message) / an error message string. Checked after the built-in
@@ -72,7 +91,17 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
         self._last_action: str | None = None
         self.laps = True
 
+    def _reveal_icon_active(self) -> bool:
+        """The eye icon only applies to a plain, single-line, unwrapped
+        masked field -- the overwhelmingly common real case (a login form's
+        password field). `multiline`/`_clip_width` masked inputs are a rare
+        combination not worth tangling into the wrap/clip math for; they
+        keep the mask-only behavior unchanged."""
+        return self.masked and not self.multiline and not self._clip_width
+
     def natural_width(self, scale):
+        if self._reveal_icon_active():
+            return self.width + self._ICON_GAP + self._ICON_WIDTH
         return self.width
 
     # ── selection helpers ────────────────────────────────────────────────────
@@ -191,6 +220,8 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
 
     def contains(self, col: int, row: int) -> bool:
         w = self._clip_width or self.width
+        if self._reveal_icon_active():
+            w += self._ICON_GAP + self._ICON_WIDTH
         if self.multiline and self.value:
             h = self._row_count(w)
         elif self._clip_width and self.value:
@@ -239,6 +270,9 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
                 float(self.value)
             except ValueError:
                 return "Not a valid number"
+        if self.mask is not None and self.value:
+            if len(mask_raw(self.mask, self.value)) < mask_digit_count(self.mask):
+                return "Incomplete"
         if self.validator is not None:
             # Unlike most callbacks in this library (which only fire on a
             # discrete user action), `error` -- and therefore `validator` --
@@ -295,6 +329,17 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, Widget):
     # ── mouse ────────────────────────────────────────────────────────────────
 
     def on_mouse_click(self, col=None, row=None):
+        if (
+            self._reveal_icon_active()
+            and col is not None
+            and row is not None
+            and row == self.abs_y
+            and self.abs_x + self.width + self._ICON_GAP
+            <= col
+            < self.abs_x + self.width + self._ICON_GAP + self._ICON_WIDTH
+        ):
+            self._reveal_masked = not self._reveal_masked
+            return
         self._clear_sel()
         if col is not None and row is not None:
             self._set_cursor_from_mouse(col, row)

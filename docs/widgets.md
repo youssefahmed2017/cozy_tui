@@ -382,7 +382,8 @@ A focusable text input field. Supports single-line and multi-line modes.
 
 ```python
 Input(x, y, width, placeholder="", style=None, cursor=True, cursor_style="vertical",
-      flash=True, multiline=False, masked=False, masked_symbol="*")
+      flash=True, multiline=False, masked=False, masked_symbol="*",
+      inp_type="text", required=False, validator=None, mask=None)
 ```
 
 | Parameter | Description |
@@ -397,6 +398,7 @@ Input(x, y, width, placeholder="", style=None, cursor=True, cursor_style="vertic
 | `multiline` | Enables multi-line editing — Enter or Shift+Enter inserts a newline |
 | `masked` | Hide typed characters (e.g. for passwords). `False` by default. |
 | `masked_symbol` | Character used for masking. Defaults to `"*"`. |
+| `mask` | A digit-mask pattern (e.g. `"####-####-####-####"`) — see **Digit-mask mode** below. `None` by default. |
 
 **Reading the value:**
 
@@ -421,15 +423,25 @@ When `multiline=True`, the input stores newlines in `.value`. Press Enter or Shi
 
 When `masked=True`, typed characters are replaced visually by `masked_symbol` (default `"*"`). The real text is still stored in `.value` and used for validation — only the display is affected.
 
+For a single-line, unwrapped masked field (the common case — a login form's password field), a clickable `👁` reveal icon appears just past the field's own width (this grows `natural_width` by 3 cells; it doesn't shrink the field's typing area). Clicking it — or pressing **Ctrl+R** — toggles between the masked display and the real text; the icon's color reflects the state (accent when revealed, muted when hidden). Revealing auto-resets the next time the field redraws after losing focus, so a password doesn't stay visible on screen after tabbing away. **Ctrl+C**/**Ctrl+X** copy/cut nothing while the value is still hidden — only once revealed do they behave like a normal field, since revealing is treated as informed consent to also allow copying. (`multiline=True` or a `Box`-imposed wrap width skip the icon/copy-guard entirely and keep today's mask-only behavior — an uncommon combination for a password field.)
+
+**Digit-mask mode:**
+
+`mask="####-####-####-####"` (a credit-card number, for example) auto-formats as you type: `#` is a digit slot, any other character is a literal separator inserted automatically the moment the digit before it is typed — so typing the 4th digit of a group immediately shows the trailing `-`, ready for the 5th. Once every slot is filled, further typing is refused. `.value` always holds the fully-formatted string (`"4111-1111-1111-1111"`, not just the raw digits) — reading it never needs a separate "un-format" step.
+
+Backspace/Delete are mask-aware: removing a digit reformats the rest of the number from scratch rather than leaving a stranded `-` behind. Pasting works whether the clipboard has raw digits or already-formatted text (either way, only the digits are kept); pasting more digits than remaining capacity truncates instead of overflowing. Typing or pasting over an active selection replaces just the selected digits. Only digits are accepted — `mask=` takes over character-acceptance entirely, so set it instead of (not alongside) `inp_type="number"`. A partially-filled masked field reports `.error == "Incomplete"` once touched (same "nothing shows red until interaction" rule as `required=True`). `mask=` doesn't support `multiline=True` (raises `ValueError` at construction) — a masked multi-line numeric format doesn't make sense.
+
 **Example:**
 
 ```python
 name_input = Input(10, 2, 25, placeholder="Your name")
 pass_input = Input(10, 4, 25, placeholder="Password", masked=True)
 notes_input = Input(10, 6, 25, placeholder="Notes...", multiline=True)
+card_input = Input(10, 8, 24, placeholder="Card number", mask="####-####-####-####")
 box.add(name_input)
 box.add(pass_input)
 box.add(notes_input)
+box.add(card_input)
 ```
 
 ---
@@ -1323,15 +1335,17 @@ except Exception as exc:
 A scrollable, keyboard-navigable table with sortable columns and optional border.
 
 ```python
-Table(x, y, *, height=None, show_header=True, show_border=False, style=None)
+Table(x, y, *, width=None, height=None, show_header=True, show_border=False, style=None, accent="bright_cyan")
 ```
 
 | Parameter | Description |
 |-----------|-------------|
 | `x`, `y` | Position |
+| `width` | Viewport width in cells. `None` = size to full content (no horizontal scrolling). Narrower than the content turns on a draggable horizontal scrollbar and column-cursor auto-scroll. |
 | `height` | Number of visible data rows. `None` = show all rows. |
 | `show_header` | Draw the column header row (default `True`) |
 | `show_border` | Draw a border around the table (default `False`) |
+| `accent` | Color for the horizontal scrollbar thumb and the sort indicator (`▲`/`▼`) |
 
 **Building the table:**
 
@@ -1372,6 +1386,8 @@ tbl.on_select(func)   # func(row) — called on Enter or click
 | Left / Right | Move column highlight |
 | Home / End | First / last row |
 | Enter | Fire `on_select` |
+
+**Mouse:** clicking a row selects it (like Enter). Clicking a column **header** sorts by that column — ascending on the first click, toggling to descending on a repeat click of the same header, and back to ascending when a different header is clicked; a `▲`/`▼` indicator shows the sorted column and direction. This calls the same `.sort()` above, so both stay in sync with each other. When `width=` makes the table narrower than its content, drag the horizontal scrollbar (or use Left/Right) to scroll.
 
 **Example:**
 

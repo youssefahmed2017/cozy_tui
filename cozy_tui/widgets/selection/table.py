@@ -81,6 +81,8 @@ class Table(Widget):
         self._col_width_cache: list[int] | None = None
         self._h_bar_row: int | None = None
         self._dragging_h_bar: bool = False
+        self._sort_col: int | None = None
+        self._sort_reverse: bool = False
 
     # ── column API ───────────────────────────────────────────────────────────
 
@@ -147,11 +149,16 @@ class Table(Widget):
         self._scroll_off = 0
         self._col_scroll_off = 0
         self._col_width_cache = None
+        self._sort_col = None
+        self._sort_reverse = False
 
     # ── sort ─────────────────────────────────────────────────────────────────
 
     def sort(self, column: str | int, *, reverse: bool = False) -> None:
-        """Sort rows by column name or index.
+        """Sort rows by column name or index. Also reachable by clicking a
+        column header (toggling `reverse` on a repeat click of the same
+        column) -- both update the header's `▲`/`▼` indicator, since this
+        is the single place that tracks it.
 
         The current selection follows its row after sorting.
         """
@@ -168,6 +175,8 @@ class Table(Widget):
             key=lambda r: r.values[ci] if ci < len(r.values) else "",
             reverse=reverse,
         )
+        self._sort_col = ci
+        self._sort_reverse = reverse
         if selected is not None:
             try:
                 self._index = self._rows.index(selected)
@@ -288,6 +297,28 @@ class Table(Widget):
             self._col_scroll_off = end - viewport_w
         self._col_scroll_off = max(0, min(self._col_scroll_off, max_off))
 
+    def _col_at(self, col: int) -> int | None:
+        """Column index under absolute column `col` (header or data row --
+        both share the same per-column x layout), or None outside any
+        column."""
+        widths = self._col_widths()
+        cx = self.abs_x - self._col_scroll_off
+        if self.show_border:
+            cx += 1
+        for ci, w in enumerate(widths):
+            if cx <= col < cx + w:
+                return ci
+            cx += w
+            if ci < len(widths) - 1:
+                cx += 1  # separator
+        return None
+
+    def _sort_by_column(self, ci: int) -> None:
+        # A repeat click on the already-sorted column toggles direction;
+        # clicking a different column always starts ascending.
+        reverse = not self._sort_reverse if self._sort_col == ci else False
+        self.sort(ci, reverse=reverse)
+
     # ── Widget interface ──────────────────────────────────────────────────────
 
     def natural_width(self, scale) -> int:
@@ -339,7 +370,16 @@ class Table(Widget):
                 self._bar_scroll_to(col)
             return
         self._dragging_h_bar = False
-        if row is None or not self._rows:
+        if row is None:
+            return
+        if self.show_header and col is not None:
+            header_y = self.abs_y + (1 if self.show_border else 0)
+            if row == header_y:
+                ci = self._col_at(col)
+                if ci is not None:
+                    self._sort_by_column(ci)
+                return
+        if not self._rows:
             return
         clicked = self._scroll_off + (row - self._data_start_y())
         if 0 <= clicked < len(self._rows):
@@ -434,6 +474,21 @@ class Table(Widget):
         if self.show_header:
             header_style = Style(fg=self.style.fg, bg=table_raw_bg, styles=["bold"])
             write_row(y, [col["title"] for col in self._columns], header_style)
+            if self._sort_col is not None and self._sort_col < n_cols:
+                # Overlay the arrow on the sorted column's own trailing padding
+                # space (_format_cell always wraps content in " ... ", so the
+                # cell's last character is guaranteed blank) rather than
+                # appending to the title text -- that would need every
+                # auto-sized column widened to make room, reflowing the whole
+                # table just because it got sorted.
+                arrow = "▼" if self._sort_reverse else "▲"
+                arrow_style = Style(fg=self.accent, bg=table_raw_bg, styles=["bold"])
+                cx = ox + (1 if self.show_border else 0)
+                for ci, w in enumerate(widths):
+                    if ci == self._sort_col:
+                        canvas.write(cx + w - 1, y, arrow, arrow_style)
+                        break
+                    cx += w + (1 if ci < n_cols - 1 else 0)
             y += 1
             if self.show_border:
                 sep = "├" + "─" * widths[0]

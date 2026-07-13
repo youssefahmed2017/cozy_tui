@@ -160,6 +160,24 @@ def page_inputs(app, box):
     box.add(Checkbox(2, 7, "Subscribe to updates"))
     box.add(Checkbox(2, 8, "Enable telemetry"))
 
+    box.add(Label(2, 15, "Card number (Input mask=):", ACCENT))
+    card = Input(
+        2, 16, 24, placeholder="4111 1111 1111 1111", mask="####-####-####-####"
+    )
+    box.add(card)
+    card_status = Label(2, 17, "", MUTED)
+    box.add(card_status)
+
+    def _refresh_card_status():
+        if not card.value:
+            card_status.text = ""
+        elif card.error:
+            card_status.text = f"({card.error})"
+        else:
+            card_status.text = "✓ complete"
+
+    app.every(0.15, _refresh_card_status)
+
     box.add(Label(40, 3, "Volume (Slider):", ACCENT))
     volume = Slider(40, 4, minimum=0, maximum=100, value=70, step=1, width=24)
     box.add(volume)

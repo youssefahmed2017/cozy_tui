@@ -5,7 +5,7 @@ class _DrawMixin:
 
     @property
     def _display_value(self):
-        if not self.masked:
+        if not self.masked or self._reveal_masked:
             return self.value
         # Re-build only when value is a different object (strings are immutable,
         # so any mutation produces a new string and breaks identity).
@@ -49,12 +49,25 @@ class _DrawMixin:
 
     def draw(self, canvas):
         is_focused = canvas.focused is self
+        if self.masked and not is_focused:
+            # Don't leave a revealed password visible on screen once the
+            # user has moved on to something else.
+            self._reveal_masked = False
         if self.multiline:
             self._draw_multiline(canvas, is_focused)
         elif self._clip_width:
             self._draw_wrapped(canvas, is_focused)
         else:
             self._draw_scrolling(canvas, is_focused)
+
+    def _draw_reveal_icon(self, canvas, is_focused) -> None:
+        from cozy_tui.theme import get_theme  # local: theme.py builds on Style
+
+        theme = get_theme()
+        color = theme.accent if self._reveal_masked else theme.muted
+        icon_style = Style(fg=color, bg=self.style.raw_bg)
+        icon_x = self.abs_x + self.width + self._ICON_GAP
+        canvas.write(icon_x, self.abs_y, "👁", icon_style)
 
     def _draw_scrolling(self, canvas, is_focused):
         w = self.width
@@ -102,6 +115,9 @@ class _DrawMixin:
                 self.placeholder.replace("\n", " ")[:w].ljust(w),
                 self._placeholder_style(is_focused),
             )
+
+        if self._reveal_icon_active():
+            self._draw_reveal_icon(canvas, is_focused)
 
     def _draw_wrapped(self, canvas, is_focused):
         w = self._clip_width

@@ -1,5 +1,5 @@
 from cozy_tui import App, Style
-from cozy_tui.events import Key
+from cozy_tui.events import Key, Paste
 from cozy_tui.widgets import PromptDialog
 
 
@@ -49,6 +49,20 @@ def test_cancel_fires_on_cancel_not_on_submit():
     )
     app.close_overlay()  # simulates Esc / click-outside dismissal
     assert events == [("cancel",)]
+
+
+def test_paste_appends_text():
+    app = make_app()
+    dlg = app.prompt("Name?", "abc")
+    dlg.on_key(Paste("XYZ"))
+    assert dlg.text == "abcXYZ"
+
+
+def test_paste_collapses_newlines_to_spaces():
+    app = make_app()
+    dlg = app.prompt("Name?", "")
+    dlg.on_key(Paste("foo\r\nbar\nbaz"))
+    assert dlg.text == "foo bar baz"
 
 
 def test_submit_does_not_also_fire_cancel():

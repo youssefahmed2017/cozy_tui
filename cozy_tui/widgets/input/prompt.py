@@ -1,4 +1,4 @@
-from cozy_tui.events import Key
+from cozy_tui.events import Key, Paste
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
 from cozy_tui.widgets.selection._search_palette import draw_panel_frame
@@ -33,7 +33,11 @@ class PromptDialog(Widget):
         ) and self.abs_y <= row < self.abs_y + self.natural_height(1)
 
     def on_key(self, key):
-        if key == Key.ENTER:
+        if isinstance(key, Paste):
+            self.text += (
+                key.text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+            )
+        elif key == Key.ENTER:
             if self.on_submit is not None:
                 self.on_submit(self.text)
         elif key == Key.BACKSPACE:
