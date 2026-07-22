@@ -8,10 +8,13 @@
 A lightweight, cross-platform Python TUI (Terminal User Interface) library. Build keyboard-driven terminal apps with widgets, focus management, mouse support, and smooth cursor blinking — all rendered through raw VT sequences. Runs on Windows (Console API) and POSIX (Linux/macOS via `termios`).
 
 <!-- Absolute raw URLs, not relative paths: this README is also rendered on
-     PyPI, where anything relative to the repo root 404s. -->
-![Switching themes live](https://raw.githubusercontent.com/youssefahmed2017/cozy_tui/master/media/gifs/theme_showcase.gif)
+     PyPI, where anything relative to the repo root 404s. GIFs are cropped to
+     content (see media/gifs), so display sizes are close to native. -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/youssefahmed2017/cozy_tui/master/media/gifs/theme_showcase.gif" alt="Switching themes live" width="720">
+</p>
 
-<sub>Over 30 built-in themes, switchable at runtime — `set_theme(...)` re-colors a running app, and **Ctrl+T** opens a searchable picker.</sub>
+<p align="center"><sub>Over 30 built-in themes, switchable at runtime — <code>set_theme(...)</code> re-colors a running app, and <b>Ctrl+T</b> opens a searchable picker.</sub></p>
 
 ---
 
@@ -23,26 +26,32 @@ Changes are tracked in [CHANGELOG.md](https://github.com/youssefahmed2017/cozy_t
 
 Every one of these is a runnable example in [`examples/`](https://github.com/youssefahmed2017/cozy_tui/tree/master/examples) — and each doubles as a stress test for a different part of the library.
 
+<!-- Matched by height, not width: after cropping these have very different
+     aspect ratios (2048 wide, calculator tall, snake square), so a fixed-width
+     grid would look ragged. Equal height=300 aligns the row and lets each
+     width follow its own aspect. -->
 <table>
 <tr>
-<td width="33%" valign="top">
-<img src="https://raw.githubusercontent.com/youssefahmed2017/cozy_tui/master/media/gifs/snake.gif" alt="Snake">
-<br><sub><b>Snake</b> — a custom widget painting the field cell-by-cell, driven by <code>app.tick_interval</code> so the game logic is decoupled from the render rate.</sub>
+<td valign="top" align="center">
+<img src="https://raw.githubusercontent.com/youssefahmed2017/cozy_tui/master/media/gifs/game2048.gif" alt="2048" height="300">
 </td>
-<td width="33%" valign="top">
-<img src="https://raw.githubusercontent.com/youssefahmed2017/cozy_tui/master/media/gifs/game2048.gif" alt="2048">
-<br><sub><b>2048</b> — truecolor tiles that auto-downgrade on 16/256-color terminals, arrow keys or a mouse <b>drag</b> to swipe, and a modal overlay for win/lose.</sub>
+<td valign="top" align="center">
+<img src="https://raw.githubusercontent.com/youssefahmed2017/cozy_tui/master/media/gifs/snake.gif" alt="Snake" height="300">
 </td>
-<td width="33%" valign="top">
-<img src="https://raw.githubusercontent.com/youssefahmed2017/cozy_tui/master/media/gifs/calculator.gif" alt="Calculator">
-<br><sub><b>Calculator</b> — a <code>VBox</code>/<code>HBox</code> keypad of multi-row buttons, fully driveable from the keyboard.</sub>
+<td valign="top" align="center">
+<img src="https://raw.githubusercontent.com/youssefahmed2017/cozy_tui/master/media/gifs/calculator.gif" alt="Calculator" height="300">
 </td>
+</tr>
+<tr>
+<td valign="top"><sub><b>2048</b> — truecolor tiles that auto-downgrade on 16/256-color terminals, arrow keys or a mouse <b>drag</b> to swipe, and a modal overlay for win/lose.</sub></td>
+<td valign="top"><sub><b>Snake</b> — a custom widget painting the field cell-by-cell, driven by <code>app.tick_interval</code> so game logic is decoupled from the render rate.</sub></td>
+<td valign="top"><sub><b>Calculator</b> — a <code>VBox</code>/<code>HBox</code> keypad of multi-row buttons, driveable entirely from the keyboard.</sub></td>
 </tr>
 </table>
 
-<!-- Kept out of the grid above: this one was captured at 442x242, so an
-     equal-width cell would upscale it into a blurry mess. -->
-<img src="https://raw.githubusercontent.com/youssefahmed2017/cozy_tui/master/media/gifs/command_palette.gif" alt="Command palette" width="442">
+<p>
+  <img src="https://raw.githubusercontent.com/youssefahmed2017/cozy_tui/master/media/gifs/command_palette.gif" alt="Command palette" width="480">
+</p>
 
 <sub><b>Command palette</b> — <b>Ctrl+P</b> fuzzy-searches every registered command. Quit, Change Theme, and Keys are built in; add your own with <code>app.register_command(...)</code>.</sub>
 
