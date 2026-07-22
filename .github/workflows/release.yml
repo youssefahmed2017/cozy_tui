@@ -1,0 +1,212 @@
+name: Release
+
+# Publishing is driven entirely by tags: `git tag v0.6.0 && git push --tags`.
+# Nothing here runs on an ordinary push, so day-to-day work can't publish by
+# accident — and conversely, a release can't be forgotten, which is how PyPI
+# ended up two versions behind master.
+#
+# `workflow_dispatch` is the rehearsal: it runs every check and builds the
+# artifacts, but never publishes. Use it before tagging if you want to be sure.
+#
+# ── one-time setup (required before the first tag) ──────────────────────────
+# Add a Trusted Publisher at
+#   https://pypi.org/manage/project/cozy-tui/settings/publishing/
+# with: owner `youssefahmed2017`, repository `cozy_tui`,
+#       workflow `release.yml`, environment `pypi`.
+# Then create a repo environment named `pypi` (Settings → Environments); it can
+# be empty. No API token is stored anywhere — PyPI verifies this workflow's
+# OIDC identity instead, so there's nothing to leak or rotate.
+#
+# ── releasing ───────────────────────────────────────────────────────────────
+#   1. bump `version` in pyproject.toml
+#   2. move CHANGELOG.md's `[Unreleased]` to `[X.Y.Z] - <date>`
+#   3. commit, push
+#   4. git tag vX.Y.Z && git push origin vX.Y.Z
+# Steps 1 and 2 are both enforced by the `verify` job, so a half-done release
+# fails before anything is uploaded.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ── 1. the tag and pyproject.toml must agree ────────────────────────────────
+  # This is the guard for the specific mistake that's easiest to make: bumping
+  # one and not the other. Failing here costs a re-tag; getting it wrong on
+  # PyPI costs a version number, because uploads are immutable.
+  verify:
+    name: verify version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - id: check
+        name: Tag matches the version in pyproject.toml
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          IS_TAG: ${{ github.ref_type == 'tag' }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, pathlib, sys, tomllib
+
+          version = tomllib.loads(
+              pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
+          )["project"]["version"]
+
+          if os.environ["IS_TAG"] == "true":
+              tag = os.environ["REF_NAME"].removeprefix("v")
+              if tag != version:
+                  sys.exit(
+                      f"::error::tag v{tag} does not match pyproject.toml version "
+                      f"{version}. Bump one to match the other and re-tag."
+                  )
+          print(f"version={version}")
+          PY
+
+      - name: Changelog has an entry for this version
+        # A release with no changelog section is a release nobody can read.
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+
+          version = "${{ steps.check.outputs.version }}"
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          if not re.search(rf"^## \[{re.escape(version)}\]", text, re.M):
+              sys.exit(f"::error::CHANGELOG.md has no '## [{version}]' section.")
+          print(f"changelog entry for {version} found")
+          PY
+
+  # ── 2. never publish something that doesn't pass ────────────────────────────
+  # ci.yml triggers on branch pushes, so a tag push alone would run nothing.
+  # The matrix is trimmed to the ends of the supported range — the full 3x3
+  # already ran on master; this is the "does the tagged commit work" check.
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install and test
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+          python -m pytest -q
+
+  # ── 3. build once, publish that exact artifact ──────────────────────────────
+  build:
+    name: build sdist + wheel
+    needs: [verify, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+
+      - name: Check metadata renders on PyPI
+        # twine check catches a README that PyPI would refuse to render — which
+        # you'd otherwise only discover after an immutable upload.
+        run: twine check --strict dist/*
+
+      - name: The built wheel installs and imports at the right version
+        run: |
+          python -m venv /tmp/probe
+          /tmp/probe/bin/python -m pip install --quiet dist/*.whl
+          /tmp/probe/bin/python -c "
+          import cozy_tui
+          assert cozy_tui.__version__ == '${{ needs.verify.outputs.version }}', cozy_tui.__version__
+          from cozy_tui.widgets import Log, Code
+          print('wheel ok:', cozy_tui.__version__)
+          "
+          /tmp/probe/bin/cozy-tui --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # ── 4. publish ──────────────────────────────────────────────────────────────
+  # Trusted Publishing (OIDC): PyPI verifies the workflow identity directly, so
+  # there is no long-lived API token in repository secrets to leak or rotate.
+  # See the one-time setup note at the top of this file.
+  publish:
+    name: publish to PyPI
+    needs: [verify, build]
+    if: github.event_name == 'push'  # tags only — a manual run is a rehearsal
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/cozy-tui/${{ needs.verify.outputs.version }}
+    permissions:
+      id-token: write # required for Trusted Publishing; nothing else needs it
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ── 5. a GitHub Release carrying the changelog section ──────────────────────
+  github-release:
+    name: GitHub release
+    needs: [verify, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to create the release
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Extract this version's changelog section
+        run: |
+          python - <<'PY'
+          import pathlib, re
+
+          version = "${{ needs.verify.outputs.version }}"
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          # Everything between this version's heading and the next '## ' one.
+          body = re.search(
+              rf"^## \[{re.escape(version)}\].*?$(.*?)(?=^## |\Z)", text, re.M | re.S
+          ).group(1).strip()
+          pathlib.Path("RELEASE_NOTES.md").write_text(
+              f"{body}\n\n---\n\nInstall: `pip install cozy-tui=={version}`\n",
+              encoding="utf-8",
+          )
+          print(f"{len(body)} chars of notes")
+          PY
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: dist/*
