@@ -8,3 +8,9 @@ dist/
 build/
 .claude/
 _internal/
+
+# Per-user data the demo apps write as you use them (accounts, tasks, records).
+# They're recreated on first run, and committing them means committing whatever
+# you happened to type into the example.
+examples/todo_app/todo_data.json
+examples/timer_app/timer_data.json
