@@ -27,11 +27,12 @@ still inherently special regardless of this restructuring (see
 Console/Performance are read-only either way.
 """
 
+from cozy_tui._devtools_edit import EditError, apply_snippet, build_snippet
 from cozy_tui._dock import dock_layout
 from cozy_tui.style import Style
 from cozy_tui.theme import get_theme
 from cozy_tui.widget import Widget
-from cozy_tui.widgets import Box, Label, ScrollView, Tabs, Tree
+from cozy_tui.widgets import Box, Button, CodeInput, Label, ScrollView, Tabs, Tree
 
 # Fixed refresh cadence requested while open, via App.request_frame -- the
 # same mechanism AnimatedLabel already uses to keep the loop ticking during
@@ -69,19 +70,78 @@ class _LiveLog(ScrollView):
 
 
 class _ElementsView(Widget):
-    """The Elements tab: a live property panel for `app._selected_widget`.
+    """The Elements tab: a live property panel for `app._selected_widget`,
+    plus a **live editor** for it (see `_devtools_edit.py`).
     Rebuilds its rows only when `app._selection_seq` has moved since it last
     drew -- same seq-gated pattern `_LiveLog` uses -- so moving the mouse
     over widgets that resolve to the *same* selection costs nothing extra
     per frame. No border of its own (the Tabs panel already frames it), so
     it's a bare `Widget` managing a plain list of `Label` children rather
-    than a `Box`."""
+    than a `Box`.
+
+    The editor's three widgets (Input + two Buttons) are built **once**, in
+    `__init__`, and only repositioned/refilled by `_rebuild()` -- unlike the
+    property Labels, which are thrown away and recreated. Rebuilding them
+    too would hand `App.focused` a discarded orphan the moment a rebuild
+    happened while the editor was focused (a click on a different widget
+    does exactly that), leaving keystrokes going to an Input that is no
+    longer drawn.
+    """
 
     def __init__(self, app):
-        super().__init__(0, 0, name="Elements")
+        super().__init__(0, 0)
         self._app = app
         self.children: list = []
         self._synced_seq = -1
+        # Same approximation _LiveLog uses for its own width: the real
+        # Splitter-assigned width isn't known until the first dock_resize(),
+        # and a cell or two of slack is cosmetic (the Input clips itself).
+        editor_w = max(18, int(app.cols * 0.38) - 8)
+        # A CodeInput, not a plain Input: the snippet *is* Python, so it reads
+        # as highlighted source whenever the editor isn't focused, and falls
+        # back to plain text with a cursor/selection while it is being typed
+        # in (the same trade MarkdownInput makes).  background=False so it
+        # doesn't paint a theme-colored slab inside the panel's own chrome.
+        self.editor = CodeInput(
+            0, 0, editor_w, lang="python", background=False, style=app.style
+        )
+        self._apply_button = Button(0, 0, "Apply", width=9).on_click(self._apply)
+        self._revert_button = Button(0, 0, "Revert", width=10).on_click(self._revert)
+        self._message = Label(0, 0, "")
+
+    # ── live editing ─────────────────────────────────────────────────────────
+
+    def _set_message(self, text, color):
+        self._message.text = text
+        self._message.style = Style(fg=color)
+
+    def _apply(self, _button=None):
+        widget = self._app._selected_widget
+        if widget is None:
+            return
+        try:
+            changed = apply_snippet(widget, self.editor.value)
+        except EditError as exc:
+            # Reported in the panel, never raised: this runs from a Button
+            # callback inside the render loop, where an exception would take
+            # down the whole app over a typo (cf. App._quick_screenshot,
+            # which toasts its failures for the same reason).
+            self._set_message(f"x {exc}", "bright_red")
+            return
+        # Re-read the widget rather than bumping _selection_seq and waiting
+        # for draw(): this refreshes the read-only rows *and* normalizes the
+        # snippet (so `x=2.0` echoes back as the int the widget now holds),
+        # and doing it inline keeps the message below from being clobbered
+        # by a rebuild on the next frame.
+        self._rebuild()
+        if changed:
+            self._set_message(f"ok applied {', '.join(changed)}", "bright_green")
+        else:
+            self._set_message("no changes", "bright_black")
+
+    def _revert(self, _button=None):
+        self._rebuild()
+        self._set_message("reverted", "bright_black")
 
     def _rebuild(self):
         self._synced_seq = self._app._selection_seq
@@ -130,6 +190,28 @@ class _ElementsView(Widget):
                 rows.append(Label(0, y, "[frozen -- Esc to resume]"))
         for row in rows:
             self.add(row)
+        if widget is not None:
+            self._place_editor(y + 2)
+
+    def _place_editor(self, y):
+        """Lay the (persistent) editor widgets out below the property rows and
+        refill the Input from the widget's current state."""
+        muted = Style(fg="bright_black")
+        self.add(Label(0, y, "Live edit", Style(styles=["bold"])))
+        self.add(Label(0, y + 1, "edit a value, then Apply", muted))
+        y += 3
+        self.editor.value = build_snippet(self._app._selected_widget)
+        self.editor.cursor_pos = min(self.editor.cursor_pos, len(self.editor.value))
+        self.editor.y = y
+        self.add(self.editor)
+        y += self.editor.natural_height(self._app.SCALE) + 1
+        self._apply_button.y = y
+        self._revert_button.x = 11
+        self._revert_button.y = y
+        self.add(self._apply_button)
+        self.add(self._revert_button)
+        self._message.y = y + 2
+        self.add(self._message)
 
     def add(self, widget):
         widget.parent = self
@@ -138,6 +220,12 @@ class _ElementsView(Widget):
     def draw(self, canvas):
         if self._synced_seq != self._app._selection_seq:
             self._rebuild()
+            self._message.text = ""
+        if canvas.focused is self.editor and not self._app._selection_frozen:
+            # Typing into the editor freezes the selection: without this, a
+            # stray mouse movement over the app would retarget Elements and
+            # rebuild the snippet out from under the edit in progress.
+            self._app._selection_frozen = True
         for child in self.children:
             child.draw(canvas)
 
@@ -148,7 +236,7 @@ class _PerformanceView(Widget):
     open, so there's no seq to gate on)."""
 
     def __init__(self, app):
-        super().__init__(0, 0, name="Performance")
+        super().__init__(0, 0)
         self._app = app
         self.children: list = []
 
@@ -190,7 +278,7 @@ class _CoordinatesView(Widget):
     is no selection state to track -- this view is purely a live readout."""
 
     def __init__(self, app):
-        super().__init__(0, 0, name="Coordinates")
+        super().__init__(0, 0)
         self._app = app
         self.children: list = []
 
@@ -205,8 +293,8 @@ class _CoordinatesView(Widget):
         lines = [
             "Live position",
             "",
-            f"x : {mx}",
-            f"y : {my}",
+            f"x: {mx}",
+            f"y: {my}",
             "",
             "Click anywhere in the app to copy",
             "these coordinates to your clipboard.",
@@ -274,7 +362,7 @@ class _AppContentPane(Widget):
     """
 
     def __init__(self, children: list):
-        super().__init__(0, 0, name="AppContent")
+        super().__init__(0, 0)
         self.children = children
         self._w = self._h = 0
 
@@ -341,7 +429,13 @@ class DevToolsPanel(Box):
         self.tabs = Tabs(0, 0, "10x10", style=app.style)
 
         elements_panel = self.tabs.add_tab("Elements")
-        elements_panel.add(_ElementsView(app))
+        self.elements = _ElementsView(app)
+        elements_panel.add(self.elements)
+        # Published on the App so _dispatch_input can tell "Esc while typing
+        # in the live editor" from "Esc to unfreeze the selection" -- the
+        # editor must not have its own text yanked away mid-edit by a key
+        # that never reaches it.
+        app._devtools_editor = self.elements.editor
 
         console_panel = self.tabs.add_tab("Console")
         # _LiveLog (a ScrollView) lives *inside* a Tabs panel, not directly

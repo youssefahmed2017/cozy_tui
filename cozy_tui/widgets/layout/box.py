@@ -23,9 +23,9 @@ class Box(Widget):
         title="",
         focusable=False,
     ):
-        super().__init__(x, y, style, name="Box")
-        self.text = text
-        self.title = title
+        super().__init__(x, y, style)
+        self.bind("text", text)  # text/title may each be a State
+        self.bind("title", title)
         # Non-focusable by default: Tab still dives into any focusable children,
         # but an empty/decorative box only becomes a Tab stop when focusable=True.
         self.focusable = focusable
@@ -45,9 +45,14 @@ class Box(Widget):
         self.border = self.BORDERS[border]
         self.children = []
         self._bounds = (0, 0, 0, 0)  # last drawn (x, y, w, h) in cells, for hit-testing
-        self._focused_border_style_cache = Style(
-            fg="bright_white", bg=self.style.raw_bg, styles=["bold"]
-        )
+
+    def _focused_border_style(self) -> Style:
+        """The bold-white border drawn while this box is focused. Built per
+        draw rather than cached at construction: `self.style`'s background is
+        re-colored in place when the active theme changes (see
+        `App._sync_theme_style`), and a cached copy would keep the old one.
+        `ansi.style_esc` memoizes the escape anyway, so this costs nothing."""
+        return Style(fg="bright_white", bg=self.style.raw_bg, styles=["bold"])
 
     def _fill_docked(self) -> bool:
         # True only for side="fill" -- that's the one dock side whose
@@ -191,10 +196,11 @@ class Box(Widget):
 
         # Draw children over interior
         for child in self.children:
-            child.draw(canvas)
+            if child.visible:
+                child.draw(canvas)
 
         # Draw borders last; highlight when a descendant has focus
-        bs = self._focused_border_style_cache if focused else self.style
+        bs = self._focused_border_style() if focused else self.style
         canvas.write(self.abs_x, self.abs_y, top, bs)
         for j in range(height):
             canvas.write(self.abs_x, self.abs_y + 1 + j, v, bs)

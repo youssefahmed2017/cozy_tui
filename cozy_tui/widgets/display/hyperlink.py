@@ -18,10 +18,9 @@ class Hyperlink(Widget):
             x,
             y,
             style or Style(fg="blue", styles=["bold", "underline"]),
-            name="Hyperlink",
         )
-        self.text = text
-        self.link = link
+        self.bind("text", text)  # text may be a State
+        self.bind("link", link)
         self.laps = True
 
     def _open(self) -> None:

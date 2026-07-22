@@ -10,7 +10,7 @@ class Dropdown(Widget):
     def __init__(
         self, x, y, items=None, *, width=None, height=6, style=None, placeholder=None
     ):
-        super().__init__(x, y, style, name="Dropdown")
+        super().__init__(x, y, style)
         # The inner ListView owns item storage, scrolling, and row rendering. When
         # open it is pushed onto the App's overlay layer so it floats above every
         # other widget instead of being drawn inline (which could be overpainted).

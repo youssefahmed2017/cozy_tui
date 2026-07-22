@@ -1,7 +1,7 @@
 import pytest
 
-from cozy_tui import Theme, set_theme
-from cozy_tui.events import Key
+from cozy_tui import App, Theme, set_theme
+from cozy_tui.events import Key, MouseClick, MouseDrag, Paste
 from cozy_tui.widgets import Input
 
 
@@ -243,3 +243,123 @@ def test_error_cache_also_keys_on_touched_not_just_value():
     type_text(inp, "a")
     inp.on_key(Key.BACKSPACE)  # touched, now "" again
     assert inp.error == "Required"
+
+
+# ── on_change ────────────────────────────────────────────────────────────────
+
+
+def _watched_input(**kw):
+    seen = []
+    inp = Input(0, 0, 20, **kw)
+    inp.on_change(seen.append)
+    return inp, seen
+
+
+def test_typing_fires_on_change_per_keystroke():
+    inp, seen = _watched_input()
+    for ch in "abc":
+        inp.on_key(ch)
+    assert seen == ["a", "ab", "abc"]
+
+
+def test_backspace_fires_on_change():
+    inp, seen = _watched_input()
+    inp.on_key("a")
+    inp.on_key(Key.BACKSPACE)
+    assert seen[-1] == ""
+
+
+def test_paste_fires_on_change_and_marks_touched():
+    # A bracketed paste used to return early from on_key, skipping the shared
+    # bookkeeping tail entirely.
+    inp, seen = _watched_input()
+    inp.on_key(Paste("hello"))
+    assert seen == ["hello"]
+    assert inp._touched is True
+
+
+def test_undo_and_redo_fire_on_change():
+    inp, seen = _watched_input()
+    for ch in "ab":
+        inp.on_key(ch)
+    inp.on_key(Key.CTRL_U)
+    assert seen[-1] != "ab"
+
+
+def test_navigation_does_not_fire_on_change():
+    inp, seen = _watched_input()
+    inp.on_key("a")
+    count = len(seen)
+    for key in (Key.LEFT, Key.RIGHT, Key.HOME, Key.END):
+        inp.on_key(key)
+    assert len(seen) == count
+
+
+def test_a_keystroke_that_changes_nothing_does_not_fire():
+    # Backspace at position 0 rebuilds an equal string; comparing by value
+    # (not identity) keeps that from firing a spurious change.
+    inp, seen = _watched_input()
+    inp.on_key(Key.BACKSPACE)
+    assert seen == []
+
+
+def test_rejected_input_does_not_fire():
+    inp, seen = _watched_input(inp_type="number")
+    inp.on_key("x")  # filtered out before it reaches the value
+    assert seen == []
+
+
+def test_programmatic_assignment_does_not_fire():
+    # Deliberate: on_change reports *user* edits, matching Checkbox/Slider.
+    # It also keeps `state.subscribe(...)` -> widget -> `on_change(state.set)`
+    # from forming a feedback loop.
+    inp, seen = _watched_input()
+    inp.value = "set from code"
+    assert seen == []
+
+
+def test_on_change_can_drive_a_state():
+    from cozy_tui import State
+
+    title = State("Downloads")
+    inp = Input(0, 0, 20)
+    inp.on_change(title.set)
+    for ch in "Hi":
+        inp.on_key(ch)
+    assert title.value == "Hi"
+
+
+# ── click then type (regression) ─────────────────────────────────────────────
+
+
+def test_clicking_into_a_field_then_typing_keeps_every_character():
+    # A click used to leave a live selection anchor "for potential drag", so
+    # the moment typing moved the cursor away from it the app believed the
+    # typed text was selected -- and the next character replaced it.
+    app = App(full=False, size="600x200", catch_errors=False)
+    inp = Input(0, 2, 20)
+    app.add(inp)
+    app._dispatch_input(MouseClick(0, 2, 0))
+    for ch in "Ada":
+        app._dispatch_input(ch)
+    assert inp.value == "Ada"
+
+
+def test_a_plain_click_leaves_no_selection():
+    app = App(full=False, size="600x200", catch_errors=False)
+    inp = Input(0, 2, 20)
+    inp.value = "hello"
+    app.add(inp)
+    app._dispatch_input(MouseClick(2, 2, 0))
+    app._dispatch_input(Key.RIGHT)
+    assert inp._sel_range() is None
+
+
+def test_dragging_after_a_click_still_selects():
+    app = App(full=False, size="600x200", catch_errors=False)
+    inp = Input(0, 2, 20)
+    inp.value = "hello world"
+    app.add(inp)
+    app._dispatch_input(MouseClick(0, 2, 0))
+    app._dispatch_input(MouseDrag(5, 2, 0))
+    assert inp._sel_text() == "hello"

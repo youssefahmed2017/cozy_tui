@@ -18,6 +18,26 @@ Minimal app with a label and a quit button. Good starting point.
 python examples/basic/basic.py
 ```
 
+### `examples/deploy/deploy.py` — Deploy Console (State + Log + overlays)
+
+A release console that puts the three features together the way they actually show up together. Three `State` objects are the whole model: `service` alone drives the panel's border title, the header label, and every future log line, and nothing in the file updates a widget by hand. A **`Log`** with `markup=True` streams the deploy output, coloring the level tag inside each line while the message stays plain. **Overlays** guard the irreversible parts — deploying opens a hand-built modal `Box` (raw `open_overlay`, so you can see what the ready-made dialogs are made of), rollback uses `app.confirm()`, and rename uses `app.prompt()` and writes back into the state explicitly, since binding is one-way.
+
+Two details worth reading for: `emit()` *reads* `service.value` instead of binding to it, so renaming later doesn't rewrite history; and both markup edge cases are on screen — a registry path containing `[a-f0-9]+` renders literally, while a username that genuinely looks like a tag goes through `markup.escape()`.
+
+```bash
+python examples/deploy/deploy.py
+```
+
+### `examples/screens/screens.py` — Cozy Arcade (screens)
+
+Four screens — menu, settings, game, over — where the whole of the navigation is `app.show(...)`. It exists to show the two things screens give you that rebuilding a UI on every switch would not: **widgets keep their state** (start a round, duck into settings mid-game, come back — score, clock, typed name and focused widget are all where you left them), and **`on_show`/`on_hide` are where the rest of the state goes** (the game screen cancels its tick timer on the way out and restarts it on the way in, so wandering off pauses the round instead of letting it run out unwatched).
+
+Also worth reading for: the "over" screen is built once and *refilled* before each show rather than rebuilt, and the first screen created adopts the app so no initial `app.show()` is needed.
+
+```bash
+python examples/screens/screens.py
+```
+
 ### `examples/file_manager/file_manager.py` — cozy-files (file manager)
 
 A mouse-and-keyboard TUI file manager and the broadest showcase in the repo: a custom widget draws a header breadcrumb, a scrolling directory listing (icons, sizes, dates, hover highlight), and a status bar. **Right-click** anywhere for a context menu with icons, shortcut hints, disabled items and a `New ▸ File/Folder` submenu — Open, Copy path (to the system clipboard), Copy/Cut/Paste, Rename…, Delete. Rename/new use `app.prompt`; deletes use a confirm modal; directory loads and copy/move/delete run on background `run_worker` threads. Deletes are confirmed and a paste never overwrites (it auto-renames). Pass a start directory as an argument.
@@ -33,14 +53,6 @@ Demonstrates `Input`, `Button`, `Checkbox`, `ProgressBar`, `Dropdown`, `ListView
 
 ```bash
 python examples/timer_app/timer.py
-```
-
-### `examples/overlay/overlay.py` — Overlays / Modals
-
-A base screen with a button that opens a centered, dimmed modal dialog. Tab is confined to the dialog; Esc or a click outside dismisses it.
-
-```bash
-python examples/overlay/overlay.py
 ```
 
 ### `examples/command_palette/command_palette.py` — Command Palette

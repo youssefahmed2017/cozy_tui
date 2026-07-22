@@ -1,11 +1,12 @@
 from cozy_tui import App, Style
 from cozy_tui.events import Key, MouseClick
+from cozy_tui.testing import Harness
 from cozy_tui.widgets import Command, CommandPalette
 from cozy_tui.widgets.display.bindings import Bindings
 
 
-def make_app(**kw):
-    return App(full=False, size="800x300", style=Style(fg="white", bg="black"), **kw)
+def make_ui(**kw):
+    return Harness(App(full=False, size="800x300", style=Style(fg="white", bg="black"), **kw))
 
 
 # ── Command / CommandPalette (direct, no App) ────────────────────────────────
@@ -99,7 +100,8 @@ def test_palette_scrolls_when_matches_exceed_height():
 
 
 def test_default_commands_are_registered():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     assert list(app._commands.keys()) == [
         "Quit",
         "Change Theme",
@@ -109,14 +111,16 @@ def test_default_commands_are_registered():
 
 
 def test_toggle_devtools_command_only_registered_when_debug():
-    app = make_app(debug=True)
+    ui = make_ui(debug=True)
+    app = ui.app
     assert "Toggle DevTools" in app._commands
-    app2 = make_app(debug=False)
+    app2 = make_ui(debug=False).app
     assert "Toggle DevTools" not in app2._commands
 
 
 def test_register_command_adds_and_overrides_by_name():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     calls = []
     app.register_command(
         "My Thing", lambda: calls.append("mine"), description="does a thing"
@@ -131,7 +135,8 @@ def test_register_command_adds_and_overrides_by_name():
 
 
 def test_ctrl_p_is_bound_and_labeled():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     assert Key.CTRL_P in app._key_handlers
     assert app._key_handlers[Key.CTRL_P] == app.open_command_palette
     assert app._bindings[Key.CTRL_P] == ("Command palette", "App")
@@ -140,10 +145,11 @@ def test_ctrl_p_is_bound_and_labeled():
 
 
 def test_ctrl_p_opens_a_command_palette_and_focuses_it():
-    app = make_app()
-    app.snapshot()
-    app._dispatch_input(Key.CTRL_P)
-    app.snapshot()
+    ui = make_ui()
+    app = ui.app
+    ui.screen
+    ui.press(Key.CTRL_P)
+    ui.screen
     assert len(app._overlays) == 1
     palette = app._overlays[-1].widget
     assert isinstance(palette, CommandPalette)
@@ -151,80 +157,87 @@ def test_ctrl_p_opens_a_command_palette_and_focuses_it():
 
 
 def test_esc_cancels_without_running_anything():
-    app = make_app()
-    app.snapshot()
-    app._dispatch_input(Key.CTRL_P)
-    app.snapshot()
-    app._dispatch_input(Key.ESC)
-    app.snapshot()
+    ui = make_ui()
+    app = ui.app
+    ui.screen
+    ui.press(Key.CTRL_P)
+    ui.screen
+    ui.press(Key.ESC)
+    ui.screen
     assert app._overlays == []
     assert app._should_quit is False
 
 
 def test_picking_quit_sets_should_quit():
-    app = make_app()
-    app.snapshot()
-    app._dispatch_input(Key.CTRL_P)
-    app.snapshot()
+    ui = make_ui()
+    app = ui.app
+    ui.screen
+    ui.press(Key.CTRL_P)
+    ui.screen
     for ch in "quit":
-        app._dispatch_input(ch)
-    app.snapshot()
-    app._dispatch_input(Key.ENTER)
-    app.snapshot()
+        ui.press(ch)
+    ui.screen
+    ui.press(Key.ENTER)
+    ui.screen
     assert app._should_quit is True
     assert app._overlays == []  # the palette itself closed first
 
 
 def test_picking_keys_opens_a_bindings_legend():
-    app = make_app()
-    app.snapshot()
-    app._dispatch_input(Key.CTRL_P)
-    app.snapshot()
+    ui = make_ui()
+    app = ui.app
+    ui.screen
+    ui.press(Key.CTRL_P)
+    ui.screen
     for ch in "keys":
-        app._dispatch_input(ch)
-    app.snapshot()
-    app._dispatch_input(Key.ENTER)
-    app.snapshot()
+        ui.press(ch)
+    ui.screen
+    ui.press(Key.ENTER)
+    ui.screen
     assert len(app._overlays) == 1
     assert isinstance(app._overlays[-1].widget, Bindings)
 
-    app._dispatch_input(Key.ESC)
-    app.snapshot()
+    ui.press(Key.ESC)
+    ui.screen
     assert app._overlays == []
 
 
 def test_picking_change_theme_opens_the_theme_palette():
     from cozy_tui.widgets import ThemePalette
 
-    app = make_app()
-    app.snapshot()
-    app._dispatch_input(Key.CTRL_P)
-    app.snapshot()
+    ui = make_ui()
+
+    app = ui.app
+    ui.screen
+    ui.press(Key.CTRL_P)
+    ui.screen
     for ch in "theme":
-        app._dispatch_input(ch)
-    app.snapshot()
-    app._dispatch_input(Key.ENTER)
-    app.snapshot()
+        ui.press(ch)
+    ui.screen
+    ui.press(Key.ENTER)
+    ui.screen
     assert isinstance(app._overlays[-1].widget, ThemePalette)
 
 
 def test_click_on_a_command_row_runs_it():
-    app = make_app()
-    app.snapshot()
-    app._dispatch_input(Key.CTRL_P)
-    app.snapshot()
+    ui = make_ui()
+    app = ui.app
+    ui.screen
+    ui.press(Key.CTRL_P)
+    ui.screen
     palette = app._overlays[-1].widget
     # "Quit" is the first registered command -> first row, spanning 2 lines.
     row_y = palette.abs_y + 2
-    app._dispatch_input(MouseClick(palette.abs_x + 2, row_y, 0))
-    app.snapshot()
+    ui.click((palette.abs_x + 2, row_y))
+    ui.screen
     assert app._should_quit is True
 
 
 def test_ctrl_p_can_be_overridden_by_the_users_own_binding():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     calls = []
     app.on_key(Key.CTRL_P, lambda: calls.append("mine"), description="My thing")
-    app._dispatch_input(Key.CTRL_P)
+    ui.press(Key.CTRL_P)
     assert calls == ["mine"]
     assert app._bindings[Key.CTRL_P] == ("My thing", None)

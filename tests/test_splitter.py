@@ -2,11 +2,12 @@ import pytest
 
 from cozy_tui import App, Style
 from cozy_tui.events import Key, MouseClick, MouseDrag
+from cozy_tui.testing import Harness
 from cozy_tui.widgets import Box, Button, Label, Splitter
 
 
-def make_app(size="400x100"):
-    return App(full=False, size=size, style=Style(fg="white", bg="black"))
+def make_ui(size="400x100"):
+    return Harness(App(full=False, size=size, style=Style(fg="white", bg="black")))
 
 
 def make_panes():
@@ -35,21 +36,23 @@ def test_natural_size_and_dock_resize():
 
 
 def test_default_ratio_centers_the_bar():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     first, second = make_panes()
     sp = Splitter(0, 0, "400x100", first, second)
     app.add(sp)
-    app.snapshot()
+    ui.screen
     assert sp._span == 40
     assert sp._divider_at == 20  # ratio 0.5 of a 40-cell span
 
 
 def test_contains_matches_only_the_bar_cells():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     first, second = make_panes()
     sp = Splitter(0, 0, "400x100", first, second)
     app.add(sp)
-    app.snapshot()
+    ui.screen
     bar_col = sp.abs_x + sp._divider_at
     assert sp.contains(bar_col, sp.abs_y)
     assert sp.contains(bar_col, sp.abs_y + sp._vh - 1)
@@ -59,77 +62,82 @@ def test_contains_matches_only_the_bar_cells():
 
 
 def test_keyboard_resize_horizontal():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     first, second = make_panes()
     sp = Splitter(0, 0, "400x100", first, second, step=2)
     app.add(sp)
-    app.snapshot()
+    ui.screen
     start = sp._divider_at
     sp.on_key(Key.RIGHT)
-    app.snapshot()
+    ui.screen
     assert sp._divider_at == start + 2
     sp.on_key(Key.LEFT)
     sp.on_key(Key.LEFT)
-    app.snapshot()
+    ui.screen
     assert sp._divider_at == start - 2
 
 
 def test_keyboard_resize_vertical_uses_up_down():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     first, second = make_panes()
     sp = Splitter(0, 0, "400x100", first, second, orientation="vertical", step=1)
     app.add(sp)
-    app.snapshot()
+    ui.screen
     start = sp._divider_at
     sp.on_key(Key.DOWN)
-    app.snapshot()
+    ui.screen
     assert sp._divider_at == start + 1
     # left/right must not affect a vertical splitter
     sp.on_key(Key.RIGHT)
-    app.snapshot()
+    ui.screen
     assert sp._divider_at == start + 1
 
 
 def test_home_end_snap_to_min_size_extents():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     first, second = make_panes()
     sp = Splitter(0, 0, "400x100", first, second, min_size=5)
     app.add(sp)
-    app.snapshot()
+    ui.screen
     sp.on_key(Key.HOME)
-    app.snapshot()
+    ui.screen
     assert sp._divider_at == 5
     sp.on_key(Key.END)
-    app.snapshot()
+    ui.screen
     assert sp._divider_at == sp._span - 1 - 5
 
 
 def test_min_size_clamps_resize_and_drag():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     first, second = make_panes()
     sp = Splitter(0, 0, "400x100", first, second, min_size=5)
     app.add(sp)
-    app.snapshot()
+    ui.screen
     sp._set_from_coord(sp.abs_x)  # drag all the way to the left edge
-    app.snapshot()
+    ui.screen
     assert sp._divider_at == 5
     sp._set_from_coord(sp.abs_x + 1000)  # drag past the right edge
-    app.snapshot()
+    ui.screen
     assert sp._divider_at == sp._span - 1 - 5
 
 
 def test_mouse_click_and_drag_move_the_bar():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     first, second = make_panes()
     sp = Splitter(0, 0, "400x100", first, second)
     app.add(sp)
-    app.snapshot()
+    ui.screen
     bar_col = sp.abs_x + sp._divider_at
 
     sp.on_mouse_click(bar_col, sp.abs_y)
     assert sp._dragging is True
     sp.on_mouse_drag(bar_col + 10, sp.abs_y)
-    app.snapshot()
+    ui.screen
     assert sp._divider_at == sp._divider_at  # sanity: still an int in range
     assert 0 <= sp._divider_at < sp._span
 
@@ -142,7 +150,8 @@ def test_click_on_bar_steals_focus_even_with_focusable_panes():
     # click (matching Tab) -- Splitter overrides that specifically for a
     # click that lands on the bar itself, so the drag that follows (which
     # App always routes to self.focused) reaches the Splitter, not the button.
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     left_box = Box(0, 0, "150x100", title="Left")
     btn = Button(1, 1, "Click")
     left_box.add(btn)
@@ -151,56 +160,60 @@ def test_click_on_bar_steals_focus_even_with_focusable_panes():
     sp = Splitter(0, 0, "400x100", left_box, right_box)
     app.add(sp)
     app.focus(btn)
-    app.snapshot()
+    ui.screen
 
     bar_col = sp.abs_x + sp._divider_at
-    app._dispatch_input(MouseClick(bar_col, sp.abs_y, 0))
+    ui.click((bar_col, sp.abs_y))
     assert app.focused is sp
 
-    app._dispatch_input(MouseDrag(bar_col + 8, sp.abs_y, 0))
-    app.snapshot()
+    ui.drag((bar_col + 8, sp.abs_y))
+    ui.screen
     assert sp._divider_at == sp._divider_at  # drag reached the splitter, not the button
     assert app.focused is sp
 
 
 def test_clicking_inside_a_pane_still_focuses_its_descendant():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     left_box = Box(0, 0, "150x100", title="Left")
     btn = Button(1, 1, "Click")
     left_box.add(btn)
     right_box = Box(0, 0, "150x100", title="Right")
     sp = Splitter(0, 0, "400x100", left_box, right_box)
     app.add(sp)
-    app.snapshot()
+    ui.screen
 
-    app._dispatch_input(MouseClick(btn.abs_x, btn.abs_y, 0))
+    ui.click((btn.abs_x, btn.abs_y))
     assert app.focused is btn
 
 
 def test_bar_is_a_tab_stop_when_no_pane_has_focusable_content():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     first, second = make_panes()
     sp = Splitter(0, 0, "400x100", first, second)
     app.add(sp)
-    app.snapshot()
+    ui.screen
     assert app._focusables_in(sp) == [sp]
 
 
 def test_snapshot_renders_the_bar_character():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     first, second = make_panes()
     sp = Splitter(0, 0, "400x100", first, second)
     app.add(sp)
-    snap = app.snapshot()
+    snap = ui.screen
     assert "┃" in snap
 
 
 def test_vertical_snapshot_renders_horizontal_bar():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     first, second = make_panes()
     sp = Splitter(0, 0, "400x100", first, second, orientation="vertical")
     app.add(sp)
-    snap = app.snapshot()
+    snap = ui.screen
     assert "━" in snap
 
 
@@ -220,12 +233,13 @@ def test_panes_are_clipped_to_their_slice():
     # A pane wider than the slice Splitter assigns it (e.g. a long Label,
     # which ignores dock_resize) must not bleed past the bar into the
     # other pane.
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     first = Label(0, 0, "X" * 100)
     second = Label(0, 0, "second")
     sp = Splitter(0, 0, "400x100", first, second, ratio=0.5)
     app.add(sp)
-    snap = app.snapshot().split("\n")[0]
+    snap = ui.screen.split("\n")[0]
     bar_col = sp.abs_x + sp._divider_at
     assert snap[bar_col] == "┃"
     assert "second" in snap
@@ -240,7 +254,8 @@ def test_box_pane_built_at_placeholder_size_still_encloses_its_children():
     # fit the (correctly grown) width without wrapping stayed at height=0:
     # its bottom border drew one row below the top border, and children
     # below that row rendered outside the box entirely instead of enclosed.
-    app = make_app(size="800x200")
+    ui = make_ui(size="800x200")
+    app = ui.app
     left = Box(0, 0, "1x1", title="Left", border="rounded", style=app.style)
     left.add(Label(2, 1, "first row"))
     left.add(Label(2, 4, "fourth row"))  # nothing between rows 1 and 4 wraps
@@ -248,14 +263,14 @@ def test_box_pane_built_at_placeholder_size_still_encloses_its_children():
     right.add(Label(2, 1, "another row"))
     sp = Splitter(0, 0, "780x160", left, right)
     app.add(sp)
-    app.render()
+    ui.compose()
 
     # The bug collapsed height to 0 (just _min_height's floor): the bottom
     # border drew one row below the top border and "fourth row" (y=4) never
     # made it inside the box at all. Content rows are 1..height (row 0 is
     # the border), so height must be at least 4 to include a child at y=4.
     assert left._layout(app.SCALE)[1] >= 4
-    snap = app.snapshot()
+    snap = ui.screen
     assert "first row" in snap
     assert "fourth row" in snap
     assert "another row" in snap

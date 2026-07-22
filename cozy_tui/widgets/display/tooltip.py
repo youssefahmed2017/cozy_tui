@@ -17,9 +17,7 @@ class Tooltip(Widget):
     """
 
     def __init__(self, anchor, text: str, *, style=None):
-        super().__init__(
-            0, 0, style or Style(fg="black", bg="bright_yellow"), name="Tooltip"
-        )
+        super().__init__(0, 0, style or Style(fg="black", bg="bright_yellow"))
         self.anchor = anchor
         self.text = text
 

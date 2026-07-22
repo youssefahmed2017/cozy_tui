@@ -29,9 +29,7 @@ class ConfirmDialog(Widget):
         width: int = 40,
         style=None,
     ):
-        super().__init__(
-            0, 0, style or Style(fg="white", bg="black"), name="Confirm Dialog"
-        )
+        super().__init__(0, 0, style or Style(fg="white", bg="black"))
         self.message = message
         self.yes_label = yes_label
         self.no_label = no_label

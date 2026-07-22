@@ -1,9 +1,10 @@
 from cozy_tui import App, Style
+from cozy_tui.testing import Harness
 from cozy_tui.widgets import Box, Button
 
 
-def make_app():
-    return App(full=False, size="800x240", style=Style(fg="white", bg="black"))
+def make_ui():
+    return Harness(App(full=False, size="800x240", style=Style(fg="white", bg="black")))
 
 
 def paint(app):
@@ -16,7 +17,8 @@ def paint(app):
 
 
 def base_with_button():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     btn = Button(1, 1, "Base")
     box = Box(0, 0, "400x100")
     box.add(btn)

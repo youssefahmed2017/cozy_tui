@@ -1,17 +1,19 @@
 from cozy_tui import App, Style
 from cozy_tui.events import Key, MouseClick
+from cozy_tui.testing import Harness
 from cozy_tui.widgets import ConfirmDialog
 
 
-def make_app(size="800x200"):
-    return App(full=False, size=size, style=Style(fg="white", bg="black"))
+def make_ui(size="800x200"):
+    return Harness(App(full=False, size=size, style=Style(fg="white", bg="black")))
 
 
 # ── App.confirm() ────────────────────────────────────────────────────────────
 
 
 def test_confirm_opens_as_focused_modal():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     dlg = app.confirm("Continue?")
     assert isinstance(dlg, ConfirmDialog)
     assert app._topmost_modal() is not None
@@ -20,7 +22,8 @@ def test_confirm_opens_as_focused_modal():
 
 
 def test_default_true_highlights_yes():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     dlg = app.confirm("Continue?", default=True)
     assert dlg._yes is True
     dlg2 = app.confirm("Continue?", default=False)
@@ -28,20 +31,22 @@ def test_default_true_highlights_yes():
 
 
 def test_enter_picks_the_highlighted_default_and_closes():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     events = []
     app.confirm(
         "Continue?",
         on_yes=lambda: events.append("yes"),
         on_no=lambda: events.append("no"),
     )
-    app._dispatch_input(Key.ENTER)
+    ui.press(Key.ENTER)
     assert events == ["yes"]
     assert app._topmost_modal() is None
 
 
 def test_left_toggles_the_highlight_before_choosing():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     events = []
     app.confirm(
         "Continue?",
@@ -49,20 +54,21 @@ def test_left_toggles_the_highlight_before_choosing():
         on_yes=lambda: events.append("yes"),
         on_no=lambda: events.append("no"),
     )
-    app._dispatch_input(Key.LEFT)
-    app._dispatch_input(Key.ENTER)
+    ui.press(Key.LEFT)
+    ui.press(Key.ENTER)
     assert events == ["no"]
 
 
 def test_y_and_n_choose_directly_without_toggling_first():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     events = []
     app.confirm(
         "Continue?",
         on_yes=lambda: events.append("yes"),
         on_no=lambda: events.append("no"),
     )
-    app._dispatch_input("n")
+    ui.press("n")
     assert events == ["no"]
 
     events2 = []
@@ -72,12 +78,13 @@ def test_y_and_n_choose_directly_without_toggling_first():
         on_yes=lambda: events2.append("yes"),
         on_no=lambda: events2.append("no"),
     )
-    app._dispatch_input("y")
+    ui.press("y")
     assert events2 == ["yes"]
 
 
 def test_cancel_fires_on_no_not_on_yes():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     events = []
     app.confirm(
         "Continue?",
@@ -89,35 +96,38 @@ def test_cancel_fires_on_no_not_on_yes():
 
 
 def test_choosing_does_not_also_fire_cancel():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     events = []
     app.confirm(
         "Continue?",
         on_yes=lambda: events.append("yes"),
         on_no=lambda: events.append("no"),
     )
-    app._dispatch_input(Key.ENTER)  # default=True -> yes
+    ui.press(Key.ENTER)  # default=True -> yes
     assert events == ["yes"]  # on_no must not also fire
 
 
 def test_click_on_no_button_selects_it():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     events = []
     dlg = app.confirm(
         "Continue?",
         on_yes=lambda: events.append("yes"),
         on_no=lambda: events.append("no"),
     )
-    app.snapshot()
+    ui.screen
     _text, start, _end, _is_yes = dlg._button_spans(dlg.width)[1]
     col = dlg.abs_x + 1 + start + 1
     row = dlg.abs_y + 2
-    app._dispatch_input(MouseClick(col, row, 0))
+    ui.click((col, row))
     assert events == ["no"]
 
 
 def test_click_on_yes_button_selects_it():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     events = []
     dlg = app.confirm(
         "Continue?",
@@ -125,16 +135,17 @@ def test_click_on_yes_button_selects_it():
         on_yes=lambda: events.append("yes"),
         on_no=lambda: events.append("no"),
     )
-    app.snapshot()
+    ui.screen
     _text, start, _end, _is_yes = dlg._button_spans(dlg.width)[0]
     col = dlg.abs_x + 1 + start + 1
     row = dlg.abs_y + 2
-    app._dispatch_input(MouseClick(col, row, 0))
+    ui.click((col, row))
     assert events == ["yes"]
 
 
 def test_custom_labels():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     dlg = app.confirm("Delete?", yes_label="Delete", no_label="Keep")
     assert dlg.yes_label == "Delete" and dlg.no_label == "Keep"
     texts = [t for t, *_ in dlg._button_spans(dlg.width)]
@@ -142,7 +153,8 @@ def test_custom_labels():
 
 
 def test_returns_the_dialog_widget_for_inspection():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     dlg = app.confirm("Continue?")
     assert dlg in [e.widget for e in app._overlays]
 

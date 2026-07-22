@@ -142,7 +142,7 @@ class DropFilesArea(Widget):
         style=None,
         accent="bright_cyan",
     ):
-        super().__init__(x, y, style, name="Drop Files Area")
+        super().__init__(x, y, style)
         self.storage_location = Path(storage_location)
         self.width, self.height = map(int, size.split("x"))
         self.move = move

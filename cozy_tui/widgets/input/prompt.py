@@ -13,9 +13,7 @@ class PromptDialog(Widget):
     focusable = True
 
     def __init__(self, title, initial="", *, on_submit=None, width=40, style=None):
-        super().__init__(
-            0, 0, style or Style(fg="white", bg="black"), name="Prompt Dialog"
-        )
+        super().__init__(0, 0, style or Style(fg="white", bg="black"))
         self.title = title
         self.text = initial
         self.on_submit = on_submit

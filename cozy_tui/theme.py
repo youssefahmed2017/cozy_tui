@@ -1,4 +1,5 @@
 from cozy_tui._presets import CATEGORIES, PRESETS
+from cozy_tui.state import State
 from cozy_tui.style import Style
 
 # mode name -> preset role values. "style" is the base App canvas
@@ -30,10 +31,17 @@ class Theme:
 
     A theme does nothing on its own until it's made active: call
     ``theme.activate()`` (or the equivalent module function,
-    ``set_theme(theme)``). A freshly constructed ``App()`` with no explicit
-    ``style=`` picks up the active theme's ``style``; already-built widgets
-    are unaffected by a later theme switch (colors are resolved once, at
-    construction/draw time, like the rest of this library's styling).
+    ``set_theme(theme)``).
+
+    **Switching is live.** An ``App()`` built with no explicit ``style=``
+    re-colors its canvas on a later switch and forces a full repaint, and
+    anything reading the theme at draw time -- ``selection_style()`` (every
+    list/table/tree highlight), the modal scrim, `Toast` colors, `Bindings`,
+    the dialogs' accent -- follows with it. What does *not* change is a color
+    the app author chose explicitly: an ``App(style=Style(...))`` or a
+    ``Widget(style=Style(...))`` keeps exactly what it was given, since a theme
+    switch has no business discarding a deliberate choice. Register your own
+    reaction with :func:`on_theme_change`.
     """
 
     MODES = tuple(PRESETS)
@@ -92,18 +100,38 @@ class Theme:
         return f"Theme(mode={self.mode!r})"
 
 
-_active_theme = Theme()
+#: The process-wide active theme, as an observable :class:`~cozy_tui.state.State`
+#: so anything holding resolved colors can re-derive them on a switch (see
+#: :func:`on_theme_change`). Read it through `get_theme()`/`set_theme()` rather
+#: than touching it directly.
+_active_theme = State(Theme())
 
 
 def get_theme() -> Theme:
     """Return the process-wide active theme (``Theme()``, i.e. mode="default",
     until something calls :func:`set_theme`)."""
-    return _active_theme
+    return _active_theme.value
 
 
 def set_theme(theme: Theme) -> None:
-    """Make ``theme`` the process-wide active theme. Affects only what's drawn
-    *after* this call -- already-constructed widgets and apps keep whatever
-    colors they already resolved."""
-    global _active_theme
-    _active_theme = theme
+    """Make ``theme`` the process-wide active theme, and notify everything
+    registered via :func:`on_theme_change` -- which is how a running `App`
+    re-colors its canvas mid-session instead of keeping the old theme's
+    background until it restarts."""
+    _active_theme.set(theme)
+
+
+def on_theme_change(callback, *, owner=None):
+    """Call ``callback(theme)`` whenever the active theme changes. Returns the
+    callback, for :func:`unsubscribe_theme`.
+
+    ``owner`` makes the subscription weak in that object -- `App` passes itself,
+    so a discarded app doesn't stay alive (and keep re-coloring) through this
+    module-level state for the rest of the process.
+    """
+    return _active_theme.subscribe(callback, owner=owner)
+
+
+def unsubscribe_theme(callback) -> None:
+    """Remove a callback registered with :func:`on_theme_change`."""
+    _active_theme.unsubscribe(callback)

@@ -20,15 +20,33 @@ class ProgressBar(Widget):
         maximum=100,
         style: Style | None = None,
     ):
-        super().__init__(x, y, style, name="Progress Bar")
+        super().__init__(x, y, style)
         self.min = minimum
         self.max = maximum
-        self._value = self._clamp(progress)
         self.width = width
         self.fill = fill
         self.empty = empty
+        # After min/max: the `progress` setter clamps against them. A State
+        # here keeps the bar tracking it, clamped on every change. _value is
+        # seeded to None so the setter below is the single place that ever
+        # computes it (its _fire_change is a no-op this early — no handler can
+        # have been registered on a widget still inside its constructor).
+        self._value = None
+        self.bind("progress", progress)
 
     # ── public API ────────────────────────────────────────────────────────────
+
+    @property
+    def progress(self):
+        """The current value, clamped to ``[minimum, maximum]``. Assigning is
+        the same as :meth:`set` — it exists so the constructor's ``progress=``
+        argument has a matching attribute, which is also what lets a
+        :class:`~cozy_tui.state.State` bind to it."""
+        return self._value
+
+    @progress.setter
+    def progress(self, value) -> None:
+        self.set(value)
 
     def get(self):
         return self._value

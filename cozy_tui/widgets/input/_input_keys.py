@@ -66,11 +66,32 @@ class _KeysMixin:
         self._sel_anchor = None
         self._touched = True
 
+    def _after_edit(self, previous) -> None:
+        """Bookkeeping shared by every path out of `on_key`.
+
+        Strings are immutable, so any real edit produced a new object -- this
+        is what "touched" (see Input.error) means: the value actually changed
+        at least once, not just that a key was pressed.
+
+        The change callback compares by *value*, not identity: slicing can
+        rebuild an equal string as a fresh object (deleting an empty
+        selection, say), and `on_change` firing for an edit that changed
+        nothing would loop straight back through anything bound to it.
+        """
+        if self.value is not previous:
+            self._touched = True
+        if self.value != previous:
+            self._fire_change(self.value)
+
     def on_key(self, key):
         _prev_value = self.value
 
         if isinstance(key, Paste):
             self._do_paste(key.text)
+            # Same tail as every other edit -- a bracketed paste is an edit
+            # like any other, and used to slip past this bookkeeping entirely
+            # by returning early.
+            self._after_edit(_prev_value)
             return
 
         if key == Key.LEFT:
@@ -291,11 +312,7 @@ class _KeysMixin:
             )
             self.cursor_pos += len(filtered)
 
-        # Strings are immutable, so any real edit produced a new object --
-        # this is what "touched" (see Input.error) means: the value actually
-        # changed at least once, not just that a key was pressed.
-        if self.value is not _prev_value:
-            self._touched = True
+        self._after_edit(_prev_value)
 
         # Navigation breaks type coalescing so the next edit starts a fresh undo point.
         if key in self._NAV_KEYS and self.value is _prev_value:

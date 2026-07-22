@@ -1,3 +1,4 @@
+from cozy_tui.ansi import TERMINAL_CURSOR_STYLES
 from cozy_tui.style import Style
 
 
@@ -102,7 +103,7 @@ class _DrawMixin:
                 self.cursor
                 and is_focused
                 and cursor_visible
-                and self.cursor_style not in ("vertical", "block")
+                and self.cursor_style not in TERMINAL_CURSOR_STYLES
                 and 0 <= cursor_col < w
             ):
                 char_at = visible[cursor_col] if cursor_col < len(visible) else " "
@@ -147,7 +148,7 @@ class _DrawMixin:
                 self.cursor
                 and is_focused
                 and cursor_visible
-                and self.cursor_style not in ("vertical", "block")
+                and self.cursor_style not in TERMINAL_CURSOR_STYLES
             ):
                 char_at = (
                     lines[cursor_line][cursor_col]
@@ -177,7 +178,7 @@ class _DrawMixin:
         cursor_visible = (
             is_focused
             and self.cursor
-            and self.cursor_style not in ("vertical", "block")
+            and self.cursor_style not in TERMINAL_CURSOR_STYLES
             and (canvas._cursor_on if self.flash else True)
         )
         cur_line, cur_col = self._cursor_to_line_col()

@@ -4,6 +4,7 @@ from importlib.metadata import version as _pkg_version
 from cozy_tui.ansi import get_color_depth, set_color_depth
 from cozy_tui.app import App
 from cozy_tui.events import Key
+from cozy_tui.state import State
 from cozy_tui.style import Style
 from cozy_tui.theme import Theme, get_theme, set_theme
 
@@ -18,6 +19,7 @@ except PackageNotFoundError:  # running from a source tree without an installati
 __all__ = [
     "App",
     "Key",
+    "State",
     "Style",
     "Theme",
     "get_color_depth",

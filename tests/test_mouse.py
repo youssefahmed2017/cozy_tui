@@ -3,6 +3,7 @@ from collections import deque
 import cozy_tui.events as ev
 from cozy_tui import App, Style
 from cozy_tui.events import Key, MouseClick, MouseDrag, MouseMove, MouseRelease
+from cozy_tui.testing import Harness
 from cozy_tui.widget import Widget
 
 
@@ -108,12 +109,13 @@ class Recorder(Widget):
         pass
 
 
-def make_app():
-    return App(full=False, size="300x60", style=Style(fg="white", bg="black"))
+def make_ui():
+    return Harness(App(full=False, size="300x60", style=Style(fg="white", bg="black")))
 
 
 def test_registration_callbacks_fire():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     w = Recorder(0, 0, 10, 5)
     fired = []
     w.on_click(lambda widget: fired.append("click"))
@@ -129,7 +131,8 @@ def test_registration_callbacks_fire():
 
 
 def test_double_click_detected_and_falls_back_to_click():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     w = Recorder(0, 0, 10, 5)
     seen = []
     w.on_click(lambda widget: seen.append("click"))
@@ -144,7 +147,7 @@ def test_double_click_detected_and_falls_back_to_click():
     plain = Recorder(0, 0, 10, 5)
     hits = []
     plain.on_click(lambda widget: hits.append("click"))
-    app2 = make_app()
+    app2 = make_ui().app
     app2.add(plain)
     app2._dispatch_mouse(MouseClick(1, 1, 0))
     app2._dispatch_mouse(MouseClick(1, 1, 0))
@@ -152,7 +155,8 @@ def test_double_click_detected_and_falls_back_to_click():
 
 
 def test_double_click_requires_same_button_and_target():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     w = Recorder(0, 0, 10, 5)
     seen = []
     w.on_click(lambda widget: seen.append("click"))
@@ -165,7 +169,8 @@ def test_double_click_requires_same_button_and_target():
 
 
 def test_hover_dispatched_without_changing_focus():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     w = Recorder(0, 0, 10, 5)
     moves = []
     w.on_hover(lambda widget, c, r: moves.append((c, r)))
@@ -184,7 +189,8 @@ def test_on_hover_opts_widget_into_mouse_moves():
 
 
 def test_widget_without_mouse_moves_gets_no_hover():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     w = Recorder(0, 0, 10, 5)
     moves = []
     w.on_mouse_move = lambda c=None, r=None: moves.append((c, r))
@@ -196,11 +202,11 @@ def test_widget_without_mouse_moves_gets_no_hover():
 
 
 def test_app_enables_motion_only_when_a_widget_wants_it():
-    plain = make_app()
+    plain = make_ui().app
     plain.add(Recorder(0, 0, 4, 4))  # no motion opt-in
     assert plain._wants_motion() is False
 
-    wanting = make_app()
+    wanting = make_ui().app
     w = Recorder(0, 0, 4, 4)
     w.on_enter(lambda widget: None)  # opts in
     wanting.add(w)
@@ -216,7 +222,9 @@ def test_render_upgrades_motion_for_hover_widget_added_to_container():
 
     from cozy_tui.widgets import Box, Button
 
-    app = make_app()
+    ui = make_ui()
+
+    app = ui.app
     box = Box(0, 0, "200x100")
     app.add(box)
     app._setup_sequences()
@@ -228,13 +236,16 @@ def test_render_upgrades_motion_for_hover_widget_added_to_container():
     box.add(btn)  # added to a container, not the App
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
+        # render(), not the harness: this asserts on the escape sequence
+        # actually written to the terminal, which _compose() never emits.
         app.render()
     assert app._motion_on is True
     assert "\033[?1003h" in buf.getvalue()
 
 
 def test_global_mouse_hook_can_consume():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     w = Recorder(0, 0, 10, 5)
     w.on_click(lambda widget: w.events.append("click"))
     app.add(w)
@@ -248,7 +259,8 @@ def test_global_mouse_hook_can_consume():
 
 
 def test_global_mouse_hook_sees_scrolled_coordinates():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     app.scroll_y = 5
     seen = []
     app.on_mouse(lambda event: seen.append(event.row) or True)

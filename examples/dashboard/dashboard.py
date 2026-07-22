@@ -1,11 +1,13 @@
-"""Dashboard — one app showcasing Tabs, ScrollView, ProgressBar, Spinner, and toasts.
+"""Dashboard — one app showcasing Tabs, Log, ProgressBar, Spinner, and toasts.
 
 A mock "download manager":
 
   * Tabs          — organise the app into Downloads / Activity / About panels.
   * ProgressBar   — a bar per file, advanced by an ``app.every`` timer.
   * Spinner       — shown next to "Start" while downloads are in flight.
-  * ScrollView    — the Activity log (autoscroll keeps the newest line in view).
+  * Log           — the Activity log: append strings, it owns the rows, keeps
+                    the newest line in view, and caps its own history. Its
+                    ``markup=True`` colors the timestamp inside each line.
   * app.toast(…)  — a notification as each file finishes, and when all are done.
 
     python examples/dashboard/dashboard.py
@@ -22,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from cozy_tui import App, Style
 from cozy_tui.events import Key
-from cozy_tui.widgets import Box, Button, Label, ProgressBar, ScrollView, Spinner, Tabs
+from cozy_tui.widgets import Box, Button, Label, Log, ProgressBar, Spinner, Tabs
 
 ACCENT = Style(fg="bright_cyan")
 MUTED = Style(fg="bright_black")
@@ -41,7 +43,7 @@ def main():
     app = App(full=True, style=BG, title="Cozy Dashboard")
 
     header = Box(0, 0, "10x10", title="⬇ Cozy Downloader", border="rounded", style=BG)
-    header.add(Label(1, 1, "Tabs · ScrollView · ProgressBar · Spinner · toasts", MUTED))
+    header.add(Label(1, 1, "Tabs · Log · ProgressBar · Spinner · toasts", MUTED))
     app.dock(header, "top")
 
     footer = Box(0, 0, "10x10", title="keys", border="rounded", style=BG)
@@ -67,17 +69,19 @@ def main():
 
     start_row = 2 + len(FILES)
     spinner = Spinner(12, start_row, label="downloading…")
-    state = {"running": False, "timer": None, "log_n": 0}
+    state = {"running": False, "timer": None}
 
-    # ── Activity tab: an autoscrolling log ──────────────────────────────────────
+    # ── Activity tab: a Log ─────────────────────────────────────────────────────
+    # Log owns its rows, its autoscroll, and its history cap, so the app only
+    # ever hands it a string. markup=True colors *within* a line: the timestamp
+    # stays grey while the message takes the event's own color.
     activity_panel.add(Label(1, 0, "Activity log", ACCENT))
-    log = ScrollView(1, 1, "760x130", autoscroll=True, style=Style(bg="rgb(18,20,26)"))
+    log = Log(1, 1, "760x130", markup=True, max_lines=500, style=Style(bg="rgb(18,20,26)"))
     activity_panel.add(log)
 
     def add_log(text, color="white"):
         stamp = time.strftime("%H:%M:%S")
-        log.add(Label(0, state["log_n"], f"{stamp}  {text}", Style(fg=color)))
-        state["log_n"] += 1
+        log.log(f"[bright_black]{stamp}[/]  [{color}]{text}[/]")
 
     # ── About tab ───────────────────────────────────────────────────────────────
     about_panel.add(Label(1, 0, "Cozy Dashboard", ACCENT))
@@ -87,7 +91,7 @@ def main():
             "Tabs        — the three panels above",
             "ProgressBar — one bar per file on the Downloads tab",
             "Spinner     — spins next to Start while work is in flight",
-            "ScrollView  — the Activity log (autoscroll + scrollbar)",
+            "Log         — the Activity log (autoscroll + scrollbar + markup)",
             "app.toast   — pops when each file (and the batch) completes",
         ]
     ):

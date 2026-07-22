@@ -49,7 +49,7 @@ class Spinner(Widget):
         label: str = "",
         style: Style | None = None,
     ):
-        super().__init__(x, y, style, name="Spinner")
+        super().__init__(x, y, style)
         if frames is not None:
             self.frames = tuple(frames)
             self.speed = speed if speed is not None else 0.08

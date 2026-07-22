@@ -9,15 +9,20 @@ A lightweight, cross-platform Python TUI (Terminal User Interface) library. Buil
 
 ---
 
+Changes are tracked in [CHANGELOG.md](https://github.com/youssefahmed2017/cozy_tui/blob/master/CHANGELOG.md).
+
+---
+
 ## Documentation
 
 Full documentation lives in [`docs/`](https://github.com/youssefahmed2017/cozy_tui/tree/master/docs) (GitHub) directory:
 
 - **[Core Concepts](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/concepts.md)** — the render loop, coordinate system, and widget lifecycle.
-- **[Widgets](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/widgets.md)** — every widget: `App`, `Box`, `Label`, `Hyperlink`, `Bindings`, `Text`, `Input`, `Button`, `Checkbox`, `Slider`, `MarkdownInput`, `DropFilesArea`, `ListView`, `CheckList`, `RadioSet`, `RightClickMenu`, `MenuBar`, `Dropdown`, `ProgressBar`, `Spinner`, `Toast`, `Tooltip`, `Table`, `Tabs`, `ScrollView`, `Splitter`, `Collapsible`, `Tree`, `AnimatedLabel`, `TracebackView`.
+- **[Widgets](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/widgets.md)** — every widget: `App`, `Box`, `Label`, `Hyperlink`, `Bindings`, `Code`, `CodeInput`, `Text`, `Input`, `Button`, `Checkbox`, `Slider`, `MarkdownInput`, `DropFilesArea`, `ListView`, `CheckList`, `RadioSet`, `RightClickMenu`, `MenuBar`, `Dropdown`, `ProgressBar`, `Spinner`, `Toast`, `Tooltip`, `Table`, `Tabs`, `ScrollView`, `Splitter`, `Collapsible`, `Tree`, `AnimatedLabel`, `TracebackView`.
 - **[Layouts, Dock & Overlays](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/layouts.md)** — `VBox`/`HBox`/`Grid`, `app.dock(...)`, and the overlay/modal layer (`open_overlay`, `app.prompt`, `app.confirm`, `app.pick_file`).
 - **[Styling](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/styling.md)** — `Style`, colors, text attributes, and `Theme`s.
 - **[Input & Interaction](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/interaction.md)** — key bindings, mouse support, focus, scrolling, and the Ctrl+P command palette.
+- **[Testing](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/testing.md)** — `cozy_tui.testing.Harness`: drive an app headlessly, with virtual time.
 - **[Examples](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/examples.md)** — runnable demos in [`examples/`](examples).
 
 ---
@@ -28,7 +33,9 @@ Full documentation lives in [`docs/`](https://github.com/youssefahmed2017/cozy_t
 - **Very few dependencies** — the clipboard is built in (no `pyperclip`); the only third-party dependency is `rich`, used to render `Markdown`/`MarkdownInput` and to syntax-highlight `TracebackView`/`show_traceback`. Everything else is the standard library.
 - **Built-in clipboard** — `cozy_tui.clipboard.copy`/`paste` with native backends per platform (Win32 API, `pbcopy`/`pbpaste`, `wl-clipboard`/`xclip`/`xsel`, or OSC 52 fallback).
 - **Unicode-aware rendering** — a built-in `wcwidth`-style width layer keeps CJK/emoji (double-width) and combining marks (zero-width) aligned in the cell grid.
-- **Widgets**: `Button`, `Checkbox`, `Input`, `Slider`, `Label`, `Hyperlink`, `Bindings`, `AnimatedLabel`, `Text`, `Box`, `MarkdownInput`, `DropFilesArea`, `ListView`, `CheckList`, `RadioSet`, `RightClickMenu`, `MenuBar`, `Dropdown`, `ProgressBar`, `Spinner`, `Toast`, `Tooltip`, `Table`, `Tabs`, `ScrollView`, `Splitter`, `Collapsible`, `Tree`, `TracebackView`
+- **Widgets**: `Button`, `Checkbox`, `Input`, `Slider`, `Label`, `Hyperlink`, `Bindings`, `AnimatedLabel`, `Code`, `CodeInput`, `Text`, `Box`, `MarkdownInput`, `DropFilesArea`, `ListView`, `CheckList`, `RadioSet`, `RightClickMenu`, `MenuBar`, `Dropdown`, `ProgressBar`, `Spinner`, `Toast`, `Tooltip`, `Table`, `Tabs`, `ScrollView`, `Splitter`, `Collapsible`, `Tree`, `TracebackView`
+- **Testing harness**: `cozy_tui.testing.Harness` drives your app headlessly — `ui.click(button)`, `ui.type("hello")`, `assert "Saved!" in ui` — with virtual time (`ui.advance(30)` fires a 30-second timer instantly, nothing sleeps) and no escape sequences in your test output; see [testing.md](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/testing.md)
+- **Reactive state**: `State("Downloads")` is an observable value — pass it as a widget's `text`/`title`/`progress` and the widget follows every `state.value = ...`, with one state free to drive as many widgets as you like. Explicit by design (a plain `str` is never reactive) and one-way; see [concepts.md](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/concepts.md#reactive-state-cozy_tuistate)
 - **Themes**: a `Theme` bundles the accent/muted/semantic/selection colors most widgets and `app.toast(...)` draw from; switch with `set_theme(theme)`/`theme.activate()`, or interactively via the Ctrl+T searchable picker (over 20 built-in presets in `Theme.MODES`) — see [styling.md](https://github.com/youssefahmed2017/cozy_tui/blob/master/docs/styling.md#themes)
 - **Command palette**: Ctrl+P opens a Textual-style searchable list of commands (`app.register_command(...)` to add your own) — Quit, Change Theme, and Keys (a live keybindings legend) are built in
 - **Crash screens**: unhandled exceptions in `app.run()` automatically show a full-screen, scrollable, syntax-highlighted `TracebackView` with one-key clipboard copy (`App(catch_errors=False)` to get a plain propagating exception instead); call `cozy_tui.crash_screen.show_traceback(exc)` directly to get the same screen outside of `run()`

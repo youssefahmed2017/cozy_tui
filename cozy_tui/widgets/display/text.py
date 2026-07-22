@@ -1,6 +1,7 @@
 import textwrap
 
 from cozy_tui.events import Key
+from cozy_tui.markup import render, slice_runs, split_lines, write_runs
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
 
@@ -34,15 +35,23 @@ class Text(Widget):
         size: str | None = None,
         align: str = "left",
         show_border: bool = False,
+        markup: bool = False,
         style=None,
     ):
-        super().__init__(x, y, style, name="Text")
-        self._text = text
+        super().__init__(x, y, style)
         self.width, self.height = map(int, size.split("x")) if size else (None, None)
         self.align = align
         self.show_border = show_border
+        self.markup = markup
         self._scroll_off: int = 0
         self._lines_cache: list[str] | None = None
+        self._run_lines_cache: list[list] | None = None
+        self._build_key = None
+        # Last, not first: assigning through the `text` property resets the
+        # wrap cache and scroll offset, so both must already exist. A State
+        # here re-enters that same setter on every change, which is exactly
+        # what re-wraps the new content.
+        self.bind("text", text)
 
     # ── content API ──────────────────────────────────────────────────────────
 
@@ -54,6 +63,7 @@ class Text(Widget):
     def text(self, value: str) -> None:
         self._text = value
         self._lines_cache = None
+        self._run_lines_cache = None
         self._scroll_off = 0
 
     def set(self, text: str) -> None:
@@ -61,28 +71,78 @@ class Text(Widget):
 
     # ── line wrapping ─────────────────────────────────────────────────────────
 
-    def _get_lines(self) -> list[str]:
-        if self._lines_cache is not None:
-            return self._lines_cache
+    def _wrap(self, para: str) -> list[str]:
         w = self.width or 0
+        if not para.strip():
+            return [""]
+        if not w:
+            return [para]
+        wrapped = textwrap.wrap(
+            para, width=w, replace_whitespace=False, drop_whitespace=False
+        )
+        return wrapped if wrapped else [""]
+
+    def _build(self) -> None:
+        """Wrap the content into `_lines_cache`, and — when markup is on — the
+        matching per-line run lists.
+
+        Both are built in one pass so they can never drift out of step: the
+        styled version slices its runs by the *plain* line lengths this
+        produces, which is only sound because `_wrap` (with `drop_whitespace`
+        and `replace_whitespace` off) loses no characters, so a paragraph's
+        wrapped segments concatenate back to the paragraph exactly. The one
+        deliberate exception is a blank paragraph, collapsed to "" here and to
+        an empty run list there.
+        """
+        source = self._text
+        paras = source.splitlines()
+        if self.markup:
+            runs = render(source, self.style)
+            para_runs = split_lines(runs)
+            paras = ["".join(t for t, _s in line) for line in para_runs]
+        else:
+            para_runs = None
+
         lines: list[str] = []
-        for para in self._text.splitlines():
-            if not para.strip():
-                lines.append("")
-            elif w:
-                wrapped = textwrap.wrap(
-                    para,
-                    width=w,
-                    replace_whitespace=False,
-                    drop_whitespace=False,
-                )
-                lines.extend(wrapped if wrapped else [""])
-            else:
-                lines.append(para)
+        run_lines: list[list] = []
+        for i, para in enumerate(paras):
+            segments = self._wrap(para)
+            lines.extend(segments)
+            if para_runs is None:
+                continue
+            offset = 0
+            for segment in segments:
+                run_lines.append(slice_runs(para_runs[i], offset, offset + len(segment)))
+                offset += len(segment)
+
         if not lines:
             lines = [""]
+            run_lines = [[]]
         self._lines_cache = lines
-        return lines
+        self._run_lines_cache = run_lines if para_runs is not None else None
+        self._build_key = self._key()
+
+    def _key(self):
+        # Everything _build reads besides the text (which invalidates the cache
+        # through its own setter). The style triple is in here because markup
+        # runs bake the base style in, and a theme switch re-colors `self.style`
+        # in place rather than replacing it.
+        return (
+            self.width,
+            self.markup,
+            self.style.fg,
+            self.style.bg,
+            self.style.styles,
+        )
+
+    def _get_lines(self) -> list[str]:
+        if self._lines_cache is None or self._build_key != self._key():
+            self._build()
+        return self._lines_cache
+
+    def _get_run_lines(self) -> list[list]:
+        self._get_lines()
+        return self._run_lines_cache or []
 
     # ── Widget interface ──────────────────────────────────────────────────────
 
@@ -151,6 +211,8 @@ class Text(Widget):
             tx = bx + 1
             ty = by + 1
 
+        run_lines = self._get_run_lines() if self.markup else None
+
         for row_off in range(vis):
             idx = self._scroll_off + row_off
             line = lines[idx] if idx < len(lines) else ""
@@ -166,4 +228,19 @@ class Text(Widget):
                 canvas.write(tx - 1, ty + row_off, "│", border_style)
                 canvas.write(tx + w, ty + row_off, "│", border_style)
 
+            if run_lines is None:
+                canvas.write(tx, ty + row_off, display, self.style)
+                continue
+            # Paint the padded row in the base style first (so alignment
+            # padding and the cleared tail keep the widget's own background),
+            # then overwrite just the text with its styled runs. `display`
+            # already encodes the alignment, so the indent is simply how much
+            # of it comes before the text.
             canvas.write(tx, ty + row_off, display, self.style)
+            # Where the text starts within `display` — derived from the
+            # alignment rather than by measuring `display`'s leading spaces,
+            # which would also swallow any the wrapped line legitimately owns.
+            pad = max(0, w - len(line[:w]))
+            indent = pad if self.align == "right" else pad // 2 if self.align == "center" else 0
+            runs = run_lines[idx] if idx < len(run_lines) else []
+            write_runs(canvas, tx + indent, ty + row_off, slice_runs(runs, 0, w))

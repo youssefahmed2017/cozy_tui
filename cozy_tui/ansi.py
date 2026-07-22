@@ -238,3 +238,31 @@ def style_esc(fg, bg, styles) -> str:
         _ESC_CACHE.clear()
     _ESC_CACHE[key] = esc
     return esc
+
+
+# ── cursor shape (DECSCUSR) ───────────────────────────────────────────────────
+# `CSI Ps SP q` asks the terminal for a real cursor shape, so the caret is the
+# terminal's own -- correct color, correct position, and (for the blinking
+# shapes) blinked by the terminal at its own configured rate rather than by us
+# toggling visibility on a timer. Each shape comes in a blinking/steady pair:
+# odd = blinking, even = steady.
+CURSOR_SHAPES = {
+    #  style          blinking      steady
+    "block": ("\033[1 q", "\033[2 q"),
+    "underline": ("\033[3 q", "\033[4 q"),
+    "vertical": ("\033[5 q", "\033[6 q"),
+}
+
+#: The cursor styles drawn by the terminal itself. A widget using one of these
+#: must **not** also paint a caret into the cell buffer -- there would be two.
+TERMINAL_CURSOR_STYLES = frozenset(CURSOR_SHAPES)
+
+
+def cursor_shape_esc(style: str, flash: bool = True) -> str:
+    """DECSCUSR escape for `style` ("block"/"underline"/"vertical"), blinking
+    when `flash`. Empty string for an unrecognized style, so a caller can fall
+    back to drawing its own caret."""
+    pair = CURSOR_SHAPES.get(style)
+    if pair is None:
+        return ""
+    return pair[0] if flash else pair[1]

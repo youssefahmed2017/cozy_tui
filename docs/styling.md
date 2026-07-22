@@ -56,6 +56,58 @@ Style(fg="color(200)", styles=["italic"])               # 256-palette pink, ital
 
 ---
 
+## Inline markup
+
+A whole widget shares one `Style`. When you need colors *within* a line, opt into markup:
+
+```python
+from cozy_tui.widgets import Label
+
+Label(2, 1, "[bold red]Error[/] connecting to [cyan]db-01[/]", markup=True)
+```
+
+`markup=True` is supported by **`Label`**, **`Text`**, **`AnimatedLabel`**, and **`Log`**. It is off by default everywhere, so text that already contains brackets can't change meaning when you upgrade.
+
+A tag names any combination of the attributes and colors `Style` already understands — there is no separate markup color table:
+
+```
+[red]   [bold]   [bold red]   [dim italic bright_black]
+[#ff8800]   [rgb(255,136,0)]   [color(33)]
+[on blue]   [white on red]
+```
+
+`[/]` closes the most recent tag; `[/red]` does the same and reads better when tags are nested. Tags nest and inherit the enclosing style, and an unclosed tag simply runs to the end of the string.
+
+### Unrecognized tags are left alone
+
+The parser only consumes a bracket group when *every* word inside it is a real style or color. Everything else renders as itself:
+
+```python
+Label(2, 1, "[INFO] items[0] matched [a-z]+", markup=True)
+# ...draws exactly that
+```
+
+This is what makes `markup=True` safe on a `Log`, whose lines usually come from somewhere other than the person who enabled it. When you *do* need a literal bracket that would otherwise parse, escape it:
+
+```python
+from cozy_tui.markup import escape
+
+log.log(f"user said: {escape(untrusted)}")   # or write "\\[red]" by hand
+```
+
+### Working with markup directly
+
+`cozy_tui.markup` is a small public module if you want to render tags yourself:
+
+| Function | Description |
+|----------|-------------|
+| `render(markup, base=None)` | Parse into `(text, Style)` runs, each resolved against `base` |
+| `plain(markup)` | The text with every tag stripped — what it measures and wraps as |
+| `escape(text)` | Backslash-escape `[` so `text` survives unchanged |
+| `write_runs(canvas, x, y, runs)` | Paint runs left to right; returns the width written |
+
+---
+
 ## Themes
 
 A `Theme` is a named bundle of colors the library's shared visual language draws from — the base `App` style, an `accent` color for emphasis, `success`/`warning`/`error`/`info` colors (what `app.toast(...)` picks its color from), a `muted` color for secondary text, and the `selection_fg`/`selection_bg` pair the focused-row highlight is built from. That highlight — `selection_style()` — is shared by `ListView`, `RadioSet`, `CheckList`, `Table`, `Tree`, `Dropdown`, `Checkbox`, `RightClickMenu`, `Slider`, and `MenuBar`, so switching themes re-colors every one of those widgets at once.
@@ -78,7 +130,28 @@ theme.activate()          # or: set_theme(theme)
 get_theme()                # the process-wide active theme (Theme(), i.e. "default", until something activates one)
 ```
 
-A freshly constructed `App()` with no explicit `style=` picks up the active theme's `style`. Already-built widgets are **not** retroactively affected by a later theme switch — colors are resolved at construction/draw time, like the rest of this library's styling; `selection_style()` is the exception, since it's re-read from the active theme on every draw.
+A freshly constructed `App()` with no explicit `style=` picks up the active theme's `style`.
+
+**Switching is live.** `set_theme(...)` re-colors a running app: the canvas takes the new theme's background and foreground and forces a full repaint, and everything resolved at draw time follows with it — `selection_style()` (every list/table/tree/menu highlight), the modal scrim, `Toast` colors, `Bindings`, the dialogs' accent.
+
+What *doesn't* change is a color you chose explicitly. An `App(style=Style(...))` or a `Widget(style=Style(...))` keeps exactly what it was given — a theme switch has no business discarding a deliberate choice.
+
+The app's base `Style` object is mutated in place rather than replaced, which is worth knowing: any widget you built with `style=app.style` holds that same object and therefore re-colors for free.
+
+```python
+panel = Box(0, 0, "400x200", title="Files", style=app.style)   # follows theme switches
+fixed = Box(0, 0, "400x200", title="Files", style=Style(fg="red"))  # stays red
+```
+
+To react yourself — re-deriving a color you computed once, say — subscribe:
+
+```python
+from cozy_tui.theme import on_theme_change, unsubscribe_theme
+
+on_theme_change(lambda theme: setattr(label, "style", Style(fg=theme.accent)), owner=self)
+```
+
+`owner=` makes the subscription weak, so a discarded object stops being called (and stops being kept alive) automatically. Passing `owner`'s own bound method works correctly too.
 
 ### Switching themes interactively
 
@@ -90,6 +163,6 @@ app.open_theme_palette()   # what Ctrl+T calls; trigger it yourself from a menu 
 
 For a plain one-shot-per-press cycle instead of a searchable list, `app.cycle_theme()` advances to the next built-in mode (wrapping) — it isn't bound to a key by default, so bind it yourself if you want that instead of the palette.
 
-Since widgets don't retroactively pick up a later theme switch on their own, an app that wants its own colors (not just the shared `selection_style()` highlight) to follow a switch needs to either share `style=app.style` with its containers (so mutating `app.style` cascades automatically) or poll `get_theme().mode` for changes and re-apply. See `cozy_tui/demo.py` for a worked example of both.
+Either way the running app re-colors immediately — no restart, and no manual `invalidate()`. Widgets holding their own explicit `Style(...)` keep it; pass `style=app.style` (or subscribe via `on_theme_change`) for anything you want to follow along. See `cozy_tui/demo.py` for a worked example.
 
 ---

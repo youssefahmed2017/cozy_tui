@@ -36,7 +36,7 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, _MaskMixin, Widget):
         validator=None,
         mask=None,
     ):
-        Widget.__init__(self=self, x=x, y=y, style=style, name="Input")
+        Widget.__init__(self=self, x=x, y=y, style=style)
         if inp_type not in ("text", "number"):
             raise ValueError('inp_type must be "text" or "number"')
         if mask is not None and multiline:
@@ -74,6 +74,9 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, _MaskMixin, Widget):
         self._touched = False
         self._overwrite = False
         self._sel_anchor: int | None = None
+        # Where a mouse press landed, promoted to _sel_anchor only if a drag
+        # follows (see on_mouse_click/on_mouse_drag).
+        self._drag_origin: int | None = None
         self._masked_cache_key: str | None = None  # identity-cached masked display
         self._masked_cache_val: str = ""
         # error's identity-cached the same way: it's read from _normal_style/
@@ -317,14 +320,13 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, _MaskMixin, Widget):
         return Style(fg=self.style.fg, bg=raw_bg, styles=["dim"])
 
     def _cursor_style_obj(self, char_at_cursor, content_style: Style):
-        fg = content_style.fg
-        bg = content_style.bg
-        raw_bg = bg.replace("_bg", "") if bg else None
-
-        if self.cursor_style == "block":
-            return Style(fg=raw_bg or "black", bg=fg or "white"), char_at_cursor
-        else:
-            return Style(fg=fg, bg=raw_bg, styles=["underline"]), char_at_cursor
+        """The painted-into-the-buffer caret, used only for a `cursor_style`
+        the terminal can't draw itself. Every built-in style ("block",
+        "underline", "vertical") is in `ansi.TERMINAL_CURSOR_STYLES` and so
+        never reaches here — see `App._cursor_esc`."""
+        raw_bg = content_style.bg.replace("_bg", "") if content_style.bg else None
+        style = Style(fg=content_style.fg, bg=raw_bg, styles=["underline"])
+        return style, char_at_cursor
 
     # ── mouse ────────────────────────────────────────────────────────────────
 
@@ -343,10 +345,19 @@ class Input(_HistoryMixin, _DrawMixin, _KeysMixin, _MaskMixin, Widget):
         self._clear_sel()
         if col is not None and row is not None:
             self._set_cursor_from_mouse(col, row)
-            self._sel_anchor = self.cursor_pos  # anchor for potential drag
+            # Remembered as a *pending* drag origin, not as `_sel_anchor`:
+            # a live anchor means `_sel_range()` reports a selection the
+            # moment the cursor moves away from it, and typing moves the
+            # cursor -- so a plain click followed by typing used to have the
+            # second character replace the first as if it were selected.
+            # The anchor is promoted in on_mouse_drag, when there really is
+            # a drag.
+            self._drag_origin = self.cursor_pos
         self._fire_click()
 
     def on_mouse_drag(self, col: int, row: int) -> None:
+        if self._sel_anchor is None and self._drag_origin is not None:
+            self._sel_anchor = self._drag_origin  # selection starts here
         self._set_cursor_from_mouse(col, row)
 
     def _set_cursor_from_mouse(self, col: int, row: int) -> None:

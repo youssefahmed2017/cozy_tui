@@ -32,21 +32,13 @@ class Bindings(Widget):
     _GAP = 3  # spaces between the key column and the description
 
     def __init__(self, x, y, bindings, *, title=None, border="rounded", style=None):
-        super().__init__(x, y, style, name="Bindings")
+        super().__init__(x, y, style)
         if border not in Box.BORDERS:
             raise ValueError(
                 f"border must be one of {list(Box.BORDERS)}, got {border!r}"
             )
         self.title = title
         self.border = border
-
-        from cozy_tui.theme import get_theme  # local: theme.py builds on Style
-
-        raw_bg = self.style.raw_bg
-        self._border_style = Style(fg="bright_black", bg=raw_bg)
-        self._key_style = Style(fg=get_theme().accent, bg=raw_bg, styles=["bold"])
-        self._header_style = Style(fg="bright_yellow", bg=raw_bg, styles=["bold"])
-        self._desc_style = Style(fg=self.style.fg or "white", bg=raw_bg)
 
         # Resolve the source mode.
         self._app = None
@@ -141,6 +133,29 @@ class Bindings(Widget):
         ) and self.abs_y <= row < self.abs_y + self.natural_height(1)
 
     # ── rendering ──────────────────────────────────────────────────────────────
+
+    # Resolved per draw, not cached at construction: both the active theme's
+    # accent and this widget's own background can change afterwards (see
+    # App._sync_theme_style), and a cached Style would keep the old colors.
+    # ansi.style_esc memoizes the escape, so rebuilding these is ~free.
+
+    @property
+    def _border_style(self) -> Style:
+        return Style(fg="bright_black", bg=self.style.raw_bg)
+
+    @property
+    def _key_style(self) -> Style:
+        from cozy_tui.theme import get_theme  # local: theme.py builds on Style
+
+        return Style(fg=get_theme().accent, bg=self.style.raw_bg, styles=["bold"])
+
+    @property
+    def _header_style(self) -> Style:
+        return Style(fg="bright_yellow", bg=self.style.raw_bg, styles=["bold"])
+
+    @property
+    def _desc_style(self) -> Style:
+        return Style(fg=self.style.fg or "white", bg=self.style.raw_bg)
 
     def draw(self, canvas) -> None:
         if self._mode == "canvas":

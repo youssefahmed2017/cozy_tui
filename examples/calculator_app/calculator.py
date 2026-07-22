@@ -21,11 +21,16 @@ _just_evaluated = False  # True right after = was pressed
 # ── layout ───────────────────────────────────────────────────────────────────
 # 4 buttons × 8 wide + 3 gaps × 1 = 35 wide button area
 # Box inner width = 37, total = 39 cols, box starts at x=2 → ends at col 41
+#
+# Buttons are BTN_H rows tall (see the button factory): a calculator key is a
+# *slab* you aim at, not a line of text, so the extra rows are both nicer to
+# look at and a much bigger mouse target. That sets the box height: 4 header
+# rows, then 5 key rows of (3 + 1 gap), then the wide "=" — 29 interior rows.
 
 box = Box(
     2,
     1,
-    "1110x570",
+    "390x290",
     border="rounded",
     style=Style(fg="cyan", bg="black"),
     title=" CALCULATOR ",
@@ -115,10 +120,11 @@ _CTRL_S = Style(fg="white", bg="bright_black")
 _EQ_S = Style(fg="black", bg="bright_green", styles=["bold"])
 
 BTN_W = 8  # enforced minimum by Button._width()
+BTN_H = 3  # rows per key — the label lands on the middle one
 
 
 def _btn(label: str, action, style=None) -> Button:
-    b = Button(0, 0, label, width=BTN_W, style=style or _DIGIT_S)
+    b = Button(0, 0, label, width=BTN_W, height=BTN_H, style=style or _DIGIT_S)
     if callable(action):
         b.on_click(lambda _, a=action: a())
     else:
@@ -181,35 +187,35 @@ vbox.add(
 
 box.add(vbox)
 
-btn_eq = Button(1, 15, "=", width=35, style=_EQ_S)
+btn_eq = Button(1, 25, "=", width=35, height=BTN_H, style=_EQ_S)
 btn_eq.on_click(lambda _: do_equals())
 box.add(btn_eq)
 
-app.widgets = [box]
+app.add(box)
 
 # ── keyboard ──────────────────────────────────────────────────────────────────
+# Registered through app.on_key so each binding can carry a description, which
+# is what a Bindings("auto") legend and the Ctrl+P command palette read.
 
-for _d in "0123456789.":
-    app._key_handlers[_d] = (lambda d: lambda: push(d))(_d)
+for _key, _token in {
+    **{d: d for d in "0123456789."},
+    "+": "+",
+    "-": "-",
+    "*": "×",
+    "/": "÷",
+    "!": "!",
+    "^": "**",
+    "r": "√(",
+    "(": "(",
+    ")": ")",
+}.items():
+    app.on_key(_key, (lambda t: lambda: push(t))(_token))
 
-app._key_handlers.update(
-    {
-        "+": lambda: push("+"),
-        "-": lambda: push("-"),
-        "*": lambda: push("×"),
-        "/": lambda: push("÷"),
-        "!": lambda: push("!"),
-        "^": lambda: push("**"),
-        "r": lambda: push("√("),
-        "(": lambda: push("("),
-        ")": lambda: push(")"),
-        "=": lambda: do_equals(),
-        Key.ENTER: lambda: do_equals(),
-        Key.BACKSPACE: lambda: do_back(),
-        "c": lambda: do_clear(),
-        "C": lambda: do_clear(),
-        Key.ESC: lambda: "quit",
-    }
-)
+app.on_key("=", do_equals, description="Evaluate", section="Calculator")
+app.on_key(Key.ENTER, do_equals)
+app.on_key(Key.BACKSPACE, do_back, description="Delete last", section="Calculator")
+app.on_key("c", do_clear, description="Clear", section="Calculator")
+app.on_key("C", do_clear)
+app.on_key(Key.ESC, app.quit, description="Quit", section="Calculator")
 
 app.run()

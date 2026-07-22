@@ -65,7 +65,7 @@ class Table(Widget):
         style=None,
         accent="bright_cyan",
     ):
-        super().__init__(x, y, style, name="Table")
+        super().__init__(x, y, style)
         self._columns: list[dict] = []
         self._rows: list[TableRow] = []
         self._index: int = 0

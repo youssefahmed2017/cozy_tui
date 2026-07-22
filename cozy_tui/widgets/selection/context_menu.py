@@ -91,7 +91,7 @@ class RightClickMenu(Widget):
 
     def __init__(self, items, *, style=None, mouse_moves: bool = False):
         super().__init__(
-            0, 0, style, mouse_moves=mouse_moves, name="Right Click Menu"
+            0, 0, style, mouse_moves=mouse_moves
         )  # hover-to-highlight opt-in
         self._items: list[MenuItem] = [self._coerce(it) for it in (items or [])]
         self._index: int = self._first_selectable(0, 1)

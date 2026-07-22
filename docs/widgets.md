@@ -24,9 +24,14 @@ App(full=True, size="800x600", style=Style(...), catch_errors=True,
 
 ```python
 app.add(widget)             # Add a top-level widget
+app.remove(widget)          # Remove it from anywhere in the tree, moving focus
+                            # off it — see concepts.md#removing-widgets
 app.dock(widget, side)      # Dock a widget to "left"/"right"/"top"/"bottom"/"fill"
                             # (see the Dock Layout section)
 app.focus(widget)            # Set the initially focused widget
+app.screen(name)            # Get/create a named screen — see concepts.md#screens
+app.show(name)              # Switch to it
+app.current_screen          # The showing Screen, or None
 app.on_key(key, func)       # Register a global key handler
                             # Return "quit" from func to exit the app
 app.quit()                  # Exit the app from anywhere (e.g. inside a callback)
@@ -59,6 +64,32 @@ app.debug("connected", user.id, "at", timestamp)
 
 Press **F12** for Cozy DevTools — a Chrome-style panel docked to the top-left corner with Elements (hover/click to inspect any widget, highlighted live), Console (this log, auto-scrolling as new lines arrive), Performance (FPS/timings), and Tree (the live widget hierarchy — click a node to inspect it) tabs, plus an always-visible status bar. Non-modal, so you can still interact with the rest of the app while it's open. F12 again closes it (Esc only resumes live tracking if Elements had frozen on a click).
 
+**Live editing.** The Elements tab doesn't stop at showing you a widget — under the property list it renders that widget as an editable snippet:
+
+```
+Label(
+    x=3,
+    y=2,
+    text='Hello',
+    style=Style(fg=None, bg=None, styles=[]),
+)
+```
+
+The snippet is a [`CodeInput`](#codeinput), so it reads as highlighted Python whenever it isn't focused and falls back to plain text with a cursor while you type in it. Change a value, press **Apply**, and the running UI updates on the next frame; **Revert** re-reads the widget and throws your edit away. The snippet is not the widget's source — nothing reads the file it was constructed in — it's rebuilt from the widget's current attributes, so it always describes what the widget *is now*, and applying it just assigns those attributes on the live object. After an apply it re-synthesizes, so you see the values the widget actually ended up with (a `progress=500` on a 0–100 bar echoes back as `100`).
+
+Which fields appear depends on what the widget has: `x`/`y` always, then whichever of `text`, `title`, `link`, `value`, `placeholder`, `checked`, `progress`, `width`, `height`, `align`, `gap` it carries with a plain literal value, then `style`.
+
+A few deliberate limits:
+
+- **Values are parsed, never evaluated.** Only plain literals (and `Style(...)`, matched structurally) are accepted, so the editor can't call anything — the same rule TermQuarium's Cheat Console follows. `text=__import__('os').system('...')` is a parse error, not a payload.
+- **Edits are all-or-nothing.** Every field is validated before any is assigned, so a mistake on the last line can't leave the widget half-updated.
+- **Types must match.** `x='wide'` is rejected rather than assigned and left to crash the next draw; `x=4.5` is fine.
+- **Typos are errors, not no-ops.** `txt='hi'` reports "isn't editable here" instead of quietly setting an unused attribute.
+- Errors appear in the panel, never as a crash — it runs from a Button callback inside the render loop.
+- Setting `x`/`y` on a child of a `VBox`/`HBox`/`Grid` is overwritten by the layout's next `_arrange()`, exactly as a hand-written assignment would be.
+
+While the editor has focus the selection freezes automatically (so a stray mouse movement can't retarget Elements and rebuild the snippet mid-edit), and **Esc** is left alone for the same reason — use Revert to discard an edit.
+
 **Example:**
 
 ```python
@@ -67,6 +98,32 @@ app.on_key(Key.ESC, lambda: "quit")
 app.on_key(Key.CTRL_C, lambda: "quit")
 app.run()
 ```
+
+---
+
+### Every widget
+
+Regardless of type, every widget carries these. They're plain attributes — set them in the constructor or flip them at any time while the app runs.
+
+| Attribute | Description |
+|---|---|
+| `x`, `y` | Position, relative to the parent |
+| `style` | Its `Style`. Returns a **dimmed copy** while `disabled` |
+| `visible` | `False` hides it: not drawn, not clickable, not a Tab stop, and collapsed out of a `VBox`/`HBox` |
+| `disabled` | `True` dims it and makes it inert — not focusable, not clickable, and it swallows clicks rather than passing them down |
+
+| Method | Description |
+|---|---|
+| `on_click(f)` / `on_right_click(f)` / `on_double_click(f)` | Activation callbacks; `f(widget)` |
+| `on_hover(f)` / `on_enter(f)` / `on_leave(f)` | Mouse motion; enables `mouse_moves` |
+| `on_focus(f)` / `on_blur(f)` | Focus gained/lost; `on_blur` is where field validation belongs |
+| `on_change(f)` | Value changed; `f(new_value)` |
+| `bind(attr, value)` | Assign, following a [`State`](concepts.md#reactive-state-cozy_tuistate) if given one |
+| `remove(child)` / `clear()` | Containers only — but prefer `app.remove(...)`, which also moves focus |
+
+Every `on_*` returns the widget, so they chain: `Button(0, 0, "Go").on_click(go).on_blur(check)`.
+
+See [Widget lifecycle](concepts.md#widget-lifecycle) for the details on removing, hiding, and disabling.
 
 ---
 
@@ -121,14 +178,15 @@ app.add(box)
 A non-interactive static text widget.
 
 ```python
-Label(x, y, text, style=None)
+Label(x, y, text, style=None, *, markup=False)
 ```
 
 | Parameter | Description |
 |-----------|-------------|
 | `x`, `y` | Position |
-| `text` | The text to display |
+| `text` | The text to display (may be a [`State`](concepts.md#reactive-state-cozy_tuistate)) |
 | `style` | Optional style override |
+| `markup` | Parse inline style tags — see [Inline markup](styling.md#inline-markup) |
 
 You can update the label's text at any time by setting `.text`:
 
@@ -136,6 +194,8 @@ You can update the label's text at any time by setting `.text`:
 lbl = Label(2, 5, "Status: idle")
 # later...
 lbl.text = "Status: done"
+
+err = Label(2, 6, "[bold red]Error[/] connecting", markup=True)
 ```
 
 ---
@@ -270,8 +330,10 @@ self-drives the frame loop (it calls `app.request_frame`), so you don't need to
 set `app.tick_interval`.
 
 ```python
-AnimatedLabel(x, y, text, *, animation, style=None)
+AnimatedLabel(x, y, text, *, animation, markup=False, style=None)
 ```
+
+With `markup=True` the text is parsed for [inline style tags](styling.md#inline-markup), and each character's tag becomes the base the animation composes over. **The animation keeps the foreground only if it actually sets one** — `GlowAnimation` and `RainbowAnimation` do, so a tag contributes its background and attributes there but not its color; `LevitateAnimation` passes the base through, so `"[red]RED[/]"` bobs in red.
 
 Three built-in animations (all keyword-only args):
 
@@ -333,7 +395,7 @@ Custom animations: subclass `Animation` and implement
 A read-only multi-line text display with automatic word wrapping and optional scrolling. Useful for help text, logs, or any longer content.
 
 ```python
-Text(x, y, text="", *, size=None, align="left", show_border=False, style=None)
+Text(x, y, text="", *, size=None, align="left", show_border=False, markup=False, style=None)
 ```
 
 | Parameter | Description |
@@ -343,6 +405,7 @@ Text(x, y, text="", *, size=None, align="left", show_border=False, style=None)
 | `size` | `"WIDTHxHEIGHT"` string in **character cells** (unlike `Box`/`ScrollView`, not virtual pixels) — width is the wrap column, height the visible row count, both for the inner text area. Omit to auto-size from the content. |
 | `align` | `"left"` (default), `"center"`, or `"right"` |
 | `show_border` | Draw a single-line border around the widget (`False` by default). The border turns bold-white when focused. |
+| `markup` | Parse inline style tags — see [Inline markup](styling.md#inline-markup). Styles survive wrapping and alignment. |
 
 **Updating the text:**
 
@@ -393,8 +456,8 @@ Input(x, y, width, placeholder="", style=None, cursor=True, cursor_style="vertic
 | `placeholder` | Ghost text shown when the field is empty |
 | `style` | Style when unfocused (defaults to terminal reset) |
 | `cursor` | Whether to show the cursor (`True` by default) |
-| `cursor_style` | `"vertical"` (default), `"block"`, or `"underline"` |
-| `flash` | Whether the cursor blinks (`True` by default) |
+| `cursor_style` | `"vertical"` (default), `"block"`, or `"underline"` — all three are the **terminal's own cursor**, requested via DECSCUSR (`CSI Ps SP q`), so it gets the terminal's color, shape, and blink rate rather than a caret painted into the cell grid |
+| `flash` | Whether the cursor blinks (`True` by default). This selects the blinking or steady DECSCUSR shape — the terminal does the blinking, at whatever rate the user configured, instead of the app toggling visibility on a timer |
 | `multiline` | Enables multi-line editing — Enter or Shift+Enter inserts a newline |
 | `masked` | Hide typed characters (e.g. for passwords). `False` by default. |
 | `masked_symbol` | Character used for masking. Defaults to `"*"`. |
@@ -451,7 +514,7 @@ box.add(card_input)
 A focusable button that executes a callback when activated. Activates on Enter, Space, or mouse click. Its background **fades smoothly** between idle, hovered, and focused states (RGB interpolation; the idle and focused states keep their exact colours). Hover requires opting into motion (`mouse_moves=True` or an `on_enter`/`on_leave` callback).
 
 ```python
-Button(x, y, text, style=None, width=None, *, animation=None, active_effect_duration=0.2)
+Button(x, y, text, style=None, width=None, *, height=1, animation=None, active_effect_duration=0.2)
 ```
 
 | Parameter | Description |
@@ -459,6 +522,7 @@ Button(x, y, text, style=None, width=None, *, animation=None, active_effect_dura
 | `x`, `y` | Position |
 | `text` | Label shown on the button |
 | `width` | Total width in characters. Defaults to `len(text) + 4` (minimum 8). Set larger to add breathing room. |
+| `height` | **Keyword-only.** Rows tall (default `1`). A taller button paints a solid block in its own style with the label on the middle row, and is clickable on every row — the way to make a key-style button you aim at rather than a line of text. See `examples/calculator_app/`. |
 | `style` | `fg` = text color, `bg` = button background color |
 | `animation` | **Keyword-only.** A color animation (`GlowAnimation`/`RainbowAnimation`) applied to the label text while the button is focused or hovered. |
 | `active_effect_duration` | **Keyword-only.** Seconds the press "active" effect lasts (default `0.2`; `0` disables it). |
@@ -554,6 +618,38 @@ cb = Checkbox(2, 3, "Enable notifications", checked=True)
 cb.on_change(lambda checked: print(f"Notifications: {checked}"))
 box.add(cb)
 ```
+
+---
+
+### `CodeInput`
+
+An editable code field that renders as a highlighted [`Code`](#code) block whenever it isn't focused — the same split `MarkdownInput` uses, for the same reason: full editing fidelity is worth more than color *while you are typing*, and highlighting is worth more than a bare cursor the rest of the time. All editing behaviour is inherited from `Input`.
+
+```python
+CodeInput(x, y, width, *, lang="python", theme="ansi_dark", line_numbers=False,
+          background=True, tab_size=4, multiline=True, ...)
+```
+
+All `Input` parameters are accepted; the extra ones match [`Code`](#code).
+
+| State | Display |
+|-------|---------|
+| **Focused** | Raw text with cursor, selection, and scrolling — edit normally |
+| **Unfocused** | Rich/Pygments syntax highlighting |
+
+`.code` is a read-only view onto `.value`, so `Code`'s renderer and its cache follow the text `Input` is actually editing rather than keeping a second copy that could drift — assign `.value` to change the content.
+
+**Example:**
+
+```python
+from cozy_tui.widgets import CodeInput
+
+editor = CodeInput(2, 1, 40, lang="python")
+editor.value = 'print("hi")'
+app.add(editor)
+```
+
+The **F12 DevTools live editor** is built on this — see [Debugging](#debugging-appdebugtrue).
 
 ---
 
@@ -1257,6 +1353,44 @@ app.set_tooltip(save_btn, "Write the current file to disk")
 
 ---
 
+### `Code`
+
+A syntax-highlighted block of source, rendered through Rich's `Syntax` (Pygments-backed — already a transitive dependency of `rich`, so nothing new to install) and bridged into the cell grid via `_rich_bridge`, the same borrow-don't-reimplement route `Markdown` and `TracebackView` take.
+
+```python
+Code(code, lang="text", *, x=0, y=0, width=None, line_numbers=False,
+     theme="ansi_dark", background=True, tab_size=4, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `code` | The source to display. Accepts a `State` (see [concepts.md](concepts.md#reactive-state-cozy_tuistate)) for a block that re-highlights as the value changes. |
+| `lang` | Pygments lexer name — `"python"`, `"javascript"`, `"java"`, `"rust"`, `"json"`, `"sql"`, and several hundred more. An unrecognized name renders unhighlighted rather than raising. |
+| `x`, `y` | Position, **keyword-only** — unlike every other widget, the source comes first so a code block reads as one. |
+| `width` | Explicit width in cells. Omit it and the block measures its own rendered output and sizes to fit. |
+| `line_numbers` | Show Rich's line-number gutter. |
+| `theme` | Rich syntax theme. Defaults to `"ansi_dark"`, not Rich's `"monokai"`: its colors *are* the 16 ANSI names, so they survive the bridge's nearest-color mapping exactly and follow the terminal palette like the rest of the library. |
+| `background` | `False` drops the theme's block background so the code sits on the app's own. |
+| `tab_size` | Columns a tab expands to. |
+
+**Example:**
+
+```python
+from cozy_tui.widgets import Code
+
+code = Code('print("hello world")', lang="python")
+code_js = Code('console.log("hello")', lang="javascript")
+
+app.add(code)
+app.add(Code(source, lang="rust", x=2, y=10, line_numbers=True))
+```
+
+Non-focusable and non-interactive — wrap it in a `ScrollView` for anything taller than the screen. Highlighting is cached and only re-runs when an input actually changes, so assigning `code.code`/`code.lang`/`code.line_numbers` as plain attributes is all that's needed to update it; an idle block costs nothing per frame.
+
+Note the naming difference with `Diff`, which takes `lexer=` for the same concept.
+
+---
+
 ### `Diff`
 
 Renders a colorized, line-level diff of two strings — a line-number gutter (a single running counter, not separate old/new-file counters), a `+`/`-`/blank marker, then the line itself, syntax-highlighted via Rich's `Syntax` (Pygments-backed — already a transitive dependency of `rich`, so nothing new to install). Changed rows get their whole width tinted toward red (removed) or green (added), like GitHub's diff view; the syntax colors sit on top of that tint. Uses the standard library's `difflib` for the diffing itself, so the only "new" machinery here is Rich's own highlighter, already bundled. Non-focusable and non-interactive, like `TracebackView`: it sizes itself to fit the whole diff and doesn't wrap or truncate long lines — wrap it in a `ScrollView` if the diff is taller than the screen.
@@ -1430,7 +1564,7 @@ Tabs(x, y, size, *, style=None, accent="bright_cyan", animate=True, anim_duratio
 
 **Switch animation:** switching tabs smoothly glides the accent underline from the old title to the new one (ease-out, ~30fps); the content area stays empty during the glide and the new panel is revealed only when the animation finishes. It's purely visual — `active`, focus, and hit-testing switch immediately — and self-drives the redraw (no `tick_interval` needed). `animate=False` disables it.
 
-**Building tabs:** `add_tab(title, *widgets)` adds a tab and returns its **panel** (a container) so you can add more widgets to it. Widgets passed inline are placed in the panel immediately.
+**Building tabs:** `add_tab(title, *widgets)` adds a tab and returns its **panel** (a container) so you can add more widgets to it. Widgets passed inline are placed in the panel immediately. `remove_tab(index_or_title)` removes one and returns its panel (or `None` if there was no such tab) — the selection stays on the tab you were looking at wherever possible, shifting down when an earlier tab goes away and clamping when the last one does.
 
 ```python
 from cozy_tui.widgets import Tabs, Label, ListView, Input
@@ -1486,6 +1620,41 @@ for i in range(200):
 app.add(log)
 app.focus(log)
 ```
+
+---
+
+### `Log`
+
+An append-only, auto-scrolling text log — a `ScrollView` that manages its own rows, so you append strings instead of building `Label`s.
+
+```python
+Log(x=0, y=0, size="600x200", *, markup=False, max_lines=1000,
+    autoscroll=True, scrollbar=True, smooth=True, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `size` | `"WxH"` in virtual pixels, like `ScrollView`. A docked `Log` fills its slice. |
+| `markup` | Parse each line for inline style tags — see [Inline markup](styling.md#inline-markup) |
+| `max_lines` | History cap (default `1000`); the oldest rows are dropped, which keeps a long-running app's memory flat |
+| `autoscroll`, `scrollbar`, `smooth`, `style` | Passed through to `ScrollView` |
+
+**Methods:** `log(*values, sep=" ")` (returns self, so calls chain), `clear()`. **Properties:** `lines` (the retained lines, oldest first, tags and all), `max_lines`.
+
+`log()` takes the same shape as `print()` and splits embedded newlines into separate rows, so a block of output lands as one line each. Rows are **clipped, not wrapped** — use [`Text`](#text) for prose.
+
+```python
+from cozy_tui.widgets import Log
+
+log = Log(2, 2, "600x160", markup=True)
+app.add(log)
+
+log.log("Server started")
+log.log("count:", 42)                          # "count: 42"
+log.log("[red]connection refused[/] — retrying")
+```
+
+Tags that aren't recognized are left as literal text, so a line that merely happens to contain `[` — a level prefix like `[INFO]`, a list index — still reads correctly even with `markup=True`.
 
 ---
 

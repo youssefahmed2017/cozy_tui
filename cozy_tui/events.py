@@ -70,6 +70,11 @@ class Key:
     ENTER      = "\r"
     BACKSPACE  = "\x08"
     TAB        = "\t"
+    # Space arrives as an ordinary printable character, so `Key.SPACE == " "`
+    # and `app.on_key(" ", ...)` are the same binding. It's named here because
+    # reaching for `Key.SPACE` alongside `Key.ENTER`/`Key.TAB` and finding
+    # nothing is a worse surprise than the alias is a redundancy.
+    SPACE      = " "
     UP         = "UP"
     DOWN       = "DOWN"
     LEFT       = "LEFT"
@@ -171,7 +176,7 @@ _KEY_LABELS = {
     Key.TAB: "Tab",
     Key.BACKSPACE: "Backspace",
     "\x7f": "Backspace",
-    " ": "Space",
+    Key.SPACE: "Space",
     Key.UP: "↑",
     Key.DOWN: "↓",
     Key.LEFT: "←",

@@ -24,7 +24,7 @@ class Collapsible(ListView):
     focusable = True
 
     def __init__(self, x, y, *, title: str = "", expanded: bool = True, style=None):
-        super().__init__(x, y, style=style, name="Collapsible")
+        super().__init__(x, y, style=style)
         self.title = title
         self.expanded = expanded
         self._toggle_handler = None

@@ -33,7 +33,7 @@ class Markdown(Widget):
     """
 
     def __init__(self, x, y, width, value="", *, placeholder="", style=None):
-        super().__init__(x, y, style, name="Markdown")
+        super().__init__(x, y, style)
         self.width = width
         self.value = value
         self.placeholder = placeholder

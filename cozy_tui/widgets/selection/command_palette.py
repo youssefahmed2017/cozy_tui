@@ -41,9 +41,7 @@ class CommandPalette(_SearchPaletteMixin, Widget):
     focusable = True
 
     def __init__(self, commands, *, on_select=None, width=52, height=6, style=None):
-        super().__init__(
-            0, 0, style or Style(fg="white", bg="black"), name="Command Palette"
-        )
+        super().__init__(0, 0, style or Style(fg="white", bg="black"))
         self._all: list[Command] = list(commands)
         self.on_select = on_select
         self.query = ""

@@ -10,7 +10,7 @@ from pathlib import Path
 from cozy_tui._console import enable_raw, flush_input, restore, wait_input
 from cozy_tui._dock import SIDES, dock_layout
 from cozy_tui._width import char_width
-from cozy_tui.ansi import style_esc
+from cozy_tui.ansi import TERMINAL_CURSOR_STYLES, cursor_shape_esc, style_esc
 from cozy_tui.events import (
     Key,
     MouseClick,
@@ -47,6 +47,11 @@ class _Timer:
         self.callback = callback
         self.interval = interval
         self.alive = True
+
+
+# Returned by _hit_widget when the point lands on a *disabled* widget: not a
+# target, but not "keep looking" either -- see _hit_test.
+_BLOCKED = object()
 
 
 class _Overlay:
@@ -104,6 +109,10 @@ class App:
         debug_log_path: str | None = None,
         default_logs: bool = True,
     ):
+        # True when this app's base style came from the active theme rather
+        # than from an explicit style= -- only then should a later theme switch
+        # be allowed to re-color it. An app given its own Style keeps it.
+        self._theme_styled = style is None
         if style is not None:
             self.style = style
         else:
@@ -111,10 +120,13 @@ class App:
             # not the same instance -- otherwise every App() built with no
             # explicit style= would share one mutable Style, and mutating one
             # app's .style would leak into every other such app.
-            from cozy_tui.theme import get_theme
+            from cozy_tui.theme import get_theme, on_theme_change
 
             t_style = get_theme().style
             self.style = Style(fg=t_style.fg, bg=t_style.raw_bg, styles=t_style.styles)
+            # Weak in self, so a discarded app doesn't stay alive through
+            # theme.py's module-level state for the rest of the process.
+            on_theme_change(self._sync_theme_style, owner=self)
         self.full = full
         # None (the default) defers to COZY_TUI_DEBUG=1, set by `cozy-tui run
         # --debug script.py` — so a script needs no code change to opt in from
@@ -156,6 +168,10 @@ class App:
         self._devtools_active = False
         self._devtools_panel = None
         self._devtools_tabs = None
+        # The Elements tab's live-editing Input (see _devtools_edit.py),
+        # published by DevToolsPanel so the Esc branch in _dispatch_input can
+        # leave it alone while it has focus.
+        self._devtools_editor = None
         # The _AppContentPane wrapping the app's own pre-existing top-level
         # widgets while DevTools is open (see toggle_devtools) -- add()
         # redirects into its .children instead of self.widgets whenever this
@@ -192,6 +208,10 @@ class App:
 
         self.widgets = []
         self.focused = None
+        # Screens (see App.screen/show). Empty and unused unless the app asks
+        # for one; `self.widgets` is then whichever screen's list is showing.
+        self._screens: dict = {}
+        self.current_screen = None
         self._key_handlers = {}
         # Optional global mouse hook (see on_mouse); called with the raw event
         # before per-widget dispatch and may consume it by returning True.
@@ -339,13 +359,167 @@ class App:
         # content instead, so a widget added mid-session (e.g. from a timer
         # or worker callback) lands alongside the rest of the real app
         # instead of becoming an orphaned, undocked second top-level item.
-        target = (
-            self._devtools_content_pane.children
-            if self._devtools_content_pane is not None
-            else self.widgets
-        )
-        target.append(widget)
+        self._content_list().append(widget)
         self._ensure_motion_mode()
+
+    def remove(self, widget):
+        """Remove `widget` from the app, wherever it lives. Returns it, or
+        `None` if it wasn't found.
+
+        Unlike a bare `container.children.remove(...)`, this searches the whole
+        tree and, crucially, **moves focus off anything it takes away**. A
+        removed widget that is still `self.focused` keeps receiving every
+        keystroke while being invisible and unreachable by Tab -- the failure
+        mode is a UI that silently stops responding, which is far harder to
+        diagnose than a missing widget. Focus lands on the next remaining stop
+        (or None if the app has none left), the same place Tab would have gone.
+        """
+        roots = self._content_list()
+        owner = self._owner_of(widget, roots)
+        if owner is None:
+            return None
+
+        # Resolve the replacement *before* detaching, so "the next stop" means
+        # the one after this widget in the order the user was Tabbing through.
+        successor = None
+        if self._subtree_contains(widget, self.focused):
+            stops = self._collect_focusables()
+            remaining = [
+                w for w in stops if not self._subtree_contains(widget, w)
+            ]
+            if remaining:
+                try:
+                    idx = stops.index(self.focused)
+                except ValueError:
+                    idx = 0
+                after = [w for w in stops[idx:] if w in remaining]
+                successor = after[0] if after else remaining[0]
+
+        if owner is roots:
+            roots.remove(widget)
+            widget.parent = None
+        else:
+            owner.remove(widget)
+        if self._subtree_contains(widget, self.focused):
+            self._set_focused(successor)
+        self._ensure_motion_mode()
+        self.invalidate()  # the vacated cells can't be diffed against anything
+        return widget
+
+    # ── screens ───────────────────────────────────────────────────────────────
+
+    def screen(self, name: str):
+        """Get (creating on first use) the :class:`~cozy_tui.screen.Screen`
+        called `name` — a named set of top-level widgets you build with the
+        same `add`/`dock`/`focus` calls you'd make on the App itself.
+
+        The **first** screen created adopts whatever is already in
+        `self.widgets` and starts out showing, so adding screens to an existing
+        app doesn't blank it or require reordering the setup code.
+        """
+        from cozy_tui.screen import Screen
+
+        existing = self._screens.get(name)
+        if existing is not None:
+            return existing
+        screen = Screen(self, name)
+        first = not self._screens
+        self._screens[name] = screen
+        if first:
+            screen.widgets = self._content_list()
+            screen.focused = self.focused
+            self.current_screen = screen
+        return screen
+
+    def show(self, name):
+        """Switch to a screen, by name or by `Screen`. Returns it.
+
+        The outgoing screen keeps its widgets *and* its focused widget, so
+        coming back resumes exactly where the user left off rather than
+        rebuilding. Raises `KeyError` for an unknown name — a typo'd screen
+        name that silently rendered nothing would be miserable to debug.
+        """
+        from cozy_tui.screen import Screen
+
+        screen = name if isinstance(name, Screen) else self._screens.get(name)
+        if screen is None:
+            known = ", ".join(sorted(self._screens)) or "none defined"
+            raise KeyError(f"no screen named {name!r} (have: {known})")
+        if screen is self.current_screen:
+            return screen
+
+        outgoing = self.current_screen
+        if outgoing is not None:
+            outgoing.focused = self.focused
+            if outgoing._hide_handler:
+                outgoing._hide_handler(outgoing)
+
+        self._set_focused(None)  # so the outgoing screen's widget gets its blur
+        self._install_content(screen.widgets)
+        self.current_screen = screen
+
+        target = screen.focused
+        if target is None or not self._subtree_contains_any(screen.widgets, target):
+            target = next(iter(self._collect_focusables()), None)
+        self._set_focused(target)
+
+        self._ensure_motion_mode()
+        self.invalidate()  # a whole new screen shares nothing with the old diff
+        if screen._show_handler:
+            screen._show_handler(screen)
+        return screen
+
+    def _screen_handler(self, key):
+        """The showing screen's handler for `key`, or None."""
+        screen = self.current_screen
+        return screen._key_handlers.get(key) if screen is not None else None
+
+    def _content_list(self):
+        """The list holding the app's own top-level widgets — normally
+        `self.widgets`, but the DevTools content pane while that's open (see
+        `toggle_devtools`)."""
+        if self._devtools_content_pane is not None:
+            return self._devtools_content_pane.children
+        return self.widgets
+
+    def _install_content(self, widgets: list) -> None:
+        """Make `widgets` the app's top-level list, in place, so a screen swap
+        works identically whether or not DevTools has the real list wrapped."""
+        if self._devtools_content_pane is not None:
+            self._devtools_content_pane.children = widgets
+        else:
+            self.widgets = widgets
+
+    def _subtree_contains_any(self, roots, target) -> bool:
+        return any(self._subtree_contains(root, target) for root in roots)
+
+    def _owner_of(self, widget, roots):
+        """The list or container holding `widget`, or None. `roots` itself is
+        returned when the widget is a top-level entry."""
+        if widget in roots:
+            return roots
+        stack = list(roots)
+        while stack:
+            node = stack.pop()
+            kids = getattr(node, "children", None)
+            if not kids:
+                continue
+            if widget in kids:
+                return node
+            stack.extend(kids)
+        return None
+
+    @staticmethod
+    def _subtree_contains(root, target) -> bool:
+        """True if `target` is `root` or anywhere beneath it."""
+        if target is None:
+            return False
+        node = target
+        while node is not None:
+            if node is root:
+                return True
+            node = node.parent
+        return False
 
     # ── mouse-motion tracking ─────────────────────────────────────────────────
 
@@ -778,6 +952,7 @@ class App:
         self._devtools_active = False
         self._devtools_panel = None
         self._devtools_tabs = None
+        self._devtools_editor = None
         self._devtools_content_pane = None
         self._devtools_splitter = None
         self._devtools_prev_focus = None
@@ -972,15 +1147,57 @@ class App:
         self._right_click_handler = handler
 
     def focus(self, widget):
+        """Move focus to `widget`. A hidden or disabled widget is ignored --
+        it isn't a Tab stop or a click target either, so focusing it would put
+        the app in a state the user could never have produced."""
+        if widget is not None and (not widget.visible or widget.disabled):
+            return
         self._set_focused(widget)
 
     def _set_focused(self, widget) -> None:
         """The single place `self.focused` is assigned (besides the initial
-        `None` in `__init__`), so default-logs has one hook instead of one
-        per call site."""
+        `None` in `__init__`), so default-logs and the on_focus/on_blur
+        callbacks each have one hook instead of one per call site."""
+        previous = self.focused
+        if previous is widget:
+            return
         self.focused = widget
         if self._default_logs:
-            self.debug(f"Focused on widget: {widget}")
+            self.debug(f"Focused on widget: {type(widget).__name__}")
+        # After the assignment, so a handler that inspects `app.focused` (or
+        # moves focus again) sees the new state rather than a half-applied one.
+        if previous is not None:
+            previous._fire_blur()
+        if widget is not None:
+            widget._fire_focus()
+
+    def _sync_theme_style(self, theme=None) -> None:
+        """Re-color this app's base style when the active theme changes.
+
+        The Style object is mutated **in place** rather than replaced, and that
+        is the whole trick: widgets constructed with ``style=app.style`` (the
+        DevTools panel, demo.py's Tabs, anything following the app's canvas)
+        hold a reference to this exact object, so they re-color for free
+        instead of needing a registry of every widget that ever borrowed it.
+        Mutating is safe here precisely because this Style is already this
+        app's private copy -- see __init__.
+
+        Only the base canvas is re-derived. Widgets given their own explicit
+        ``Style(...)`` keep it, which is the point: a theme switch must not
+        silently discard a color the app author chose deliberately.
+        """
+        from cozy_tui.theme import get_theme
+
+        if not self._theme_styled:
+            return
+        base = (theme or get_theme()).style
+        self.style.fg = base.fg
+        self.style.bg = base.bg  # already carries Style's internal "_bg" suffix
+        self.style.styles = base.styles
+        # Every cell's style is re-pointed at the base on the next clear(), but
+        # the diff renderer compares against what it last *emitted* -- so force
+        # a full repaint rather than letting unchanged glyphs keep old colors.
+        self.invalidate()
 
     def invalidate(self):
         """Force a full render on the next frame — call after switching screens."""
@@ -1072,7 +1289,14 @@ class App:
         """Ordered focus stops within `widget`. A focusable container defers to
         its focusable descendants — so Tab dives into the first child instead of
         stopping on the container — and is only a stop itself when it contains no
-        focusable descendant (e.g. an empty or decorative Box)."""
+        focusable descendant (e.g. an empty or decorative Box).
+
+        A hidden widget takes its whole subtree out of the Tab order (you can't
+        Tab into something that isn't on screen); a disabled one is skipped
+        itself but still lets Tab reach its children, matching how a disabled
+        container reads: the container is inert, not its contents."""
+        if not widget.visible:
+            return []
         found = []
         kids = getattr(widget, "children", None)
         if kids:
@@ -1080,7 +1304,7 @@ class App:
                 found.extend(self._focusables_in(child))
         if found:
             return found
-        return [widget] if widget.focusable else []
+        return [widget] if widget.focusable and not widget.disabled else []
 
     def _first_focusable(self, widget):
         """First focus stop within `widget`, diving through containers, or None."""
@@ -1176,7 +1400,8 @@ class App:
         self.clear()
         self._apply_docks()
         for widget in self.widgets:
-            widget.draw(self)
+            if widget.visible:
+                widget.draw(self)
         if self._devtools_active and self._selected_widget is not None:
             from cozy_tui._devtools import draw_highlight
 
@@ -1298,16 +1523,30 @@ class App:
             self._do_diff_render()
 
     def _cursor_esc(self) -> str:
-        """Return the terminal escape to position / show / hide the cursor."""
+        """Return the terminal escape to position / shape / show / hide the
+        cursor.
+
+        For any style in `ansi.TERMINAL_CURSOR_STYLES` the caret is the
+        terminal's own, requested via DECSCUSR (`ansi.cursor_shape_esc`) — and
+        when the widget wants it to flash, the *blinking* shape is requested so
+        the terminal blinks it at its own configured rate. That's why
+        `_cursor_on` isn't consulted here: toggling `?25h`/`?25l` ourselves on
+        top of a natively-blinking cursor would fight it, and would blink at
+        our rate rather than the one the user configured in their terminal.
+        A widget with some other `cursor_style` gets no terminal cursor at all
+        (it paints its own caret into the cell buffer instead), which is what
+        `_cursor_on` still drives.
+        """
         focused = self.focused
         if focused is None:
             return "\033[?25l"
         if not getattr(focused, "cursor", False):
             return "\033[?25l"
-        style = getattr(focused, "cursor_style", None)
-        if style not in ("vertical", "block"):
-            return "\033[?25l"
-        if not self._cursor_on:
+        shape = cursor_shape_esc(
+            getattr(focused, "cursor_style", None),
+            getattr(focused, "flash", True),
+        )
+        if not shape:  # not a terminal-drawn style
             return "\033[?25l"
         # A focused widget inside a modal overlay is screen-fixed (no scroll).
         scroll = 0 if self._topmost_modal() else self.scroll_y
@@ -1316,7 +1555,6 @@ class App:
             return "\033[?25l"
         sc, sr = pos
         if 0 <= sr < self.rows and 0 <= sc < self.cols:
-            shape = "\033[2 q" if style == "block" else "\033[6 q"
             return f"\033[{sr + 1};{sc + 1}H{shape}\033[?25h"
         return "\033[?25l"
 
@@ -1417,7 +1655,15 @@ class App:
         only ever returns a `focusable` widget; `_hit_any` passes `False` so
         the F3 inspector can point at *any* widget -- a plain Label or
         decorative Box is worth inspecting even though it never receives
-        input."""
+        input.
+
+        A hidden widget is invisible to the mouse, subtree and all — it isn't
+        drawn, so a click can only have been aimed at whatever is behind it. A
+        disabled one still swallows the click (it occupies the space) but never
+        becomes the target, so the press does nothing instead of falling
+        through to a widget underneath."""
+        if not widget.visible:
+            return None
         if hasattr(widget, "children"):
             # Reversed: later-added (visually topmost) children win, matching
             # both draw order and the top-level policy in _hit_test — otherwise
@@ -1425,15 +1671,24 @@ class App:
             for child in reversed(widget.children):
                 result = self._hit_widget(child, col, row, require_focusable)
                 if result:
-                    return result
+                    return result  # may be _BLOCKED; propagate it unchanged
+        if widget.disabled and require_focusable and widget.contains(col, row):
+            return _BLOCKED
         if (not require_focusable or widget.focusable) and widget.contains(col, row):
             return widget
         return None
 
     def _hit_test(self, col: int, row: int):
-        """Return the topmost focusable base widget whose box contains (col, row)."""
+        """Return the topmost focusable base widget whose box contains (col, row).
+
+        A disabled widget under the cursor stops the search and yields None
+        rather than being skipped over: it is still drawn and still occupies
+        that cell, so the click has to die there instead of activating whatever
+        happens to sit behind it."""
         for widget in reversed(self.widgets):
             result = self._hit_widget(widget, col, row)
+            if result is _BLOCKED:
+                return None
             if result:
                 return result
         return None
@@ -1521,6 +1776,17 @@ class App:
             return
         if self._default_logs and key not in (Key.SCROLL_UP, Key.SCROLL_DOWN):
             self.debug(f"Pressed on key: {key}")
+        # `visible`/`disabled` are plain attributes, so a widget can be hidden
+        # or disabled *while it holds focus* with nothing to notice. Catch it
+        # here -- the one place every key is routed -- rather than making them
+        # properties that would have to reach back into an App they don't know
+        # about. Focus is dropped, not moved: Tab then picks up from the start,
+        # and no keystroke is ever delivered to something the user can't see or
+        # interact with.
+        if self.focused is not None and (
+            not self.focused.visible or self.focused.disabled
+        ):
+            self._set_focused(None)
         modal = self._topmost_modal()
         if modal is not None:
             # A modal captures all keys: no global handlers, no scroll --
@@ -1540,23 +1806,31 @@ class App:
             elif key == Key.CTRL_C and not (
                 self.focused and getattr(self.focused, "cursor", False)
             ):
-                self.quit()
+                self._handle_ctrl_c()
             elif self.focused:
                 self.focused.on_key(key)
             return
-        if self._devtools_active and key == Key.ESC and self._selection_frozen:
+        if (
+            self._devtools_active
+            and key == Key.ESC
+            and self._selection_frozen
+            and self.focused is not self._devtools_editor
+        ):
             # Resume live hover-tracking on the Elements tab; F12 (not Esc)
             # is the only way to close DevTools entirely -- a symmetric
-            # open/close key.
+            # open/close key. Excluded while the live editor has focus:
+            # unfreezing there would let the next mouse movement retarget the
+            # selection and rebuild the snippet out from under the edit in
+            # progress (Revert discards an edit instead).
             self._selection_frozen = False
             return
         if key == Key.CTRL_C:
             # Text inputs (cursor=True) handle Ctrl+C for copy; everything
-            # else treats it as quit.
+            # else goes through _handle_ctrl_c().
             if self.focused and getattr(self.focused, "cursor", False):
                 self.focused.on_key(key)
             else:
-                self.quit()
+                self._handle_ctrl_c()
         elif key in (
             Key.SCROLL_UP,
             Key.SCROLL_DOWN,
@@ -1577,6 +1851,13 @@ class App:
             self._cycle_focus(1)
         elif key == Key.SHIFT_TAB:
             self._cycle_focus(-1)
+        elif self._screen_handler(key) is not None:
+            # A screen's own binding wins over the app-wide one for that key,
+            # so "Esc" can mean "back" on one screen and "quit" on another
+            # without a dispatcher in the middle checking current_screen.
+            result = self._screen_handler(key)()
+            if result == "quit":
+                self._should_quit = True
         elif key in self._key_handlers:
             result = self._key_handlers[key]()
             if result == "quit":
@@ -1742,6 +2023,26 @@ class App:
     def quit(self):
         self._should_quit = True
 
+    def _handle_ctrl_c(self) -> None:
+        """Ctrl+C's default is quit -- but unlike every other key, it's
+        hardcoded in _dispatch_input() rather than routed through the
+        normal app.on_key() handler chain (it fires even inside a modal,
+        and a focused text input intercepts it first for copy, both
+        special cases that make it awkward to just let it fall through to
+        the ordinary _key_handlers check). An app that registers its own
+        `app.on_key(Key.CTRL_C, ...)` handler gets a chance to run instead
+        of quitting -- e.g. returning to a main menu rather than exiting
+        outright -- with the same "quit" sentinel convention as any other
+        registered key (return the string "quit" to actually quit from
+        inside the handler). No handler registered: quits, exactly as
+        before."""
+        handler = self._key_handlers.get(Key.CTRL_C)
+        if handler is None:
+            self.quit()
+            return
+        if handler() == "quit":
+            self._should_quit = True
+
     def _setup_sequences(self) -> tuple[str, str]:
         """Build the (enter, exit) VT escape sequences for the run loop.
 
@@ -1855,13 +2156,16 @@ class App:
                     elif now - last_blink >= self.BLINK_INTERVAL:
                         self._cursor_on = not self._cursor_on
                         focused = self.focused
-                        # For terminal-native cursors (vertical/block) the cursor
-                        # is not in the cell buffer — just resend the cursor escape.
+                        # A terminal-drawn cursor isn't in the cell buffer and
+                        # blinks itself (see _cursor_esc), so there's nothing
+                        # to repaint — resending the now-unchanged escape is
+                        # suppressed by the comparison below. Only a widget
+                        # painting its own caret needs the re-render.
                         if (
                             focused is not None
                             and getattr(focused, "cursor", False)
                             and getattr(focused, "cursor_style", None)
-                            in ("vertical", "block")
+                            in TERMINAL_CURSOR_STYLES
                         ):
                             esc = self._cursor_esc()
                             if esc != self._last_cursor_esc:

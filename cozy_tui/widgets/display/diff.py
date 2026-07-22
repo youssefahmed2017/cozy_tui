@@ -118,7 +118,7 @@ class Diff(Widget):
         lexer: str | None = "python",
         style=None,
     ):
-        super().__init__(x, y, style, name="Diff")
+        super().__init__(x, y, style)
         self.old_text = old_text
         self.new_text = new_text
         self.lexer = lexer

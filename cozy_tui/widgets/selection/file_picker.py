@@ -54,9 +54,7 @@ class FilePicker(_SearchPaletteMixin, Widget):
         height: int = 10,
         style=None,
     ):
-        super().__init__(
-            0, 0, style or Style(fg="white", bg="black"), name="File Picker"
-        )
+        super().__init__(0, 0, style or Style(fg="white", bg="black"))
         if mode not in ("file", "directory"):
             raise ValueError('mode must be "file" or "directory"')
         self.mode = mode

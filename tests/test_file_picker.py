@@ -2,11 +2,12 @@ import pytest
 
 from cozy_tui import App, Style
 from cozy_tui.events import Key, MouseClick
+from cozy_tui.testing import Harness
 from cozy_tui.widgets import FilePicker
 
 
-def make_app(size="800x300"):
-    return App(full=False, size=size, style=Style(fg="white", bg="black"))
+def make_ui(size="800x300"):
+    return Harness(App(full=False, size=size, style=Style(fg="white", bg="black")))
 
 
 @pytest.fixture
@@ -136,7 +137,8 @@ def test_invalid_mode_raises():
 
 
 def test_pick_file_opens_as_focused_modal(tree):
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     picker = app.pick_file(tree)
     assert isinstance(picker, FilePicker)
     assert app._topmost_modal() is not None
@@ -144,20 +146,22 @@ def test_pick_file_opens_as_focused_modal(tree):
 
 
 def test_on_select_fires_and_closes_the_overlay(tree):
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     picked = []
     app.pick_file(tree, on_select=picked.append)
-    app.snapshot()
+    ui.screen
     for ch in "banana":
-        app._dispatch_input(ch)
-    app.snapshot()
-    app._dispatch_input(Key.ENTER)
+        ui.press(ch)
+    ui.screen
+    ui.press(Key.ENTER)
     assert picked == [tree / "banana.txt"]
     assert app._topmost_modal() is None
 
 
 def test_cancel_fires_on_cancel_not_on_select(tree):
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     events = []
     app.pick_file(
         tree,
@@ -169,7 +173,8 @@ def test_cancel_fires_on_cancel_not_on_select(tree):
 
 
 def test_pick_does_not_also_fire_cancel(tree):
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     events = []
     app.pick_file(
         tree,
@@ -177,17 +182,18 @@ def test_pick_does_not_also_fire_cancel(tree):
         on_select=lambda p: events.append("pick"),
         on_cancel=lambda: events.append("cancel"),
     )
-    app._dispatch_input(Key.ENTER)  # "Select this folder"
+    ui.press(Key.ENTER)  # "Select this folder"
     assert events == ["pick"]
 
 
 def test_click_on_an_entry_activates_it(tree):
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     picked = []
     picker = app.pick_file(tree, on_select=picked.append)
-    app.snapshot()
+    ui.screen
     # find "apple.py"'s row
     idx = next(i for i, (l, _p, _k) in enumerate(picker._matches) if l == "apple.py")
     row = picker.abs_y + 3 + idx
-    app._dispatch_input(MouseClick(picker.abs_x + 2, row, 0))
+    ui.click((picker.abs_x + 2, row))
     assert picked == [tree / "apple.py"]

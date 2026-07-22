@@ -39,7 +39,7 @@ class Splitter(Widget):
         step=1,
         style=None,
     ):
-        super().__init__(x, y, style, name="Splitter")
+        super().__init__(x, y, style)
         if orientation not in ("horizontal", "vertical"):
             raise ValueError('orientation must be "horizontal" or "vertical"')
         self.orientation = orientation

@@ -2,6 +2,7 @@ import pytest
 
 from cozy_tui import App, Style, Theme, get_theme, set_theme
 from cozy_tui.events import Key
+from cozy_tui.testing import Harness
 from cozy_tui.style import selection_style
 from cozy_tui.widgets import ThemePalette
 from cozy_tui.widgets.display.toast import Toast
@@ -176,10 +177,9 @@ def test_ctrl_t_is_bound_and_labeled():
 
 
 def test_ctrl_t_opens_a_theme_palette_and_focuses_it():
-    app = App(full=False, size="100x50", style=Style(fg="white", bg="black"))
-    app.snapshot()
-    app._dispatch_input(Key.CTRL_T)
-    app.snapshot()
+    ui = Harness(App(full=False, size="100x50", style=Style(fg="white", bg="black")))
+    app = ui.app
+    ui.press(Key.CTRL_T)
     assert len(app._overlays) == 1
     palette = app._overlays[-1].widget
     assert isinstance(palette, ThemePalette)
@@ -188,29 +188,24 @@ def test_ctrl_t_opens_a_theme_palette_and_focuses_it():
 
 def test_esc_cancels_the_palette_without_changing_the_theme():
     set_theme(Theme(mode="default"))
-    app = App(full=False, size="100x50", style=Style(fg="white", bg="black"))
-    app.snapshot()
-    app._dispatch_input(Key.CTRL_T)
-    app.snapshot()
-    app._dispatch_input(Key.ESC)
-    app.snapshot()
+    ui = Harness(App(full=False, size="100x50", style=Style(fg="white", bg="black")))
+    app = ui.app
+    ui.press(Key.CTRL_T)
+    ui.press(Key.ESC)
     assert app._overlays == []
     assert get_theme().mode == "default"
 
 
 def test_typing_filters_and_enter_picks_the_match():
     set_theme(Theme(mode="default"))
-    app = App(full=False, size="100x50", style=Style(fg="white", bg="black"))
-    app.snapshot()
-    app._dispatch_input(Key.CTRL_T)
-    app.snapshot()
+    ui = Harness(App(full=False, size="100x50", style=Style(fg="white", bg="black")))
+    app = ui.app
+    ui.press(Key.CTRL_T)
     for ch in "ocea":
-        app._dispatch_input(ch)
-    app.snapshot()
+        ui.press(ch)
     assert app._overlays[-1].widget._matches == ["ocean"]
 
-    app._dispatch_input(Key.ENTER)
-    app.snapshot()
+    ui.press(Key.ENTER)
     assert get_theme().mode == "ocean"
     assert app._overlays == []
     assert app.style.fg == get_theme().style.fg
@@ -218,43 +213,39 @@ def test_typing_filters_and_enter_picks_the_match():
 
 
 def test_backspace_widens_the_filter_again():
-    app = App(full=False, size="100x50", style=Style(fg="white", bg="black"))
-    app.snapshot()
-    app._dispatch_input(Key.CTRL_T)
-    app.snapshot()
+    ui = Harness(App(full=False, size="100x50", style=Style(fg="white", bg="black")))
+    app = ui.app
+    ui.press(Key.CTRL_T)
     palette = app._overlays[-1].widget
     for ch in "zzz":  # matches nothing
-        app._dispatch_input(ch)
-    app.snapshot()
+        ui.press(ch)
     assert palette._matches == []
     for _ in range(3):
-        app._dispatch_input(Key.BACKSPACE)
-    app.snapshot()
+        ui.press(Key.BACKSPACE)
     assert palette.query == ""
     assert palette._matches == list(Theme.MODES)
 
 
 def test_click_on_a_row_picks_it_immediately():
     set_theme(Theme(mode="default"))
-    app = App(full=False, size="100x50", style=Style(fg="white", bg="black"))
-    app.snapshot()
-    app._dispatch_input(Key.CTRL_T)
-    app.snapshot()
+    ui = Harness(App(full=False, size="100x50", style=Style(fg="white", bg="black")))
+    app = ui.app
+    ui.press(Key.CTRL_T)
     palette = app._overlays[-1].widget
     row_y = palette.abs_y + 2 + 2  # 3rd row (index 2) = Theme.MODES[2]
     from cozy_tui.events import MouseClick
 
-    app._dispatch_input(MouseClick(palette.abs_x + 3, row_y, 0))
-    app.snapshot()
+    ui.click((palette.abs_x + 3, row_y))
     assert get_theme().mode == Theme.MODES[2]
     assert app._overlays == []
 
 
 def test_ctrl_t_can_be_overridden_by_the_users_own_binding():
-    app = App(full=False, size="100x50")
+    ui = Harness(App(full=False, size="100x50"))
+    app = ui.app
     calls = []
     app.on_key(Key.CTRL_T, lambda: calls.append("mine"), description="My thing")
-    app._dispatch_input(Key.CTRL_T)
+    ui.press(Key.CTRL_T)
     assert calls == ["mine"]
     assert app._bindings[Key.CTRL_T] == ("My thing", None)
 
@@ -308,3 +299,117 @@ def test_palette_empty_matches_do_not_crash_navigation_or_enter():
     p.on_key(Key.DOWN)
     p.on_key(Key.ENTER)  # no-op: nothing to pick
     assert picked == []
+
+
+# ── live theme switching ─────────────────────────────────────────────────────
+
+
+def test_app_canvas_follows_a_theme_switch():
+    set_theme(Theme(mode="default"))
+    ui = Harness(App(full=False, size="600x200"))
+    app = ui.app
+    before = (app.style.fg, app.style.bg)
+    set_theme(Theme(mode="dracula"))
+    assert (app.style.fg, app.style.bg) != before
+    assert (app.style.fg, app.style.bg) == (
+        get_theme().style.fg,
+        get_theme().style.bg,
+    )
+
+
+def test_switching_repaints_the_canvas_cells():
+    set_theme(Theme(mode="default"))
+    ui = Harness(App(full=False, size="600x200"))
+    before = ui.cell(50, 15).style.bg
+    set_theme(Theme(mode="dracula"))
+    assert ui.cell(50, 15).style.bg != before
+
+
+def test_switching_forces_a_full_repaint():
+    # The diff renderer compares against what it last *emitted*, so unchanged
+    # glyphs would otherwise keep the old colors.
+    set_theme(Theme(mode="default"))
+    ui = Harness(App(full=False, size="600x200"))
+    ui.app._full_render_pending = False
+    set_theme(Theme(mode="dracula"))
+    assert ui.app._full_render_pending is True
+
+
+def test_an_explicit_style_is_never_overridden_by_a_theme_switch():
+    # A color the app author chose deliberately must survive; only a
+    # theme-derived canvas follows.
+    set_theme(Theme(mode="default"))
+    app = App(full=False, size="600x200", style=Style(fg="red", bg="black"))
+    set_theme(Theme(mode="dracula"))
+    assert (app.style.fg, app.style.raw_bg) == ("red", "black")
+
+
+def test_the_style_object_is_mutated_in_place_so_borrowers_follow():
+    # Widgets built with style=app.style hold this exact object; mutating it is
+    # what re-colors them without a registry of every borrower.
+    set_theme(Theme(mode="default"))
+    app = App(full=False, size="600x200")
+    borrowed = app.style
+    set_theme(Theme(mode="dracula"))
+    assert app.style is borrowed
+    assert borrowed.fg == get_theme().style.fg
+
+
+def test_two_apps_do_not_share_a_style_across_a_switch():
+    set_theme(Theme(mode="default"))
+    first = App(full=False, size="600x200")
+    second = App(full=False, size="600x200", style=Style(fg="red", bg="black"))
+    set_theme(Theme(mode="dracula"))
+    assert first.style is not second.style
+    assert second.style.fg == "red"
+
+
+def test_bindings_key_color_follows_the_theme():
+    from cozy_tui.widgets import Bindings
+
+    set_theme(Theme(mode="default"))
+    widget = Bindings(0, 0, {"Esc": "Quit"}, title="Keys")
+    before = widget._key_style.fg
+    set_theme(Theme(mode="dracula"))
+    assert widget._key_style.fg != before
+    assert widget._key_style.fg == get_theme().accent
+
+
+def test_on_theme_change_notifies_and_unsubscribes():
+    from cozy_tui.theme import on_theme_change, unsubscribe_theme
+
+    seen = []
+    cb = on_theme_change(seen.append)
+    set_theme(Theme(mode="ocean"))
+    assert [t.mode for t in seen] == ["ocean"]
+    unsubscribe_theme(cb)
+    set_theme(Theme(mode="forest"))
+    assert len(seen) == 1
+
+
+def test_setting_the_same_theme_object_twice_does_not_re_notify():
+    from cozy_tui.theme import on_theme_change, unsubscribe_theme
+
+    theme = Theme(mode="ocean")
+    set_theme(theme)
+    seen = []
+    cb = on_theme_change(seen.append)
+    set_theme(theme)
+    unsubscribe_theme(cb)
+    assert seen == []
+
+
+def test_a_discarded_app_stops_following_the_theme():
+    # theme.py holds process-wide state; a strong subscription would keep every
+    # App ever built alive (and re-coloring) for the rest of the process.
+    import gc
+
+    from cozy_tui.theme import _active_theme
+
+    set_theme(Theme(mode="default"))
+    app = App(full=False, size="600x200")
+    subs_with_app = len(_active_theme._subs)
+    del app
+    gc.collect()
+    set_theme(Theme(mode="dracula"))  # prunes dead subscriptions
+    assert len(_active_theme._subs) < subs_with_app

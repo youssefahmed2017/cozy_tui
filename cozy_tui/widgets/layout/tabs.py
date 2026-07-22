@@ -35,7 +35,7 @@ class _TabBar(Widget):
     focusable = True
 
     def __init__(self, tabs):
-        super().__init__(0, 0, name="Tab")
+        super().__init__(0, 0)
         self.parent = tabs
         self.tabs = tabs
         self._segments = []  # (local_start, local_end, index) for click hit-testing
@@ -148,7 +148,7 @@ class Tabs(Widget):
         animate=True,
         anim_duration=0.18,
     ):
-        super().__init__(x, y, style, name="Tabs")
+        super().__init__(x, y, style)
         self.width, self.height = map(int, size.split("x"))
         self.accent = accent
         self.animate = animate  # slide panels + glide the underline on switch
@@ -173,6 +173,32 @@ class Tabs(Widget):
         for widget in widgets:
             panel.add(widget)
         self._panels.append(panel)
+        return panel
+
+    def remove_tab(self, index_or_title):
+        """Remove a tab by index or title. Returns its panel, or ``None`` if
+        there was no such tab.
+
+        The selection is kept pointing at the *same* tab wherever possible
+        (shifting down when an earlier tab goes away), and clamped when the
+        last one is removed — closing tab 3 of 5 should leave you on the tab
+        you were looking at, not jump you somewhere else. Removing the active
+        tab lands on whatever slid into its place."""
+        if isinstance(index_or_title, str):
+            if index_or_title not in self._titles:
+                return None
+            index = self._titles.index(index_or_title)
+        else:
+            index = index_or_title
+            if not 0 <= index < len(self._panels):
+                return None
+
+        self._titles.pop(index)
+        panel = self._panels.pop(index)
+        panel.parent = None
+        if index < self.active or self.active >= len(self._panels):
+            self.active = max(0, min(self.active - 1, len(self._panels) - 1))
+        self._transitioning = False  # the glide's from/to indices are now stale
         return panel
 
     def select(self, index):

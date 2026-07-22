@@ -38,6 +38,3 @@ class MarkdownInput(Input, Markdown):
             rich_h = max(1, len(self._rendered_lines(w)))
             return max(input_h, rich_h)
         return input_h
-
-    def __str__(self) -> str:
-        return "Widget: MarkdownInput"

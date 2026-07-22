@@ -25,9 +25,7 @@ class ThemePalette(_SearchPaletteMixin, Widget):
     def __init__(
         self, modes, *, current=None, on_select=None, width=36, height=8, style=None
     ):
-        super().__init__(
-            0, 0, style or Style(fg="white", bg="black"), name="Theme Palette"
-        )
+        super().__init__(0, 0, style or Style(fg="white", bg="black"))
         self._all = list(modes)
         self.on_select = on_select
         self.query = ""

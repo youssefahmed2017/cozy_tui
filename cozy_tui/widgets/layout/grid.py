@@ -9,7 +9,7 @@ class Grid(Layout):
     """
 
     def __init__(self, x, y, cols, gap_x=1, gap_y=0, style=None):
-        super().__init__(x, y, style, name="Grid")
+        super().__init__(x, y, style)
         self.cols = cols
         self.gap_x = gap_x
         self.gap_y = gap_y

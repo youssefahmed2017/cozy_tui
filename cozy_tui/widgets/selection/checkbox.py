@@ -7,8 +7,8 @@ class Checkbox(Widget):
     focusable = True
 
     def __init__(self, x, y, text, checked=False, style=None):
-        super().__init__(x, y, style, name="Checkbox")
-        self.text = text
+        super().__init__(x, y, style)
+        self.bind("text", text)  # text may be a State
         self.checked = checked
 
     def natural_width(self, scale):

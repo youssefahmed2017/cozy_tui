@@ -31,7 +31,7 @@ class MenuBar(Widget):
     focusable = True
 
     def __init__(self, x, y, menus, *, style=None, gap=2):
-        super().__init__(x, y, style, name="Menu Bar")
+        super().__init__(x, y, style)
         self.menus = [(label, list(items)) for label, items in menus]
         self.gap = gap
         self._index = 0

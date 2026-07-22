@@ -28,7 +28,7 @@ class Slider(Widget):
         show_value=True,
         style=None,
     ):
-        super().__init__(x, y, style, name="Slider")
+        super().__init__(x, y, style)
         if minimum > maximum:
             raise ValueError(f"minimum ({minimum!r}) must be <= maximum ({maximum!r})")
         self.min = minimum

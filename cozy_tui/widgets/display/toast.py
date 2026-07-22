@@ -37,7 +37,7 @@ class Toast(Widget):
     def __init__(
         self, message, *, level="info", icon=None, corner="bottom-right", actions=None
     ):
-        super().__init__(0, 0, name="Toast")
+        super().__init__(0, 0)
         from cozy_tui.theme import get_theme  # local: theme.py builds on Style
 
         self.message = message

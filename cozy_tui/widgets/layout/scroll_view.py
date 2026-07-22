@@ -46,7 +46,7 @@ class ScrollView(Widget):
         style=None,
         accent="bright_cyan",
     ):
-        super().__init__(x, y, style, name="Scroll View")
+        super().__init__(x, y, style)
         self.width, self.height = map(int, size.split("x"))
         self.autoscroll = autoscroll
         self.scrollbar = scrollbar
@@ -72,9 +72,10 @@ class ScrollView(Widget):
         return widget
 
     def clear(self):
-        self._children.clear()
+        super().clear()  # detaches each child's parent
         self._scroll = 0
         self._pin_bottom = True
+        return self
 
     @property
     def children(self):
@@ -203,7 +204,11 @@ class ScrollView(Widget):
         for child in self._children:
             child._layout_y = -offset
             top = child.y - offset
-            if top + child.natural_height(canvas.SCALE) > 0 and top < vh:
+            if (
+                child.visible
+                and top + child.natural_height(canvas.SCALE) > 0
+                and top < vh
+            ):
                 child.draw(canvas)
         canvas.pop_clip()
 

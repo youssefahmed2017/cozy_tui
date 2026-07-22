@@ -134,7 +134,7 @@ class Image(Widget):
     """
 
     def __init__(self, x=0, y=0, source=None, *, size=None, style=None):
-        super().__init__(x, y, style, name="Image")
+        super().__init__(x, y, style)
         self._pil_image = None
         self._source = None
         self._target_w_px: int | None = None

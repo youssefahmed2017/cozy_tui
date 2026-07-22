@@ -228,7 +228,7 @@ app.close_overlay(widget=None)   # topmost, or the overlay wrapping `widget`
 - Opening a modal moves focus to its first focusable child; closing restores the focus that was active before.
 - A `Box` is the natural overlay container (it gives the dialog a border, title, and hit-testing). Its border highlights while it holds focus.
 
-See [`examples/overlay/overlay.py`](../examples/overlay/overlay.py) for a dismissable confirm dialog.
+See [`examples/deploy/deploy.py`](../examples/deploy/deploy.py) for a dismissable confirm dialog built this way, alongside the `app.confirm()`/`app.prompt()` versions of the same guard.
 
 > **Why these are one self-contained widget, not composed from smaller ones.** A modal overlay routes *every* key to a single focused widget — there's no bubbling if that widget doesn't handle a key. So `PromptDialog`/`ConfirmDialog`/`FilePicker` (below), and the search palettes in [styling.md](styling.md#themes) and [interaction.md](interaction.md#command-palette), each implement their own text buffer and navigation directly rather than composing a real `Input` with a `ListView` inside one modal — that composition would need a hand-written wrapper deciding "is this a nav key → the list, else → the Input" anyway, for no less code than doing it directly.
 

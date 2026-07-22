@@ -2,6 +2,7 @@ import colorsys
 import math
 import time
 
+from cozy_tui.markup import render
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
 
@@ -294,13 +295,36 @@ class AnimatedLabel(Widget):
         app.tick_interval = 0.05  # refresh fast enough to see the animation
     """
 
-    def __init__(self, x, y, text: str, *, animation: Animation, style=None):
-        super().__init__(x, y, style, name="AnimatedLabel")
+    def __init__(
+        self, x, y, text: str, *, animation: Animation, markup: bool = False, style=None
+    ):
+        super().__init__(x, y, style)
         self.text = text
         self.animation = animation
+        self.markup = markup
+        self._markup_key = None
+        self._plain = ""
+        self._char_styles: list = []
+
+    def _sync(self) -> None:
+        key = (self.text, self.style.fg, self.style.bg, self.style.styles)
+        if self._markup_key == key:
+            return
+        self._markup_key = key
+        runs = render(self.text, self.style)
+        self._plain = "".join(t for t, _s in runs)
+        # One style per character, so the animation's per-glyph output can be
+        # merged against whatever tag that glyph sits inside.
+        self._char_styles = [s for text, s in runs for _ in text]
+
+    def _visible(self) -> str:
+        if not self.markup:
+            return self.text
+        self._sync()
+        return self._plain
 
     def natural_width(self, scale) -> int:
-        return len(self.text)
+        return len(self._visible())
 
     def natural_height(self, scale) -> int:
         # Motion animations (e.g. Levitate) occupy extra rows below the baseline.
@@ -309,12 +333,34 @@ class AnimatedLabel(Widget):
     def contains(self, col: int, row: int) -> bool:
         h = self.natural_height(1)
         return (
-            self.abs_x <= col < self.abs_x + len(self.text)
+            self.abs_x <= col < self.abs_x + len(self._visible())
             and self.abs_y <= row < self.abs_y + h
         )
 
+    def _merge(self, animated: Style, tag: Style) -> Style:
+        """Combine one animation cell's style with the markup style its
+        character sits inside.
+
+        The animation keeps the foreground **only if it actually chose one** —
+        i.e. changed it from the base it was handed. Color animations
+        (:class:`GlowAnimation`, :class:`RainbowAnimation`) do; motion ones
+        (:class:`LevitateAnimation`) pass the base through untouched, and there
+        the tag's color is what the author meant. Background and attributes
+        always come from the tag, since no built-in animation sets them.
+        """
+        fg = animated.fg if animated.fg != self.style.fg else tag.fg
+        return Style(fg=fg, bg=tag.raw_bg, styles=tag.styles)
+
     def draw(self, canvas) -> None:
-        for dx, dy, ch, style in self.animation.cells(self.text, self.style):
+        text = self._visible()
+        cells = self.animation.cells(text, self.style)
+        if self.markup:
+            styles = self._char_styles
+            cells = (
+                (dx, dy, ch, self._merge(st, styles[i]) if i < len(styles) else st)
+                for i, (dx, dy, ch, st) in enumerate(cells)
+            )
+        for dx, dy, ch, style in cells:
             canvas.write(self.abs_x + dx, self.abs_y + dy, ch, style)
 
         # Keep the loop redrawing so the animation advances even without input

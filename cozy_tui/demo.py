@@ -82,7 +82,7 @@ class _FlexPanel(Widget):
     """
 
     def __init__(self, x, y, w, h, label, style):
-        super().__init__(x, y, style, name="FlexPanel")
+        super().__init__(x, y, style)
         self.w = w
         self.h = h
         self.label = label

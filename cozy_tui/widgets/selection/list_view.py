@@ -39,7 +39,7 @@ class ListView(Widget):
         mouse_moves: bool = False,
     ):
         super().__init__(
-            x, y, style, mouse_moves=mouse_moves, name="List View"
+            x, y, style, mouse_moves=mouse_moves
         )  # hover-to-highlight opt-in
         self._items: list = list(items) if items is not None else []
         self._index: int = 0
@@ -61,6 +61,16 @@ class ListView(Widget):
     @property
     def selected_index(self) -> int | None:
         return self._index if self._items else None
+
+    @selected_index.setter
+    def selected_index(self, index: int) -> None:
+        """Move the highlight to `index` (clamped). The public way to restore a
+        position after rebuilding the list -- e.g. deleting a row and keeping
+        the cursor where it was."""
+        if not self._items:
+            return
+        self._index = max(0, min(int(index), len(self._items) - 1))
+        self._clamp_scroll()
 
     def get(self):
         return self.selected

@@ -1,14 +1,16 @@
 from cozy_tui import App, Style
+from cozy_tui.testing import Harness
 from cozy_tui.widgets import Box, Label
 
 
-def make_app():
+def make_ui():
     # 80 cols x 24 rows
-    return App(full=False, size="800x240", style=Style(fg="white", bg="black"))
+    return Harness(App(full=False, size="800x240", style=Style(fg="white", bg="black")))
 
 
 def test_docks_consume_a_shrinking_rectangle():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     header = Box(0, 0, "10x10", title="Header")
     status = Box(0, 0, "10x10", title="Status")
     sidebar = Box(0, 0, "180x10", title="Side")
@@ -35,7 +37,8 @@ def test_docks_consume_a_shrinking_rectangle():
 
 
 def test_fill_box_grows_to_its_slice():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     main = Box(0, 0, "10x10", title="Main")
     app.dock(main, "fill")
     app._apply_docks()
@@ -55,7 +58,8 @@ def test_bottom_docked_box_with_wrapping_content_converges_and_stays_stable():
     # itself used as next frame's floor, even once self.width had converged
     # to the real (wide) terminal width and the wrap count would otherwise
     # have been small.
-    app = make_app()  # 80x24
+    ui = make_ui()  # 80x24
+    app = ui.app
     footer = Box(0, 0, "10x10", title="keys", border="rounded")
     hint = Label(1, 1, "word " * 40)  # wraps to a handful of lines, not one huge count
     footer.add(hint)
@@ -64,7 +68,7 @@ def test_bottom_docked_box_with_wrapping_content_converges_and_stays_stable():
     heights = []
     for _ in range(4):
         app._apply_docks()
-        app.render()
+        ui.compose()
         heights.append(footer.height)
 
     # Stable from the very first frame -- no transient spike, no runaway growth.
@@ -79,19 +83,21 @@ def test_fill_docked_box_still_grows_to_its_slice_with_wrapping_content():
     # A "fill" dock assigns self.height directly, bypassing natural_height()
     # entirely -- confirms that path (unlike "bottom") is unaffected and a
     # fill box still fills the screen even with a wrapping child inside.
-    app = make_app()  # 80x24
+    ui = make_ui()  # 80x24
+    app = ui.app
     main = Box(0, 0, "10x10", title="Main")
     main.add(Label(1, 1, "word " * 40))
     app.dock(main, "fill")
     for _ in range(3):
         app._apply_docks()
-        app.render()
+        ui.compose()
     assert main.natural_width(app.SCALE) == app.cols
     assert main.natural_height(app.SCALE) == app.rows
 
 
 def test_invalid_side_raises():
-    app = make_app()
+    ui = make_ui()
+    app = ui.app
     try:
         app.dock(Box(0, 0, "10x10"), "middle")
     except ValueError:

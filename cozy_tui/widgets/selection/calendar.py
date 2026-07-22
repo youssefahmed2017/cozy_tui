@@ -43,7 +43,7 @@ class Calendar(Widget):
     def __init__(
         self, x, y, *, selected: date | None = None, first_weekday: int = 0, style=None
     ):
-        super().__init__(x, y, style, name="Calendar")
+        super().__init__(x, y, style)
         self._cursor: date = selected or date.today()
         self._selected: date | None = selected
         self.first_weekday = first_weekday

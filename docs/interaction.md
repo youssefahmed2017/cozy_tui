@@ -51,11 +51,13 @@ app.on_key(Key.ENTER, submit_form)        # any function works too
 
 Available key constants in `cozy_tui.events.Key`:
 
-`ESC`, `ENTER`, `BACKSPACE`, `TAB`, `SHIFT_TAB`, `SHIFT_ENTER`,
+`ESC`, `ENTER`, `BACKSPACE`, `TAB`, `SPACE`, `SHIFT_TAB`, `SHIFT_ENTER`,
 `UP`, `DOWN`, `LEFT`, `RIGHT`, `HOME`, `END`,
 `DELETE`, `INSERT`, `PAGE_UP`, `PAGE_DOWN`,
 `CTRL_UP`, `CTRL_DOWN`, `CTRL_LEFT`, `CTRL_RIGHT`, `CTRL_C`, `CTRL_T`, `CTRL_P`,
 `F1`–`F12`
+
+Ordinary printable characters are their own key, so `app.on_key("q", quit)` works with no constant involved. `Key.SPACE` is simply `" "` — it exists because looking for it next to `Key.ENTER` and finding nothing is more confusing than the alias is redundant.
 
 **Modifier combos.** Terminals only send Alt/Ctrl combined with another key, so use the helpers:
 

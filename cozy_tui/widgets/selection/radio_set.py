@@ -42,7 +42,7 @@ class RadioSet(Widget):
         mouse_moves: bool = False,
     ):
         super().__init__(
-            x, y, style, mouse_moves=mouse_moves, name="Radio Set"
+            x, y, style, mouse_moves=mouse_moves
         )  # hover-to-highlight opt-in
         self._items: list[RadioItem] = []
         self._index: int = 0  # cursor position

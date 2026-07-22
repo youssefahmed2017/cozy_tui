@@ -10,8 +10,8 @@ class Layout(Widget):
     updates self._computed_width / self._computed_height before drawing.
     """
 
-    def __init__(self, x, y, style=None, name: str = "BaseLayout"):
-        super().__init__(x, y, style, name=name)
+    def __init__(self, x, y, style=None):
+        super().__init__(x, y, style)
         self.children = []
         self._computed_width = 0
         self._computed_height = 0
@@ -37,6 +37,10 @@ class Layout(Widget):
         self.children.append(widget)
         self._dirty = True
         return self
+
+    def _children_changed(self) -> None:
+        # Widget.remove()/clear() call this; a Layout caches its arrangement.
+        self._dirty = True
 
     def dock_resize(self, w, h, scale) -> None:
         """Grow to fill the assigned slice (App.dock()/Box.dock()) -- unlike
@@ -126,4 +130,5 @@ class Layout(Widget):
                 self._arrange()
         self._dirty = True  # re-dirty so next frame's natural_width/height recomputes
         for child in self.children:
-            child.draw(canvas)
+            if child.visible:
+                child.draw(canvas)

@@ -41,7 +41,7 @@ class TracebackView(Widget):
     def __init__(
         self, x, y, width: int, exc: BaseException, *, show_locals=True, style=None
     ):
-        super().__init__(x, y, style, name="Cozy TUI Traceback")
+        super().__init__(x, y, style)
         self.width = width
         self.exc = exc
         self.show_locals = show_locals

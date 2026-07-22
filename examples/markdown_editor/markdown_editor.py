@@ -129,7 +129,7 @@ btn_clear.on_click(_clear)
 btn_quit.on_click(lambda b: app.quit())
 
 app.on_key(Key.ESC, lambda: "quit")
-app.on_key("\x13", _save)  # Ctrl+S
+app.on_key(Key.ctrl("S"), _save)  # Ctrl+S
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 

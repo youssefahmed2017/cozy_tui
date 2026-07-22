@@ -37,7 +37,7 @@ class SearchBar(_SearchPaletteMixin, Widget):
         fuzzy_searching: bool = False,
         style=None,
     ):
-        super().__init__(x, y, style, name="Search Bar")
+        super().__init__(x, y, style)
         self._all: list[str] = list(items) if items is not None else []
         self.query = ""
         self.placeholder = placeholder

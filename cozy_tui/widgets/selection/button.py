@@ -37,15 +37,17 @@ class Button(Widget):
         style=None,
         width=None,
         *,
+        height: int = 1,
         animation=None,
         active_effect_duration: float = 0.2,
         mouse_moves: bool = False,
     ):
-        super().__init__(
-            x, y, style, mouse_moves=mouse_moves, name="Button"
-        )  # hover state opt-in
-        self.text = text
+        super().__init__(x, y, style, mouse_moves=mouse_moves)  # hover state opt-in
+        self.bind("text", text)  # text may be a State
         self.width = width
+        # Rows tall. The label is centered in the block, so an odd height puts
+        # it on the exact middle row and an even one biases it upward.
+        self.height = max(1, height)
         self.animation = animation
         self.active_effect_duration = active_effect_duration
         self._active = False
@@ -62,8 +64,14 @@ class Button(Widget):
     def natural_width(self, scale):
         return self._width()
 
+    def natural_height(self, scale):
+        return self.height
+
     def contains(self, col: int, row: int) -> bool:
-        return self.abs_x <= col < self.abs_x + self._width() and self.abs_y == row
+        return (
+            self.abs_x <= col < self.abs_x + self._width()
+            and self.abs_y <= row < self.abs_y + self.height
+        )
 
     def _activate(self):
         """Start the active effect and fire the click (cf. Textual's press())."""
@@ -142,9 +150,18 @@ class Button(Widget):
             fg_c = tint(fg_c, screen_bg, self.ACTIVE_TINT)
             bg_c = tint(bg_c, screen_bg, self.ACTIVE_TINT) if bg_c else bg_c
 
-        canvas.write(
-            self.abs_x, self.abs_y, label, Style(fg=fg_c, bg=bg_c, styles=styles)
-        )
+        cell_style = Style(fg=fg_c, bg=bg_c, styles=styles)
+        # The label sits on the middle row; every other row is a blank slab in
+        # the same style, so the whole block reads as one button rather than a
+        # line of text with padding around it.
+        label_row = (self.height - 1) // 2
+        for row in range(self.height):
+            canvas.write(
+                self.abs_x,
+                self.abs_y + row,
+                label if row == label_row else " " * w,
+                cell_style,
+            )
 
         # While the active effect plays, keep redrawing so it reverts on its own
         # even without other input.
