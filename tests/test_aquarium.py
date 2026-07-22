@@ -474,12 +474,16 @@ def test_fish_curves_around_a_decoration_directly_ahead():
 
     canvas = _FakeCanvas()
     min_dist_to_rock = None
-    for _ in range(300):
-        time.sleep(0.005)
+    start_x = f.fx
+    for _ in _simulated_frames(f, seconds=5.0):
         f.draw(canvas)
         d = math.hypot(f.fx - decoration.fx, f.fy - decoration.fy)
         if min_dist_to_rock is None or d < min_dist_to_rock:
             min_dist_to_rock = d
+
+    # Guard against passing for the wrong reason: if the fish had barely
+    # moved, "never overlapped the rock" would be trivially true.
+    assert abs(f.fx - start_x) > decoration.radius
 
     # The fish gets pushed off its straight-line path well before reaching
     # the rock's center -- it never has to actually overlap the decoration.
@@ -751,6 +755,17 @@ def _age(f, seconds=0.1):
     f._last = time.monotonic() - seconds
 
 
+def _simulated_frames(f, *, seconds, step=1 / 60.0):
+    """Yield one item per frame of a `seconds`-long simulation, back-dating
+    `f._last` before each so `draw()` sees an exact `step` dt no matter how
+    fast the machine is. Same trick as `_age`, for loops rather than a single
+    call -- driving a multi-frame simulation with `time.sleep` instead makes
+    the covered distance depend on the platform's sleep granularity."""
+    for frame in range(int(seconds / step)):
+        _age(f, step)
+        yield frame
+
+
 def test_shy_fish_flees_directly_from_the_mouse_with_no_decorations():
     bounds = (0.0, 0.0, 50.0, 50.0)
     mouse_pos = {"x": 5.0, "y": 5.0}
@@ -891,7 +906,8 @@ def test_greedy_fish_reaches_food_faster_than_an_explorer():
 
     canvas = _FakeCanvas()
     for _ in range(20):
-        time.sleep(0.01)
+        _age(greedy, 0.01)  # identical dt for both, so the comparison is fair
+        _age(normal, 0.01)
         greedy.draw(canvas)
         normal.draw(canvas)
 
@@ -939,8 +955,7 @@ def test_playful_fish_varies_speed_on_each_turn():
     f._next_turn = 0.0  # force an immediate turn on the next draw()
     speeds = set()
     canvas = _FakeCanvas()
-    for _ in range(15):
-        time.sleep(0.01)
+    for _ in _simulated_frames(f, seconds=0.15, step=0.01):
         f._next_turn = f._last  # force a turn every frame
         f.draw(canvas)
         speeds.add(round(math.hypot(f.vx, f.vy), 3))
@@ -1214,9 +1229,16 @@ def test_seeking_food_skips_decoration_avoidance_this_frame():
     f.personality = "Explorer"
     f._next_turn = float("inf")
 
+    # Fish.draw() derives dt from time.monotonic(), so a frame only advances
+    # the simulation by however long really elapsed. Sleeping to manufacture
+    # that is not portable -- Linux honours a 0.5ms sleep far more closely
+    # than Windows or macOS do, so the same loop covered several times less
+    # simulated distance there and the fish never reached the food (this test
+    # passed on two of the three CI platforms). Rewinding _last by a fixed
+    # amount instead hands draw() an exact timestep on every platform, and
+    # runs instantly.
     canvas = _FakeCanvas()
-    for _ in range(6000):
-        time.sleep(0.0005)
+    for _ in _simulated_frames(f, seconds=30.0):
         f.draw(canvas)
         if not foods:
             break
