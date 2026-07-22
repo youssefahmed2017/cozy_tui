@@ -3,6 +3,7 @@
 import random
 
 from .constants import (
+    AGE_SECONDS_PER_DAY,
     ATTRACTIVENESS_BY_DECORATION,
     ATTRACTIVENESS_PER_FISH,
     ATTRACTIVENESS_PER_RARE_FISH,
@@ -76,6 +77,22 @@ def compute_visitor_income(attractiveness: int):
         random.randint(0, visitors * DONATION_PER_VISITOR_MAX) if visitors > 0 else 0
     )
     return visitors, ticket_sales, donations
+
+
+def roll_visitor_donation(
+    visitors: int, day_seconds: float = AGE_SECONDS_PER_DAY
+) -> int:
+    """Called once per real-time second (see aquarium.py's _per_second_tick)
+    to spread a day's worth of visitor donations out as individual events
+    instead of one lump sum the player only sees at day's end. Each second
+    has roughly a visitors/day_seconds chance that a visitor donates right
+    now, for a randomized $1..DONATION_PER_VISITOR_MAX -- so across a full
+    day this fires about `visitors` times, matching the old aggregate math,
+    just paid out (and toasted) as it actually happens. Returns 0 on a
+    second where nobody donates."""
+    if visitors <= 0 or random.random() >= visitors / day_seconds:
+        return 0
+    return random.randint(1, DONATION_PER_VISITOR_MAX)
 
 
 def should_grant_welfare(money: int, food: int, fish_count: int, enabled: bool) -> bool:

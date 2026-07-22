@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Changelog — TermQuarium</title>
+<meta name="description" content="What shipped in TermQuarium, version by version." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A0%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="wrap">
+      <a class="logo" href="index.html"><span class="glyph">&gt;&lt;&gt;</span>TermQuarium</a>
+      <div class="nav-right">
+        <div class="nav-links" id="navLinks">
+          <a class="link" href="index.html">Home</a>
+          <a class="link" href="features.html">Features</a>
+          <a class="link" href="documentation/index.html">Docs</a>
+          <a class="link" href="download.html">Download</a>
+          <a class="link" href="faq.html">FAQ</a>
+          <a class="link" href="changelog.html" aria-current="page">Changelog</a>
+          <a class="link" href="https://github.com/youssefahmed2017/TermQuarium">GitHub</a>
+        </div>
+        <div class="nav-actions">
+          <button class="icon-btn" id="themeToggle" aria-label="Toggle day/night theme" title="Toggle day/night theme">🌙</button>
+          <button class="icon-btn nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">☰</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero page-hero">
+    <div class="wrap">
+      <span class="eyebrow">What shipped</span>
+      <h1>Changelog</h1>
+      <p class="lede">What's shipped in TermQuarium, one version at a time.</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="tight">
+      <div class="wrap">
+
+        <div class="changelog-entry">
+          <div class="changelog-head">
+            <span class="changelog-version mono">v1.3.0</span>
+            <span class="changelog-date">Latest release</span>
+          </div>
+          <div class="changelog-group">
+            <span class="kind">Added</span>
+            <ul>
+              <li>Achievements — 11 account-wide milestones, from a fish's first friendship to setting up Cloud Saves, never reset by a new save or a fresh aquarium. Transparent from the start: the Achievements menu always shows every name and description, locked or not</li>
+              <li>Random Events — roughly one night in eight, something happens: a stray fish wanders in and stays for free, a storm rolls through, a few dollars turn up in the gravel, or a fish does a little spin for no reason at all</li>
+              <li>Dreams — sleeping fish occasionally dream, shown as a 💭 you can click open for a small looping animated scene with a plain-language caption underneath. Personality leans which kind of dream it gets (a Greedy fish dreams about food often, never exclusively), and a fish's own memory shapes it further: a recent shark scare raises the odds of dreaming about it again, a recent memory of a Friend nudges toward dreaming about them, and losing a tankmate can bring them back in a dream for as long as that memory survives</li>
+              <li>Nightmares — the rare bad dream forces a real, early, solo wake: the fish looks visibly scared for a few seconds, then quietly relocates to sleep beside a Friend if it has one (joining their bed if there's room), or just settles back down alone if it doesn't</li>
+              <li>Fish Memory Log — every fish keeps its own short diary of real things that happened to it, right in its Inspector: a favorite treat, waking a friend up, a new rivalry, surviving a storm, a tankmate that isn't around anymore</li>
+              <li>Cheat Console (<kbd>&#96;</kbd>) — a small typed-command console for testing: spawn a fish for free, set money or food directly, or buy something from the Shop without the grind</li>
+            </ul>
+          </div>
+          <div class="changelog-group">
+            <span class="kind">Changed</span>
+            <ul>
+              <li>A storm is now a real, live event instead of a one-line toast — every awake fish actually heads for the nearest shelter and huddles there until it passes, with a second toast once it's over</li>
+              <li>Two more real relationship events: a Friend nearby when a Shark gets close is credited as a rescuer, and two already-unfriendly fish forced to share a bed overnight get pushed further apart instead of closer</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-head">
+            <span class="changelog-version mono">v1.2.0</span>
+            <span class="changelog-date">Previous release</span>
+          </div>
+          <div class="changelog-group">
+            <span class="kind">Added</span>
+            <ul>
+              <li>Treats — Brine Shrimp, Worms, Bloodworms, Plankton, and Pizza, bought from the Shop and fed directly to one chosen fish from its own Inspector, instead of dropped in the water for whoever gets there first</li>
+              <li>Axolotl — a new, non-predator resident with its own favorite foods (Brine Shrimp, Bloodworms, Worms), shown right in its Inspector: feeding one earns a nicer toast, never a bigger stat</li>
+              <li>Pizza — a single-serving, deliberately rare treat every fish loves for no particular reason, regardless of species or favorites</li>
+            </ul>
+          </div>
+          <div class="changelog-group">
+            <span class="kind">Changed</span>
+            <ul>
+              <li>The Axolotl rests on the tank floor far more often, and far longer, than any fish — with its own closed-eyes look while doing it — and never schools, even with another Axolotl: different from the fish, not stronger or more profitable</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-head">
+            <span class="changelog-version mono">v1.1.0</span>
+          </div>
+          <div class="changelog-group">
+            <span class="kind">Added</span>
+            <ul>
+              <li>Castle Interior — an "Enter" view into any container: beds, pillows, who's asleep versus lingering awake, and a live *boop* when a Sleepy fish is being woken, updating in real time rather than a one-time snapshot</li>
+              <li>Ctrl+C returns to the Main Menu from anywhere, with a Resume button to pick your session back up unchanged, or New Aquarium/Load/Settings/Help/Quit</li>
+              <li>Cloud saves — set up a Cloud Key from Settings to sync a named save across machines, and restore any of them again on a new install</li>
+            </ul>
+          </div>
+          <div class="changelog-group">
+            <span class="kind">Changed</span>
+            <ul>
+              <li>Sleepy fish genuinely stay asleep past the normal Night → Morning transition now, instead of just a cosmetic toast — only a same-container Friend or Neutral tankmate ever bothers waking one (a Rival won't), each attempt can resist, but a randomized number of chances (fewer for a Friend) guarantees it's never permanently stuck</li>
+              <li>A woken fish lingers a few seconds instead of vanishing instantly, and an entire room now leaves together once everyone inside is awake, rather than trickling out one at a time</li>
+              <li>Visitor donations now pay out — and toast — the moment they happen, instead of waiting for the day to end</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-head">
+            <span class="changelog-version mono">v1.0.0</span>
+            <span class="changelog-date">Initial release</span>
+          </div>
+          <div class="changelog-group">
+            <span class="kind">Added</span>
+            <ul>
+              <li>Four species — Goldfish, Angelfish, Betta, and the predatory Shark</li>
+              <li>Six personalities (Friendly, Explorer, Shy, Greedy, Lazy, Playful) plus an independent Sleepy trait</li>
+              <li>Earned relationships — a private bond score per pair, remembering up to 5 reasons why</li>
+              <li>Container homes — the Rock and Castle, with real sleeping capacity fish queue for by preference</li>
+              <li>A continuous day/night cycle with occasional morning wake-up vignettes</li>
+              <li>Breeding — eligible bonded pairs can have babies, capped so the tank never overruns</li>
+              <li>Visitor economy, Shop, and an Emergency Aquarium Welfare safety net for a bankrupt tank</li>
+              <li>Named saves with rename/duplicate/delete, and a pause that actually freezes the simulation</li>
+              <li>Standalone Windows installer</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Built with <a href="https://github.com/youssefahmed2017/cozy_tui">cozy_tui</a> · © 2026 Youssef Ahmed</span>
+      <span><a href="https://github.com/youssefahmed2017/TermQuarium">GitHub</a></span>
+    </div>
+  </footer>
+
+<script src="script.js"></script>
+</body>
+</html>

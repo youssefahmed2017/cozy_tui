@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FAQ — TermQuarium</title>
+<meta name="description" content="Answers about platforms, saving, breeding, death, dreams, achievements, and the shark — all grounded in how TermQuarium actually works." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A0%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="wrap">
+      <a class="logo" href="index.html"><span class="glyph">&gt;&lt;&gt;</span>TermQuarium</a>
+      <div class="nav-right">
+        <div class="nav-links" id="navLinks">
+          <a class="link" href="index.html">Home</a>
+          <a class="link" href="features.html">Features</a>
+          <a class="link" href="documentation/index.html">Docs</a>
+          <a class="link" href="download.html">Download</a>
+          <a class="link" href="faq.html" aria-current="page">FAQ</a>
+          <a class="link" href="changelog.html">Changelog</a>
+          <a class="link" href="https://github.com/youssefahmed2017/TermQuarium">GitHub</a>
+        </div>
+        <div class="nav-actions">
+          <button class="icon-btn" id="themeToggle" aria-label="Toggle day/night theme" title="Toggle day/night theme">🌙</button>
+          <button class="icon-btn nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">☰</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero page-hero">
+    <div class="wrap">
+      <span class="eyebrow">Questions</span>
+      <h1>Frequently asked.</h1>
+      <p class="lede">Straight answers, not marketing.</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="tight">
+      <div class="wrap">
+        <div class="faq-list">
+
+          <div class="faq-item">
+            <h3>Is it free?</h3>
+            <p>Yes. The Windows installer and the source are both free.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>Does it work on Linux or macOS?</h3>
+            <p>Yes, from source — cozy_tui, the library TermQuarium is built on, has a real POSIX terminal backend alongside its Windows one. There's just no packaged installer for those platforms yet, so you'd run <code class="mono">python examples/aquarium/aquarium.py</code> directly. See <a href="download.html" style="color:var(--accent);text-decoration:none;font-weight:600">Download</a>.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>Do I need Python installed for the Windows installer?</h3>
+            <p>No. The installer is a standalone packaged executable — Python isn't required.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>Can fish die?</h3>
+            <p>Yes. A fish that goes long enough without eating loses health from starvation. Sharks are the other cause — see below.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>Can sharks eat the other fish?</h3>
+            <p>Yes. The Shark is a genuine predator — it hunts the smaller fish instead of chasing food, so buying one changes how the rest of the tank behaves.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>Do fish have babies?</h3>
+            <p>Yes. Each day, every mutual, grown-up, non-predator pair with a strong enough bond has a chance to breed, up to a sane cap on total fish so it doesn't run away forever.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>What happens if I run out of money?</h3>
+            <p>Emergency Aquarium Welfare quietly steps in — a small fresh start, not a game over.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>Can I pause?</h3>
+            <p>Yes, Esc — and it actually freezes the simulation, not just the screen, so nothing ages, starves, or breeds while you're away from the keyboard.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>How does saving work?</h3>
+            <p>Name a save once and every later save writes back into that same file. The load screen can rename, duplicate, or delete any save. See <a href="documentation/saves.html" style="color:var(--accent);text-decoration:none;font-weight:600">Saves</a> in the docs.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>Wait, are there axolotls now?</h3>
+            <p>Yes. It's buyable from the Shop like any other species, isn't a predator, and can even turn up as a random starter. It's priced in the same range as the fish — the point was never to make it a better pick, just a different kind of resident: it rests far more than any fish, never schools, and has real favorite foods (Brine Shrimp, Bloodworms, Worms). See <a href="documentation/fish.html" style="color:var(--accent);text-decoration:none;font-weight:600">Fish</a> in the docs.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>What's the difference between Fish Food and Treats?</h3>
+            <p>Fish Food is bulk — drop it in the water and whoever's nearest eats it. Treats (Brine Shrimp, Worms, Bloodworms, Plankton, Pizza) are bought from the Shop and fed directly to one chosen fish from its own Inspector, and relieve hunger by exactly the same amount — a favorite just earns a nicer reaction, never a bigger number.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>Do fish actually dream?</h3>
+            <p>Yes. Sleeping fish occasionally dream — click the 💭 next to a sleeping fish for a small looping animated scene. Personality leans which kind (a Greedy fish dreams about food often, not exclusively), and a fish's own recent memories can shape it further, including the rare nightmare, which forces it to wake up scared and go find a Friend to sleep beside. See <a href="documentation/mechanics.html" style="color:var(--accent);text-decoration:none;font-weight:600">Mechanics</a> in the docs.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>What are Achievements, and can I lose them?</h3>
+            <p>Eleven account-wide milestones, always visible (locked or not) from the Achievements menu. They're not tied to any one save — a New Aquarium or a Load never resets what you've already earned.</p>
+          </div>
+
+          <div class="faq-item">
+            <h3>What's the Cheat Console?</h3>
+            <p>Press <code class="mono">&#96;</code> for a small typed-command console meant for testing — spawning a fish for free, setting money directly, buying from the Shop without the grind. It's a debug tool, not part of normal play, but every command runs through the same real code the Shop and Inspector already use.</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Built with <a href="https://github.com/youssefahmed2017/cozy_tui">cozy_tui</a> · © 2026 Youssef Ahmed</span>
+      <span><a href="https://github.com/youssefahmed2017/TermQuarium">GitHub</a></span>
+    </div>
+  </footer>
+
+<script src="script.js"></script>
+</body>
+</html>

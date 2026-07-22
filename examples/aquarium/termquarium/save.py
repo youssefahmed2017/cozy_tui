@@ -90,11 +90,21 @@ def save_path(name: str, home: Path | None = None) -> Path:
     return saves_dir(home) / f"{safe_filename(name)}.json"
 
 
-def write_save(name: str, aquarium: dict[str, Any], home: Path | None = None) -> Path:
+def write_save(
+    name: str,
+    aquarium: dict[str, Any],
+    home: Path | None = None,
+    *,
+    created: str | None = None,
+) -> Path:
     """Write one save atomically and return its path.
 
     ``aquarium`` is the complete simulation state.  Its compact metadata is
     repeated at the top level so the load menu can render cards cheaply.
+    ``created`` overrides the usual "keep the existing file's creation time,
+    or stamp a fresh one" logic -- rename_save()/duplicate_save() pass the
+    original save's ``created`` through explicitly, since a rename/copy
+    isn't really a new aquarium even though it lands at a new path.
     """
     directory = ensure_data_dirs(home)
     path = directory / f"{safe_filename(name)}.json"
@@ -102,7 +112,7 @@ def write_save(name: str, aquarium: dict[str, Any], home: Path | None = None) ->
     existing = read_save(path) if path.exists() else None
     metadata = {
         "name": name.strip() or "Untitled Aquarium",
-        "created": (existing or {}).get("metadata", {}).get("created", now),
+        "created": created or (existing or {}).get("metadata", {}).get("created", now),
         "last_played": now,
         "fish": len(aquarium.get("fish", [])),
         "money": aquarium.get("state", {}).get("money", 0),
@@ -133,6 +143,45 @@ def read_save(path: Path) -> dict[str, Any]:
     return payload
 
 
+def delete_save(path: Path) -> None:
+    """Remove a save file. A no-op if it's already gone (e.g. deleted from
+    outside the game between listing saves and clicking Delete)."""
+    path.unlink(missing_ok=True)
+
+
+def rename_save(path: Path, new_name: str, home: Path | None = None) -> Path:
+    """Rename a save in place: same content and original creation time,
+    just a new display name -- and, since the filename is derived from the
+    name, a new underlying file. The old file is only removed once the new
+    one is written successfully, and only if the name actually changed to a
+    different path (renaming to the same name is a harmless no-op rather
+    than a delete-then-recreate)."""
+    payload = read_save(path)
+    new_path = write_save(
+        new_name,
+        payload["aquarium"],
+        home,
+        created=payload["metadata"].get("created"),
+    )
+    if new_path != path:
+        path.unlink(missing_ok=True)
+    return new_path
+
+
+def duplicate_save(path: Path, new_name: str, home: Path | None = None) -> Path:
+    """Copy an existing save under a new name, leaving the original
+    untouched -- same content and creation time (it's the same aquarium's
+    history, just branched), so a duplicated save right after loading looks
+    identical to its source until the player actually changes something."""
+    payload = read_save(path)
+    return write_save(
+        new_name,
+        payload["aquarium"],
+        home,
+        created=payload["metadata"].get("created"),
+    )
+
+
 def list_saves(home: Path | None = None) -> list[tuple[Path, dict[str, Any]]]:
     """Return valid saves newest-first, with only menu metadata exposed."""
     directory = ensure_data_dirs(home)
@@ -144,3 +193,62 @@ def list_saves(home: Path | None = None) -> list[tuple[Path, dict[str, Any]]]:
         except (OSError, ValueError, json.JSONDecodeError):
             continue
     return sorted(cards, key=lambda card: card[1].get("last_played", ""), reverse=True)
+
+
+def _config_path(home: Path | None = None) -> Path:
+    ensure_data_dirs(home)
+    return data_dir(home) / "config.json"
+
+
+def load_cloud_key(home: Path | None = None) -> str | None:
+    """Return the Cloud Key set up for cloud saves on this machine, or
+    None if it's never been configured (or was deliberately forgotten)."""
+    try:
+        config = json.loads(_config_path(home).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    key = config.get("cloud_key")
+    return key if isinstance(key, str) and key else None
+
+
+def store_cloud_key(key: str | None, home: Path | None = None) -> None:
+    """Set (or, with key=None, forget) the Cloud Key in config.json.
+    Written atomically like write_save(), so an interrupted write can't
+    corrupt whatever else eventually lives alongside cloud_key here."""
+    path = _config_path(home)
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        config = {}
+    if key:
+        config["cloud_key"] = key
+    else:
+        config.pop("cloud_key", None)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def _achievements_path(home: Path | None = None) -> Path:
+    ensure_data_dirs(home)
+    return data_dir(home) / "achievements.json"
+
+
+def load_unlocked_achievements(home: Path | None = None) -> set[str]:
+    """Account-wide, like the Cloud Key -- lives in the game's data
+    directory rather than any one save file, so a New Aquarium or a Load
+    never resets what's already been earned."""
+    try:
+        data = json.loads(_achievements_path(home).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    return set(data) if isinstance(data, list) else set()
+
+
+def store_unlocked_achievements(ids: set[str], home: Path | None = None) -> None:
+    """Written atomically like write_save()/store_cloud_key(). Sorted so the
+    file diffs cleanly if a player ever pokes at it directly."""
+    path = _achievements_path(home)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(sorted(ids), indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)

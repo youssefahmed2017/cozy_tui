@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mechanics — TermQuarium Docs</title>
+<meta name="description" content="The exact numbers behind TermQuarium's hunger, feeding, relationships, breeding, economy, achievements, random events, and dreams." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A0%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="wrap">
+      <a class="logo" href="../index.html"><span class="glyph">&gt;&lt;&gt;</span>TermQuarium</a>
+      <div class="nav-right">
+        <div class="nav-links" id="navLinks">
+          <a class="link" href="../index.html">Home</a>
+          <a class="link" href="../features.html">Features</a>
+          <a class="link" href="index.html" aria-current="page">Docs</a>
+          <a class="link" href="../download.html">Download</a>
+          <a class="link" href="../faq.html">FAQ</a>
+          <a class="link" href="../changelog.html">Changelog</a>
+          <a class="link" href="https://github.com/youssefahmed2017/TermQuarium">GitHub</a>
+        </div>
+        <div class="nav-actions">
+          <button class="icon-btn" id="themeToggle" aria-label="Toggle day/night theme" title="Toggle day/night theme">🌙</button>
+          <button class="icon-btn nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">☰</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero page-hero">
+    <div class="wrap">
+      <span class="eyebrow">Documentation</span>
+      <h1>Mechanics</h1>
+      <p class="lede">The numbers behind hunger, bonds, breeding, and money — for anyone who wants to know exactly why a fish did what it did.</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="tight">
+      <div class="wrap">
+        <div class="docs-shell">
+          <nav class="docs-sidebar" aria-label="Documentation">
+            <span class="kicker">Contents</span>
+            <a href="index.html">Overview</a>
+            <a href="fish.html">Fish</a>
+            <a href="decorations.html">Decorations</a>
+            <a href="mechanics.html" aria-current="page">Mechanics</a>
+            <a href="controls.html">Controls</a>
+            <a href="saves.html">Saves</a>
+            <a href="building.html">Building from source</a>
+          </nav>
+          <div class="docs-content">
+
+            <h2>Hunger</h2>
+            <p>Hunger climbs on a deliberately slow clock, separate from the per-frame movement update. A fish that goes long enough without reaching food starts losing health from starvation instead — a fish can genuinely die this way.</p>
+
+            <h2>Feeding &amp; treats</h2>
+            <p>Fish Food is bulk and impersonal — buy a pack, drop it in the water, and whichever fish reaches it first eats it. Treats work differently: bought one pack at a time from the Shop, then fed directly to one chosen fish from its own Inspector.</p>
+            <div class="docs-table-wrap">
+              <table>
+                <thead><tr><th>Treat</th><th>Price</th><th>Pack size</th></tr></thead>
+                <tbody>
+                  <tr><td>🦐 Brine Shrimp</td><td>$10</td><td>5</td></tr>
+                  <tr><td>🪱 Worms</td><td>$8</td><td>5</td></tr>
+                  <tr><td>🩸 Bloodworms</td><td>$12</td><td>5</td></tr>
+                  <tr><td>🦠 Plankton</td><td>$9</td><td>5</td></tr>
+                  <tr><td>🍕 Pizza</td><td>$12</td><td>1</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>A treat relieves hunger by exactly the same amount as regular Fish Food — there's no bigger number for buying one, on purpose. What changes is the reaction: a species with a declared favorite (today, just the Axolotl — Brine Shrimp, Bloodworms, and Worms) lights up when fed one, shown as a nicer toast. Pizza sits outside that system entirely — nobody has it as a declared favorite, yet every fish is delighted by it regardless, which is exactly why it's kept to a single serving per purchase instead of a pack of five like the others.</p>
+
+            <h2>Relationships</h2>
+            <p>Every pair of fish shares one continuous bond score from &minus;100 to 100, nudged by real events — waking each other, sleeping side by side, giving up a bed, a Friend nearby credited with a rescue when a Shark gets close — and slowly decaying if left alone. Forced proximity can hurt as easily as it helps: two fish who already dislike each other or worse, sharing a home overnight anyway, are pushed further apart instead of closer. The score maps to a state:</p>
+            <div class="docs-table-wrap">
+              <table>
+                <thead><tr><th>Score</th><th>State</th></tr></thead>
+                <tbody>
+                  <tr><td>&le; &minus;50</td><td>😠 Rival</td></tr>
+                  <tr><td>&minus;49 to &minus;15</td><td>😒 Dislikes</td></tr>
+                  <tr><td>&minus;14 to 14</td><td>Neutral</td></tr>
+                  <tr><td>15 to 49</td><td>🙂 Friend</td></tr>
+                  <tr><td>&ge; 50</td><td>❤️ Best Friend</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>Each pair remembers up to 5 specific reasons for their score, oldest dropped first once that fills up. A Playful fish gets an extra boost to the score when it successfully wakes a friend up.</p>
+
+            <h2>Sleep &amp; wake-ups</h2>
+            <p>About 1 in 5 fish (20%) are born Sleepy, independent of their personality. Everyone else wakes together the instant Night ends — a Sleepy fish genuinely doesn't: it stays asleep past the normal transition until a real wake attempt succeeds, resisting each one roughly 7 times out of 10. It's never permanently stuck, though — only a same-container <b>Friend</b> or <b>Neutral</b> tankmate ever bothers trying (a Rival won't), and each one is given a randomized number of chances before success becomes guaranteed: 3&ndash;5 for a Friend, 4&ndash;6 for a Neutral acquaintance. With nobody eligible in the room at all, a fallback timer wakes it anyway after about a minute.</p>
+            <p>A woken fish doesn't vanish the instant it wakes, either — it lingers a few seconds, and the whole room leaves together once every occupant is awake, not one at a time. See <a href="decorations.html" style="color:var(--accent);text-decoration:none;font-weight:600">Decorations</a> for the "Enter" view this all plays out in.</p>
+
+            <h2>Breeding</h2>
+            <p>Once a day, every mutual, grown-up, non-predator Friend or Best Friend pair has a 25% chance to have a baby, up to a cap of 30 total fish in the tank so it can't run away forever.</p>
+
+            <h2>Economy</h2>
+            <p>The tank's total attractiveness comes from its fish and decorations: +5 per fish (+15 instead for a "rare" species — anything priced at $50 or more, which today just means the Betta and the Shark), plus a flat +10 if there's no food currently sitting uneaten. Visitor count is attractiveness &divide; 20; each visitor's $2 ticket is settled once a day along with a flat, unconditional $10/day "Aquarium Maintenance Grant." Donations ($1&ndash;3 per visitor) don't wait for that — the moment a visitor actually donates, the money lands immediately and a toast announces it ("A visitor donated $2!"), rather than being bundled into the day-end total.</p>
+            <p>Selling a decoration refunds half its purchase price.</p>
+            <p>If the tank goes fully bankrupt — $0, no food, no fish — <b>Emergency Aquarium Welfare</b> (on by default, toggleable in Settings) grants a fresh start: +1 fish, +25 food, +$20.</p>
+
+            <h2>Day &amp; night</h2>
+            <p>Water temperature and light drift together on one continuous curve, warmest at noon and coldest at midnight. Fish move measurably slower once the water turns cold, and non-hungry fish stop swimming and sleep once night falls — a hard stop, not just a slowdown.</p>
+
+            <h2>Achievements</h2>
+            <p>Eleven account-wide milestones, from a first friendship to setting up Cloud Saves — tracked separately from any one save file, so a New Aquarium or a Load never resets what's already been earned. The Achievements menu is deliberately transparent: every name and description is visible whether it's unlocked or not, so it doubles as a light to-do list.</p>
+
+            <h2>Random Events</h2>
+            <p>Once a day, there's roughly a 1-in-8 chance something happens on its own:</p>
+            <div class="docs-table-wrap">
+              <table>
+                <thead><tr><th>Event</th><th>What happens</th></tr></thead>
+                <tbody>
+                  <tr><td>🐟 Stray Wanderer</td><td>A free starter fish shows up overnight and stays — a gift, not a purchase, so there's no rename prompt (only while under the fish cap)</td></tr>
+                  <tr><td>⛈️ Storm</td><td>A real, live weather event — every fish's hunger climbs, and every awake fish heads for the nearest container and huddles there until it passes, about 25 seconds later, with its own toast when it ends</td></tr>
+                  <tr><td>🪙 Lucky Find</td><td>A small, unconditional $5&ndash;20 turns up in the gravel</td></tr>
+                  <tr><td>✨ Showing Off</td><td>Purely cosmetic — a random fish gets a one-line toast and nothing else changes</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h2>Dreams</h2>
+            <p>About a quarter of tonight's actually-sleeping fish dream — shown as a 💭 next to their 😴, clickable into a small looping animated scene with a plain-language caption underneath. Which kind of dream leans on personality (Explorer &rarr; Fantasy, Greedy &rarr; Food, Shy &rarr; Home, Friendly &rarr; Friendship, Lazy/Playful &rarr; Happy) about 60% of the time, spread across the other categories the rest of the time — never an exclusive lock.</p>
+            <p>A fish's own Memory Log shapes it further: a recent shark scare gives a much-better-than-usual chance of a nightmare about it specifically; a recent memory naming its current Friend nudges toward a dream about them regardless of personality; and a tankmate it's lost can resurface in a dream of their own, for as long as that memory survives the log's cap — grief fading naturally as newer memories crowd it out, with no separate timer.</p>
+            <p>A nightmare is the one dream with real consequences. Five seconds in, the fish wakes up scared (😨, for a few seconds) right where it was sleeping. If it has a Friend, it then quietly relocates to sleep beside them — joining their claimed home if there's room, or just settling close on the floor if not — with a brief 🥺 once it arrives. No Friend, and it simply settles back to sleep on its own.</p>
+
+            <h2>Fish Memory Log</h2>
+            <p>Every fish keeps its own diary, shown in its Inspector — up to 10 entries, oldest dropped first. Unlike a relationship's shared memories (only ever "why" for one specific pair), this is one fish's own history: a favorite treat, waking a friend up, becoming friends or rivals with someone, surviving a storm, escaping — or being saved from — a Shark, and a tankmate that isn't around anymore.</p>
+
+            <h2>Cheat Console</h2>
+            <p>Press <kbd>&#96;</kbd> to open a small typed-command console, meant for testing rather than normal play. Commands are parsed structurally (never <code class="mono">eval()</code>'d), and each one calls the exact same code the Shop/Inspector already use — there's no separate cheat-only path underneath.</p>
+            <div class="docs-table-wrap">
+              <table>
+                <thead><tr><th>Command</th><th>Effect</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">help()</td><td>List every available command</td></tr>
+                  <tr><td class="mono">spawn_fish(species, name=None, amount=1)</td><td>A free fish, no money needed</td></tr>
+                  <tr><td class="mono">set_health(fish_name, amount)</td><td>0&ndash;100</td></tr>
+                  <tr><td class="mono">set_hunger(fish_name, amount)</td><td>0&ndash;100, 0 = full</td></tr>
+                  <tr><td class="mono">set_money(amount)</td><td>Sets it exactly, not additive</td></tr>
+                  <tr><td class="mono">set_food(amount)</td><td>Sets it exactly, not additive</td></tr>
+                  <tr><td class="mono">buy(name)</td><td>Buys from the Shop like the real thing — still costs money</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Built with <a href="https://github.com/youssefahmed2017/cozy_tui">Cozy TUI</a> · © 2026 Youssef Ahmed</span>
+      <span><a href="https://github.com/youssefahmed2017/TermQuarium">GitHub</a></span>
+    </div>
+  </footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

@@ -140,8 +140,16 @@ def school_velocity(
             sep_x += dx / dist
             sep_y += dy / dist
 
-    tx = cohesion_x * cohesion_weight + align_x * alignment_weight + sep_x * separation_weight
-    ty = cohesion_y * cohesion_weight + align_y * alignment_weight + sep_y * separation_weight
+    tx = (
+        cohesion_x * cohesion_weight
+        + align_x * alignment_weight
+        + sep_x * separation_weight
+    )
+    ty = (
+        cohesion_y * cohesion_weight
+        + align_y * alignment_weight
+        + sep_y * separation_weight
+    )
     tdist = math.hypot(tx, ty)
     if tdist < 1e-6:
         return vx, vy  # rules cancel out -- no clear pull, keep the current heading

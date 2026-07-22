@@ -1,0 +1,11 @@
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+*.pyi
+.idea/
+dist/
+build/
+*.spec
+*.iss
+Output/

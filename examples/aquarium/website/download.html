@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Download — TermQuarium</title>
+<meta name="description" content="Download TermQuarium for Windows, or run it from source on any platform cozy_tui supports." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A0%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="wrap">
+      <a class="logo" href="index.html"><span class="glyph">&gt;&lt;&gt;</span>TermQuarium</a>
+      <div class="nav-right">
+        <div class="nav-links" id="navLinks">
+          <a class="link" href="index.html">Home</a>
+          <a class="link" href="features.html">Features</a>
+          <a class="link" href="documentation/index.html">Docs</a>
+          <a class="link" href="download.html" aria-current="page">Download</a>
+          <a class="link" href="faq.html">FAQ</a>
+          <a class="link" href="changelog.html">Changelog</a>
+          <a class="link" href="https://github.com/youssefahmed2017/TermQuarium">GitHub</a>
+        </div>
+        <div class="nav-actions">
+          <button class="icon-btn" id="themeToggle" aria-label="Toggle day/night theme" title="Toggle day/night theme">🌙</button>
+          <button class="icon-btn nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">☰</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero page-hero">
+    <div class="wrap">
+      <span class="eyebrow">Get the tank running</span>
+      <h1>Free, and just an installer.</h1>
+      <p class="lede">TermQuarium is built on cozy_tui, a from-scratch terminal UI library — the whole game is plain text over VT sequences, nothing rendered.</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="tight">
+      <div class="wrap">
+        <div class="download">
+          <div>
+            <h2>Windows installer</h2>
+            <p>A double-clickable setup wizard. No Python, no dependencies to install yourself.</p>
+            <div class="req-row">
+              <span>Windows 10+</span>
+              <span>Any terminal</span>
+              <span>No Python required</span>
+            </div>
+          </div>
+          <div class="download-actions">
+            <a class="btn btn-primary" href="https://github.com/youssefahmed2017/TermQuarium/releases/latest/download/TermQuarium-Setup.exe">Download TermQuarium-Setup.exe</a>
+            <span class="filesize">Latest release · Windows installer</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tight">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="eyebrow mono" style="background:none;padding:0;display:inline">Prefer source</span>
+          <h2>Run it directly with Python</h2>
+          <p>TermQuarium ships as an example inside <a href="https://github.com/youssefahmed2017/cozy_tui" style="color:var(--accent);text-decoration:none;font-weight:600">cozy_tui</a>'s own repo. It runs anywhere cozy_tui does — Windows, Linux, and macOS terminals alike. No packaged installer for those platforms yet, but nothing stops you from cloning and running it.</p>
+        </div>
+        <div class="plate-frame" style="max-width:640px">
+          <div class="plate-titlebar">
+            <span class="tab"><span class="led"></span>shell</span>
+          </div>
+          <div class="tank" style="min-height:auto">
+git clone https://github.com/youssefahmed2017/cozy_tui.git
+cd cozy_tui
+pip install -e .
+python examples/aquarium/aquarium.py
+          </div>
+        </div>
+        <div style="margin-top:24px">
+          <a class="btn btn-ghost" href="https://github.com/youssefahmed2017/cozy_tui/tree/master/examples/aquarium">View source on GitHub →</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Built with <a href="https://github.com/youssefahmed2017/cozy_tui">cozy_tui</a> · © 2026 Youssef Ahmed</span>
+      <span><a href="https://github.com/youssefahmed2017/TermQuarium">GitHub</a></span>
+    </div>
+  </footer>
+
+<script src="script.js"></script>
+</body>
+</html>

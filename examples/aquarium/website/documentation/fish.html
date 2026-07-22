@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fish — TermQuarium Docs</title>
+<meta name="description" content="Reference for TermQuarium's five species and the personality system every fish is born with." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A0%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="wrap">
+      <a class="logo" href="../index.html"><span class="glyph">&gt;&lt;&gt;</span>TermQuarium</a>
+      <div class="nav-right">
+        <div class="nav-links" id="navLinks">
+          <a class="link" href="../index.html">Home</a>
+          <a class="link" href="../features.html">Features</a>
+          <a class="link" href="index.html" aria-current="page">Docs</a>
+          <a class="link" href="../download.html">Download</a>
+          <a class="link" href="../faq.html">FAQ</a>
+          <a class="link" href="../changelog.html">Changelog</a>
+          <a class="link" href="https://github.com/youssefahmed2017/TermQuarium">GitHub</a>
+        </div>
+        <div class="nav-actions">
+          <button class="icon-btn" id="themeToggle" aria-label="Toggle day/night theme" title="Toggle day/night theme">🌙</button>
+          <button class="icon-btn nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">☰</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero page-hero">
+    <div class="wrap">
+      <span class="eyebrow">Documentation</span>
+      <h1>Fish</h1>
+      <p class="lede">Five species, one predator, one resident that isn't quite a fish, and a personality system that applies to all of them equally.</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="tight">
+      <div class="wrap">
+        <div class="docs-shell">
+          <nav class="docs-sidebar" aria-label="Documentation">
+            <span class="kicker">Contents</span>
+            <a href="index.html">Overview</a>
+            <a href="fish.html" aria-current="page">Fish</a>
+            <a href="decorations.html">Decorations</a>
+            <a href="mechanics.html">Mechanics</a>
+            <a href="controls.html">Controls</a>
+            <a href="saves.html">Saves</a>
+            <a href="building.html">Building from source</a>
+          </nav>
+          <div class="docs-content">
+
+            <h2>Species</h2>
+            <div class="docs-table-wrap">
+              <table>
+                <thead><tr><th>Species</th><th>Price</th><th>Notes</th></tr></thead>
+                <tbody>
+                  <tr><td>Goldfish</td><td>$20</td><td>The default starter fish — steady and social.</td></tr>
+                  <tr><td>Angelfish</td><td>$40</td><td>Drifts more than it swims.</td></tr>
+                  <tr><td>Betta</td><td>$55</td><td>Territorial about favorite spots; sleeps hardest.</td></tr>
+                  <tr><td>Axolotl</td><td>$45</td><td>Not a fish — see below. Rests constantly, never schools, has real favorite foods.</td></tr>
+                  <tr><td>Shark</td><td>$500</td><td>Predator — hunts other fish instead of food.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>Every fish grows through three life stages — Baby, Juvenile, Adult — and can be sold back from its Inspector panel at any time.</p>
+
+            <h2>Axolotl</h2>
+            <p>Priced deliberately in the middle of the pack, not the cheapest or the most valuable pick — the Axolotl was never meant to be a better fish, just a different kind of resident. It still grows up and gets hungry like everything else, and it's still born with one of the six personalities below, but three small things set it apart:</p>
+            <ul>
+              <li>It has real <b>favorite foods</b> — Brine Shrimp, Bloodworms, and Worms (see <a href="mechanics.html" style="color:var(--accent);text-decoration:none;font-weight:600">Mechanics</a> for Treats) — shown right in its Inspector. Feeding it one of these earns a delighted reaction, never a bigger stat than any other treat gives.</li>
+              <li>It rests on the tank floor <em>far</em> more often, and for much longer, than any fish — with its own closed-eyes look while it does.</li>
+              <li>It never schools, even with another Axolotl — solitary by nature, unlike the fish species above.</li>
+            </ul>
+            <p>It still sleeps in containers exactly like a fish would, and can turn up as a random starter, a stress-test spawn, or an Emergency Aquarium Welfare grant, just like any other peaceful species.</p>
+
+            <h2>Personality</h2>
+            <p>Every fish, regardless of species, is born with exactly one of six personalities, which shapes its steering, feeding urgency, and where it chooses to sleep:</p>
+            <ul>
+              <li><b>Friendly</b> — this game's "caring" personality: follows the mouse, and drifts toward the group's average position rather than wandering off alone.</li>
+              <li><b>Explorer</b> — patrols constantly, changing direction far more often than the others in a steady, wide-ranging sweep.</li>
+              <li><b>Shy</b> — flees once the mouse gets close, hiding behind the nearest decoration if one's available.</li>
+              <li><b>Greedy</b> — chases food noticeably faster (1.6× speed) than everyone else.</li>
+              <li><b>Lazy</b> — a reduced base speed from the moment it's born, and changes direction far less often.</li>
+              <li><b>Playful</b> — changes direction often <em>and</em> varies its speed wildly, in bursts of energy rather than Explorer's steady patrol; also gets an extra relationship boost out of successfully waking a friend up.</li>
+            </ul>
+            <p><b>Sleepy</b> is separate from all six above — an independent trait rolled once at birth alongside the personality, so a fish can be, say, Greedy <em>and</em> Sleepy at once. A normal wake-up attempt practically never works on a Sleepy fish; see <a href="mechanics.html" style="color:var(--accent);text-decoration:none;font-weight:600">Mechanics</a> for how wake-ups actually resolve.</p>
+
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Built with <a href="https://github.com/youssefahmed2017/cozy_tui">Cozy TUI</a> · © 2026 Youssef Ahmed</span>
+      <span><a href="https://github.com/youssefahmed2017/TermQuarium">GitHub</a></span>
+    </div>
+  </footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

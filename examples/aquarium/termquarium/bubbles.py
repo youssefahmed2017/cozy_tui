@@ -39,13 +39,17 @@ class BubbleField(Widget):
     beyond a shared glyph/color), so one field widget owning many of them
     is both simpler and lighter than 40 extra Widget instances would be.
     `enabled` is a zero-arg callable (not a plain bool) so Settings' toggle
-    takes effect immediately without this widget needing to be rebuilt."""
+    takes effect immediately without this widget needing to be rebuilt.
+    `paused` (also a zero-arg callable, defaulting to "never paused") is
+    main()'s Pause menu -- existing bubbles freeze in place and no new ones
+    spawn while it's open, same freeze-not-hide treatment Fish gets."""
 
-    def __init__(self, bounds, enabled):
+    def __init__(self, bounds, enabled, paused=lambda: False):
         x0, y0, x1, y1 = bounds
-        super().__init__(0, 0, BUBBLE_STYLE, name="Bubbles")
+        super().__init__(0, 0, BUBBLE_STYLE)
         self.bounds = bounds
         self._enabled = enabled
+        self._paused = paused
         self._bubbles: list[_Bubble] = []
         self._last = time.monotonic()
         self._next_spawn = random.uniform(*BUBBLE_SPAWN_INTERVAL)
@@ -56,6 +60,10 @@ class BubbleField(Widget):
         self._last = now
         if not self._enabled():
             self._bubbles = []
+            return
+        if self._paused():
+            for b in self._bubbles:
+                canvas.write(round(b.x), round(b.y), b.glyph, self.style)
             return
 
         x0, y0, x1, y1 = self.bounds
