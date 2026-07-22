@@ -5,75 +5,21 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-07-22
+
+The theme of this release is **changing a UI after it's built**. 0.5.0 was
+strong at constructing one and thin at everything after: there was no way to
+remove a widget, hide one, grey one out, react to focus moving, or swap between
+whole views. All of that is here, at the widget level (`remove` / `visible` /
+`disabled` / `on_focus` / `on_blur`) and at the whole-view level (screens).
+
+Alongside it: inline markup for coloring *within* a line, and a `Log` widget
+that puts both to work.
+
+Nothing here is breaking — every addition is opt-in, and an app that ignores
+all of it behaves exactly as it did on 0.5.0.
 
 ### Added
-
-- **Inline markup** — `markup=True` on `Label`, `Text`, `AnimatedLabel`, and the
-  new `Log` interprets style tags inside the text. Tags name the same
-  attributes and colors `Style` already understands, so there is no separate
-  markup color table. See [docs/styling.md](docs/styling.md#inline-markup).
-
-  ```python
-  Label(2, 1, "[bold red]Error[/] connecting to [cyan]db-01[/]", markup=True)
-  ```
-
-  An unrecognized bracket group is left as literal text rather than raising or
-  vanishing, so `"[INFO] items[0]"` still reads correctly with markup on;
-  `markup.escape()` (or a backslash) forces a literal bracket that *would* have
-  parsed. `cozy_tui.markup` exposes `render`/`plain`/`escape`/`write_runs` for
-  rendering tags yourself.
-
-- **`Log` widget** — an append-only, auto-scrolling text log. A `ScrollView`
-  that manages its own rows, bounded by `max_lines` (default 1000) so a
-  long-running app's memory stays flat.
-
-  ```python
-  log = Log(2, 2, "600x160", markup=True)
-  log.log("Server started")
-  log.log("[red]connection refused[/] — retrying")
-  ```
-
-- **Screens** — `app.screen(name)` gets or creates a named set of top-level
-  widgets; `app.show(name)` switches to it. No subclass to write and no routing
-  table: `screen.add`/`dock`/`focus` are the App calls you already make.
-  See [docs/concepts.md](docs/concepts.md#screens).
-
-  ```python
-  menu = app.screen("menu"); menu.add(title_label)
-  game = app.screen("game"); game.add(board)
-  app.show("menu")
-  ```
-
-  Screens **keep their widgets** — switching away and back leaves a half-typed
-  form, a scroll position, and the focused widget as they were. The first
-  screen created adopts whatever the app already had, so screens can be added
-  to an existing app without reordering its setup. `screen.on_show(f)` /
-  `screen.on_hide(f)` fire on each switch. An app that never calls `screen()`
-  is unaffected.
-
-  `screen.on_key(key, f)` registers a binding that applies only while that
-  screen shows and **wins over** the app-wide binding for the same key — so Esc
-  can mean "back" on one screen and "quit" on another with no dispatcher in the
-  middle checking `current_screen`.
-
-- **`examples/screens/`** — a four-screen arcade shell demonstrating both
-  state preservation across switches and `on_show`/`on_hide` pausing a timer.
-
-- **`Button(height=N)`** — a button can now be more than one row tall. It paints
-  a solid block in its own style with the label on the middle row, and is
-  clickable on every row.
-
-  ```python
-  Button(0, 0, "7", width=8, height=3)   # a key you aim at, not a line of text
-  ```
-
-- **`ListView.selected_index` / `CheckList.selected_index` are settable** —
-  the public way to restore the cursor after rebuilding a list (clamped, and a
-  no-op on an empty list). Previously this meant reaching for `_index`.
-
-- **`Tabs.remove_tab(index_or_title)`** — returns the removed panel, or `None`.
-  The selection stays on the tab you were looking at wherever possible.
 
 - **Widget lifecycle** — the operations for changing a UI after it's built.
   See [docs/concepts.md](docs/concepts.md#widget-lifecycle).
@@ -102,13 +48,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   app.remove(old_card)
   ```
 
-- **`examples/deploy/`** — a release console using `State`, `Log`, and overlays
-  together. Replaces `examples/reactive/`, `examples/logs/`, and
-  `examples/overlay/`, which each demonstrated one of the three in isolation.
+- **Screens** — `app.screen(name)` gets or creates a named set of top-level
+  widgets; `app.show(name)` switches to it. No subclass to write and no routing
+  table: `screen.add`/`dock`/`focus` are the App calls you already make.
+  See [docs/concepts.md](docs/concepts.md#screens).
+
+  ```python
+  menu = app.screen("menu"); menu.add(title_label)
+  game = app.screen("game"); game.add(board)
+  app.show("menu")
+  ```
+
+  Screens **keep their widgets** — switching away and back leaves a half-typed
+  form, a scroll position, and the focused widget as they were. The first
+  screen created adopts whatever the app already had, so screens can be added
+  to an existing app without reordering its setup. `screen.on_show(f)` /
+  `screen.on_hide(f)` fire on each switch. An app that never calls `screen()`
+  is unaffected.
+
+  `screen.on_key(key, f)` registers a binding that applies only while that
+  screen shows and **wins over** the app-wide binding for the same key — so Esc
+  can mean "back" on one screen and "quit" on another with no dispatcher in the
+  middle checking `current_screen`.
+
+- **Inline markup** — `markup=True` on `Label`, `Text`, `AnimatedLabel`, and the
+  new `Log` interprets style tags inside the text. Tags name the same
+  attributes and colors `Style` already understands, so there is no separate
+  markup color table. See [docs/styling.md](docs/styling.md#inline-markup).
+
+  ```python
+  Label(2, 1, "[bold red]Error[/] connecting to [cyan]db-01[/]", markup=True)
+  ```
+
+  An unrecognized bracket group is left as literal text rather than raising or
+  vanishing, so `"[INFO] items[0]"` still reads correctly with markup on;
+  `markup.escape()` (or a backslash) forces a literal bracket that *would* have
+  parsed. `cozy_tui.markup` exposes `render`/`plain`/`escape`/`write_runs` for
+  rendering tags yourself.
+
+- **`Log` widget** — an append-only, auto-scrolling text log. A `ScrollView`
+  that manages its own rows, bounded by `max_lines` (default 1000) so a
+  long-running app's memory stays flat.
+
+  ```python
+  log = Log(2, 2, "600x160", markup=True)
+  log.log("Server started")
+  log.log("[red]connection refused[/] — retrying")
+  ```
+
+- **`Button(height=N)`** — a button can now be more than one row tall. It paints
+  a solid block in its own style with the label on the middle row, and is
+  clickable on every row.
+
+  ```python
+  Button(0, 0, "7", width=8, height=3)   # a key you aim at, not a line of text
+  ```
+
+- **`Tabs.remove_tab(index_or_title)`** — returns the removed panel, or `None`.
+  The selection stays on the tab you were looking at wherever possible.
+
+- **`ListView.selected_index` / `CheckList.selected_index` are settable** —
+  the public way to restore the cursor after rebuilding a list (clamped, and a
+  no-op on an empty list). Previously this meant reaching for `_index`.
 
 - **`Key.SPACE`** — an alias for `" "`. Space was always bindable as a plain
   character; the constant exists so looking for it beside `Key.ENTER` finds
   something.
+
+- **`examples/deploy/`** — a release console using `State`, `Log`, and overlays
+  together. Replaces `examples/reactive/`, `examples/logs/`, and
+  `examples/overlay/`, which each demonstrated one of the three in isolation.
+
+- **`examples/screens/`** — a four-screen arcade shell demonstrating both
+  state preservation across switches and `on_show`/`on_hide` pausing a timer.
 
 ### Changed
 
