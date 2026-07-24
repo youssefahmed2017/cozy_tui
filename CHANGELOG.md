@@ -5,6 +5,38 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Layout alignment & padding** — `VBox`/`HBox` gain `align`, `justify`, and
+  `padding`; `Grid` gains `padding`. All opt-in, all defaulting to the previous
+  behavior exactly. See [docs/layouts.md](docs/layouts.md#alignment--padding).
+
+  - **`align=`** — cross-axis placement of children (horizontal for `VBox`,
+    vertical for `HBox`): `"start"` (default), `"center"`, `"end"`, or
+    `"stretch"` (grow each child to the band, like `flex` on the cross axis).
+  - **`justify=`** — how leftover *main-axis* space is spread when the box is
+    docked bigger than its content: `"start"` (default), `"center"`, `"end"`,
+    `"between"`, `"around"`, `"evenly"`. It's the counterpart to `flex` for
+    fixed-size children, and is a no-op whenever a `flex` child is present
+    (that child already absorbed the slack), so the two never fight.
+  - **`padding=`** — inset from the edges: an `int` for all sides, a
+    `(vertical, horizontal)` pair, or a full `(top, right, bottom, left)` tuple.
+
+  ```python
+  HBox(0, 0, gap=2, justify="end")     # push a button row to the right
+  VBox(0, 0, align="center", padding=2)  # centered rows, 2-cell inset
+  ```
+
+### Changed
+
+- **Markup background syntax is now a `-bg` suffix**, not the `on` keyword:
+  `"[white red-bg]"` instead of `"[white on red]"`, `"[blue-bg]"` instead of
+  `"[on blue]"`. It works on every color form (`#222-bg`, `rgb(20,20,20)-bg`,
+  `color(17)-bg`) and reads as one token per color rather than a two-word
+  phrase. This only affects text authored with `markup=True`.
+
 ## [0.6.0] - 2026-07-22
 
 The theme of this release is **changing a UI after it's built**. 0.5.0 was

@@ -25,13 +25,16 @@ class MyLayout(Layout):
 Stack children **vertically**, top to bottom. Width grows to the widest child; height is the sum of child heights plus gaps.
 
 ```python
-VBox(x, y, gap=0, style=None)
+VBox(x, y, gap=0, style=None, *, padding=0, align="start", justify="start")
 ```
 
 | Parameter | Description |
 |-----------|-------------|
 | `x`, `y` | Position |
 | `gap` | Blank rows between children (default `0`) |
+| `padding` | Inset from the edges (default `0`) — see [Alignment & padding](#alignment--padding) |
+| `align` | How children line up across the **horizontal** axis: `"start"` (default), `"center"`, `"end"`, `"stretch"` |
+| `justify` | How leftover **vertical** space is distributed when docked taller than the content: `"start"` (default), `"center"`, `"end"`, `"between"`, `"around"`, `"evenly"` |
 
 **Example:**
 
@@ -55,13 +58,16 @@ box.add(vbox)
 Stack children **horizontally**, left to right. Height grows to the tallest child; width is the sum of child widths plus gaps.
 
 ```python
-HBox(x, y, gap=0, style=None)
+HBox(x, y, gap=0, style=None, *, padding=0, align="start", justify="start")
 ```
 
 | Parameter | Description |
 |-----------|-------------|
 | `x`, `y` | Position |
 | `gap` | Blank columns between children (default `0`) |
+| `padding` | Inset from the edges (default `0`) — see [Alignment & padding](#alignment--padding) |
+| `align` | How children line up across the **vertical** axis: `"start"` (default), `"center"`, `"end"`, `"stretch"` |
+| `justify` | How leftover **horizontal** space is distributed when docked wider than the content: `"start"` (default), `"center"`, `"end"`, `"between"`, `"around"`, `"evenly"` |
 
 **Example:**
 
@@ -100,12 +106,57 @@ See [`_internal/textmesser.py`](../_internal/textmesser.py) for a worked example
 
 ---
 
+### Alignment & padding
+
+`flex=` grows a child to fill space. When you'd rather leave children at their natural size and control where they sit instead, `VBox`/`HBox` take three keyword arguments — all opt-in, all defaulting to today's behavior.
+
+**`padding`** insets children from the container's edges. It's the one that also applies to `Grid`. An `int` pads every side; a `(vertical, horizontal)` pair or a full `(top, right, bottom, left)` tuple pads them separately (the same shorthand CSS uses — but it's just a constructor argument, not a stylesheet):
+
+```python
+VBox(0, 0, padding=2)              # 2 cells on every side
+VBox(0, 0, padding=(1, 4))         # 1 top/bottom, 4 left/right
+VBox(0, 0, padding=(0, 2, 1, 2))   # top, right, bottom, left
+```
+
+**`align`** is the **cross axis** — horizontal for a `VBox`, vertical for an `HBox`. It decides how a child narrower (or shorter) than its siblings lines up:
+
+```python
+VBox(0, 0, align="center")   # each row centered on the widest row
+HBox(0, 0, align="end")      # each column bottom-aligned to the tallest
+```
+
+| `align` | Effect |
+|---------|--------|
+| `"start"` (default) | Leading edge — left (`VBox`) / top (`HBox`) |
+| `"center"` | Centered in the cross-axis band |
+| `"end"` | Trailing edge — right / bottom |
+| `"stretch"` | Grow each child to fill the band (like `flex` but on the cross axis; a no-op on fixed-size widgets such as `Label`, which ignore the resize) |
+
+**`justify`** is the **main axis** — it distributes *leftover* space, so it only does anything when the box is docked bigger than its content (and no `flex` child is present to eat that space first; when one is, `justify` is simply a no-op, so the two never fight):
+
+```python
+buttons = HBox(0, 0, gap=2, justify="end")   # push a button row to the right
+buttons.add(cancel); buttons.add(ok)
+app.dock(buttons, "bottom")
+```
+
+| `justify` | Effect |
+|-----------|--------|
+| `"start"` (default) | Packed at the leading edge |
+| `"center"` | Packed, centered |
+| `"end"` | Packed at the trailing edge |
+| `"between"` | First and last flush to the edges, equal gaps between |
+| `"around"` | Equal space around each child (half-size gaps at the ends) |
+| `"evenly"` | Equal space everywhere, ends included |
+
+---
+
 ### `Grid`
 
 Arrange children in a **fixed number of columns**, filling left to right, top to bottom. Column widths are sized to the widest child in each column; row heights to the tallest child in each row.
 
 ```python
-Grid(x, y, cols, gap_x=1, gap_y=0, style=None)
+Grid(x, y, cols, gap_x=1, gap_y=0, style=None, *, padding=0)
 ```
 
 | Parameter | Description |
@@ -114,6 +165,7 @@ Grid(x, y, cols, gap_x=1, gap_y=0, style=None)
 | `cols` | Number of columns |
 | `gap_x` | Horizontal gap between columns (default `1`) |
 | `gap_y` | Vertical gap between rows (default `0`) |
+| `padding` | Inset from the edges (default `0`) — see [Alignment & padding](#alignment--padding). `align`/`justify` don't apply to `Grid`. |
 
 **Example:**
 

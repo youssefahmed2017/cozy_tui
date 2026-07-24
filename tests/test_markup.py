@@ -41,9 +41,22 @@ def test_several_words_in_one_tag_combine():
     assert (text, fg, styles) == ("Error", "red", ("bold",))
 
 
-def test_on_sets_the_background():
-    (_text, fg, bg, _styles), = styled("[white on red]bad[/]")
+def test_a_bg_suffix_sets_the_background():
+    (_text, fg, bg, _styles), = styled("[white red-bg]bad[/]")
     assert (fg, bg) == ("white", "red_bg")
+
+
+def test_a_bg_suffix_works_on_every_color_form():
+    # A bare color name gets Style's internal "_bg" suffix; the self-describing
+    # forms (#hex, rgb(), color()) are kept verbatim, same as Style(bg=...).
+    for tag, bg in [
+        ("[blue-bg]", "blue_bg"),
+        ("[#222-bg]", "#222"),
+        ("[rgb(20, 20, 20)-bg]", "rgb(20,20,20)"),
+        ("[color(17)-bg]", "color(17)"),
+    ]:
+        (_text, fg, got_bg, _styles), = styled(f"{tag}x[/]")
+        assert (fg, got_bg) == (None, bg)
 
 
 def test_tags_nest_and_inherit_the_enclosing_style():

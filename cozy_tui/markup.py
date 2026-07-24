@@ -10,7 +10,10 @@ understands — there is no separate markup color table::
 
     [red]            [bold]            [bold red]
     [#ff8800]        [rgb(255,136,0)]  [color(33)]
-    [on blue]        [white on red]    [dim italic bright_black]
+    [blue-bg]        [white red-bg]    [dim italic bright_black]
+
+A background is any color with a ``-bg`` suffix (``red-bg``, ``#222-bg``,
+``rgb(20,20,20)-bg``); a bare color is a foreground.
 
 ``[/]`` closes the most recent tag; ``[/red]`` does the same and reads better
 when tags are nested. Tags nest, and an unclosed one simply runs to the end of
@@ -52,10 +55,11 @@ def _is_color(word: str) -> bool:
 
 
 def _parse_tag(body: str, top: Style) -> Style | None:
-    """Resolve a tag body ("bold red on blue") against the enclosing style.
+    """Resolve a tag body ("bold red blue-bg") against the enclosing style.
 
-    Returns the style to push, or ``None`` if this isn't a tag at all — in
-    which case the caller emits the original ``[...]`` as literal text.
+    A word is a style name, a foreground color, or a ``<color>-bg`` background;
+    returns the style to push, or ``None`` if this isn't a tag at all — in which
+    case the caller emits the original ``[...]`` as literal text.
     """
     # "rgb(255, 0, 0)" contains spaces that aren't token separators; collapse
     # them so the split below sees one word.
@@ -66,16 +70,12 @@ def _parse_tag(body: str, top: Style) -> Style | None:
 
     fg, bg = top.fg, top.raw_bg
     styles = list(top.styles)
-    expect_bg = False
     for word in words:
-        if word == "on":
-            if expect_bg:  # "on on"
+        if word.endswith("-bg"):
+            color = word[:-3]
+            if not _is_color(color):
                 return None
-            expect_bg = True
-        elif expect_bg:
-            if not _is_color(word):
-                return None
-            bg, expect_bg = word, False
+            bg = color
         elif word in _ST:
             if word not in styles:
                 styles.append(word)
@@ -83,8 +83,6 @@ def _parse_tag(body: str, top: Style) -> Style | None:
             fg = word
         else:
             return None
-    if expect_bg:  # trailing "on" with nothing after it
-        return None
     return Style(fg=fg, bg=bg, styles=styles)
 
 

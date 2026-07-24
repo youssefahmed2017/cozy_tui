@@ -8,13 +8,14 @@ class Grid(Layout):
     in each column/row respectively.
     """
 
-    def __init__(self, x, y, cols, gap_x=1, gap_y=0, style=None):
-        super().__init__(x, y, style)
+    def __init__(self, x, y, cols, gap_x=1, gap_y=0, style=None, *, padding=0):
+        super().__init__(x, y, style, padding=padding)
         self.cols = cols
         self.gap_x = gap_x
         self.gap_y = gap_y
 
     def _arrange(self):
+        pt, pr, pb, pl = self._padding
         if not self.children:
             self._computed_width = 0
             self._computed_height = 0
@@ -32,13 +33,13 @@ class Grid(Layout):
             row_heights[row] = max(row_heights[row], child.natural_height(1))
 
         col_x = []
-        cx = 0
+        cx = pl
         for w in col_widths:
             col_x.append(cx)
             cx += w + self.gap_x
 
         row_y = []
-        cy = 0
+        cy = pt
         for h in row_heights:
             row_y.append(cy)
             cy += h + self.gap_y
@@ -48,5 +49,5 @@ class Grid(Layout):
             child.y = row_y[i // self.cols]
             child._layout_y = 0
 
-        self._computed_width = cx - self.gap_x
-        self._computed_height = cy - self.gap_y
+        self._computed_width = cx - self.gap_x + pr
+        self._computed_height = cy - self.gap_y + pb

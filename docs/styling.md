@@ -73,8 +73,10 @@ A tag names any combination of the attributes and colors `Style` already underst
 ```
 [red]   [bold]   [bold red]   [dim italic bright_black]
 [#ff8800]   [rgb(255,136,0)]   [color(33)]
-[on blue]   [white on red]
+[blue-bg]   [white red-bg]
 ```
+
+A bare color is a foreground; add a `-bg` suffix for a background (`red-bg`, `#222-bg`, `rgb(20,20,20)-bg`).
 
 `[/]` closes the most recent tag; `[/red]` does the same and reads better when tags are nested. Tags nest and inherit the enclosing style, and an unclosed tag simply runs to the end of the string.
 

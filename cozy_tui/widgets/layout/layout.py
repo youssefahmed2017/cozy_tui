@@ -10,12 +10,27 @@ class Layout(Widget):
     updates self._computed_width / self._computed_height before drawing.
     """
 
-    def __init__(self, x, y, style=None):
+    # Cross-axis alignment (VBox: horizontal, HBox: vertical) and main-axis
+    # distribution of leftover space -- the counterpart to `flex`, for when you
+    # want children left at their natural size and the *gaps* to absorb the
+    # slack instead. Both default to today's behavior exactly.
+    _ALIGN = ("start", "center", "end", "stretch")
+    _JUSTIFY = ("start", "center", "end", "between", "around", "evenly")
+
+    def __init__(self, x, y, style=None, *, padding=0, align="start", justify="start"):
         super().__init__(x, y, style)
         self.children = []
         self._computed_width = 0
         self._computed_height = 0
         self._dirty = True
+        if align not in self._ALIGN:
+            raise ValueError(f"align must be one of {self._ALIGN}, got {align!r}")
+        if justify not in self._JUSTIFY:
+            raise ValueError(f"justify must be one of {self._JUSTIFY}, got {justify!r}")
+        # (top, right, bottom, left), inset from the arrangement region.
+        self._padding = self._norm_padding(padding)
+        self._align = align
+        self._justify = justify
         # Set by dock_resize() when this layout is docked/filled -- an
         # explicit size to report and (for VBox/HBox) distribute flex-marked
         # children's extra space within, instead of the usual shrink-to-fit
@@ -113,6 +128,64 @@ class Layout(Widget):
                 distributed += share
             extras[i] = share
         return extras
+
+    @staticmethod
+    def _norm_padding(padding):
+        """Normalize a `padding=` argument to (top, right, bottom, left): an int
+        pads every side; a 2-tuple is (vertical, horizontal); a 4-tuple is the
+        explicit sides. Mirrors CSS shorthand, but it's just a constructor
+        argument -- no stylesheet, no cascade."""
+        if isinstance(padding, int):
+            return (padding, padding, padding, padding)
+        p = tuple(padding)
+        if len(p) == 2:
+            v, h = p
+            return (v, h, v, h)
+        if len(p) == 4:
+            return p
+        raise ValueError(
+            "padding must be an int, (vertical, horizontal), or "
+            "(top, right, bottom, left)"
+        )
+
+    def _cross_place(self, size, extent, lead):
+        """Cross-axis placement per self._align: returns (final_size, position)
+        for a child of cross size `size` within an `extent`-wide band whose
+        leading edge sits at `lead`. Only "stretch" changes the size (grows the
+        child to fill the band -- a no-op on a fixed-size widget, which ignores
+        dock_resize); the rest just move it within the band."""
+        a = self._align
+        if a == "stretch":
+            return extent, lead
+        if a == "center":
+            return size, lead + max(0, (extent - size) // 2)
+        if a == "end":
+            return size, lead + max(0, extent - size)
+        return size, lead  # "start"
+
+    def _main_justify(self, extent, content, n):
+        """Main-axis distribution per self._justify: returns (leading_offset,
+        extra_gap) to spread `extent - content` slack across `n` visible
+        children. Returns (0, 0) when there's no slack -- which is the case
+        whenever flex children are present, since they've already absorbed it,
+        so `flex` and `justify` compose without fighting."""
+        slack = extent - content
+        if slack <= 0 or n <= 0:
+            return 0, 0
+        j = self._justify
+        if j == "center":
+            return slack // 2, 0
+        if j == "end":
+            return slack, 0
+        if j == "between":
+            return (0, slack // (n - 1)) if n > 1 else (0, 0)
+        if j == "around":
+            gap = slack // n
+            return gap // 2, gap
+        if j == "evenly":
+            gap = slack // (n + 1)
+            return gap, gap
+        return 0, 0  # "start"
 
     def draw(self, canvas):
         if self._dirty:

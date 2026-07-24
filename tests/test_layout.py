@@ -292,3 +292,167 @@ def test_layout_contains_uses_the_docked_size():
     app._apply_docks()
     # far outside the single child's own tiny footprint, but inside the docked slice
     assert vbox.contains(app.cols - 1, app.rows - 1)
+
+
+# ── padding ───────────────────────────────────────────────────────────────────
+
+
+def test_padding_insets_children_and_grows_the_vbox():
+    vbox = VBox(0, 0, padding=2)
+    vbox.add(Label(0, 0, "a"))  # w 1
+    vbox.add(Label(0, 0, "bb"))  # w 2
+    vbox.natural_height(1)  # force _arrange()
+    assert (vbox.children[0].x, vbox.children[0].y) == (2, 2)  # inset by (left, top)
+    assert vbox.children[1].y == 3
+    assert vbox.natural_width(1) == 2 + 2 + 2  # widest child + left + right
+    assert vbox.natural_height(1) == 2 + 2 + 2  # two rows + top + bottom
+
+
+def test_padding_two_tuple_is_vertical_horizontal():
+    vbox = VBox(0, 0, padding=(1, 3))
+    vbox.add(Label(0, 0, "a"))
+    vbox.natural_height(1)
+    assert (vbox.children[0].x, vbox.children[0].y) == (3, 1)
+    assert vbox.natural_width(1) == 1 + 3 + 3
+    assert vbox.natural_height(1) == 1 + 1 + 1
+
+
+def test_padding_four_tuple_is_top_right_bottom_left():
+    vbox = VBox(0, 0, padding=(1, 2, 3, 4))
+    vbox.add(Label(0, 0, "a"))
+    vbox.natural_height(1)
+    assert (vbox.children[0].x, vbox.children[0].y) == (4, 1)  # left, top
+    assert vbox.natural_width(1) == 1 + 4 + 2  # child + left + right
+    assert vbox.natural_height(1) == 1 + 1 + 3  # child + top + bottom
+
+
+def test_padding_insets_the_grid():
+    grid = Grid(0, 0, cols=2, gap_x=1, gap_y=0, padding=2)
+    for ch in "abcd":
+        grid.add(Label(0, 0, ch))
+    grid.natural_width(1)
+    assert (grid.children[0].x, grid.children[0].y) == (2, 2)
+    # 2 cols of width 1 + 1 gap between, plus left+right padding
+    assert grid.natural_width(1) == (1 + 1 + 1) + 2 + 2
+
+
+def test_padding_rejects_a_bad_shape():
+    import pytest
+
+    with pytest.raises(ValueError):
+        VBox(0, 0, padding=(1, 2, 3))
+
+
+# ── cross-axis alignment ──────────────────────────────────────────────────────
+
+
+def test_vbox_align_center_centers_narrow_children_in_the_widest():
+    vbox = VBox(0, 0, align="center")
+    vbox.add(Label(0, 0, "a"))  # w 1
+    vbox.add(Label(0, 0, "wiiide"))  # w 6
+    vbox.natural_height(1)
+    assert vbox.children[0].x == (6 - 1) // 2  # centered within the 6-wide band
+    assert vbox.children[1].x == 0
+
+
+def test_vbox_align_end_right_aligns_children():
+    vbox = VBox(0, 0, align="end")
+    vbox.add(Label(0, 0, "a"))  # w 1
+    vbox.add(Label(0, 0, "wiiide"))  # w 6
+    vbox.natural_height(1)
+    assert vbox.children[0].x == 6 - 1
+    assert vbox.children[1].x == 0
+
+
+def test_vbox_align_stretch_grows_children_to_the_docked_width():
+    app = make_app()  # 80 cols
+    vbox = VBox(0, 0, align="stretch")
+    inner = VBox(0, 0)  # honors dock_resize, unlike a bare Label
+    inner.add(Label(0, 0, "x"))
+    vbox.add(inner)
+    app.dock(vbox, "fill")
+    app._apply_docks()
+    vbox.natural_width(app.SCALE)  # force _arrange()
+    assert inner.natural_width(1) == app.cols
+
+
+def test_hbox_align_center_centers_short_children_in_the_tallest():
+    hbox = HBox(0, 0, align="center")
+    tall = VBox(0, 0)
+    for _ in range(3):
+        tall.add(Label(0, 0, "t"))  # natural height 3
+    hbox.add(Label(0, 0, "a"))  # height 1
+    hbox.add(tall)
+    hbox.natural_width(1)
+    assert hbox.children[0].y == (3 - 1) // 2  # centered within the 3-tall band
+    assert hbox.children[1].y == 0
+
+
+# ── main-axis distribution (justify) ──────────────────────────────────────────
+
+
+def _docked(layout, w, h):
+    layout.dock_resize(w, h, 1)
+    layout.natural_height(1)  # force _arrange() at the docked size
+    return layout
+
+
+def test_vbox_justify_center_offsets_the_whole_stack():
+    vbox = VBox(0, 0)
+    vbox.add(Label(0, 0, "a"))
+    vbox.add(Label(0, 0, "b"))
+    vbox._justify = "center"
+    _docked(vbox, 10, 10)  # 2 rows of content, 8 rows of slack
+    assert vbox.children[0].y == 4  # slack // 2
+    assert vbox.children[1].y == 5
+
+
+def test_vbox_justify_end_pushes_the_stack_to_the_bottom():
+    vbox = VBox(0, 0, justify="end")
+    vbox.add(Label(0, 0, "a"))
+    vbox.add(Label(0, 0, "b"))
+    _docked(vbox, 10, 10)
+    assert vbox.children[0].y == 8
+    assert vbox.children[1].y == 9
+
+
+def test_vbox_justify_between_spreads_the_gap_edge_to_edge():
+    vbox = VBox(0, 0, justify="between")
+    vbox.add(Label(0, 0, "a"))
+    vbox.add(Label(0, 0, "b"))
+    _docked(vbox, 10, 10)  # slack 8 across one inter-child gap
+    assert vbox.children[0].y == 0
+    assert vbox.children[1].y == 9  # last child flush with the bottom row
+
+
+def test_justify_is_a_noop_once_a_flex_child_eats_the_slack():
+    app = make_app()  # 24 rows
+    vbox = VBox(0, 0, justify="center")
+    vbox.add(Label(0, 0, "a"))
+    flexed = VBox(0, 0)
+    flexed.add(Label(0, 0, "x"))
+    vbox.add(flexed, flex=1)
+    app.dock(vbox, "fill")
+    app._apply_docks()
+    vbox.natural_height(app.SCALE)
+    # flex consumed all leftover space, so there's nothing for justify to shift.
+    assert vbox.children[0].y == 0
+
+
+def test_hbox_justify_center_offsets_along_the_horizontal_axis():
+    hbox = HBox(0, 0, justify="center")
+    hbox.add(Label(0, 0, "a"))  # w 1
+    hbox.add(Label(0, 0, "b"))  # w 1
+    hbox.dock_resize(10, 3, 1)
+    hbox.natural_width(1)
+    assert hbox.children[0].x == 4  # (10 - 2) // 2
+    assert hbox.children[1].x == 5
+
+
+def test_align_and_justify_reject_bad_values():
+    import pytest
+
+    with pytest.raises(ValueError):
+        VBox(0, 0, align="middle")
+    with pytest.raises(ValueError):
+        VBox(0, 0, justify="spread")
