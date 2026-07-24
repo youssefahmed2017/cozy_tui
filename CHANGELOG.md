@@ -46,6 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `color(17)-bg`) and reads as one token per color rather than a two-word
   phrase. This only affects text authored with `markup=True`.
 
+### Fixed
+
+- **A top/bottom/left/right-docked `VBox`/`HBox`/`Grid` could get stranded
+  collapsed.** A dock band is sized `min(natural_size, remaining_space)`, so a
+  layout pass made while the container was momentarily too small (a terminal
+  resized tiny, or an early frame before the real size was known) clamped the
+  band, and the layout then reported that clamped size as its natural size —
+  so the next pass stayed clamped and it never grew back, down to zero height.
+  A docked layout now reports its content size as a floor, so the band recovers
+  once space frees up.
+
 ## [0.6.0] - 2026-07-22
 
 The theme of this release is **changing a UI after it's built**. 0.5.0 was

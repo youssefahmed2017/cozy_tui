@@ -1,4 +1,5 @@
 from cozy_tui import App, Style
+from cozy_tui._dock import dock_layout
 from cozy_tui.widgets import Grid, HBox, Label, VBox
 
 
@@ -497,3 +498,43 @@ def test_align_justify_setters_validate():
         v.align = "middle"
     with pytest.raises(ValueError):
         v.justify = "spread"
+
+
+# ── a clamped dock band must not strand the layout collapsed ──────────────────
+
+
+def test_a_docked_layout_reports_its_content_floor_not_a_clamped_target():
+    # Regression: a dock band is sized min(natural_size, remaining_space), so a
+    # layout pass made while the container is momentarily too small clamps the
+    # band and dock_resize pins _target to that clamp. natural_* must report the
+    # content floor, not the pinned value, or the band stays collapsed forever.
+    v = VBox(0, 0)
+    v.add(Label(0, 0, "row"))  # content height 1
+    v.dock_resize(20, 0, 1)  # a band clamped to zero height
+    assert v.natural_height(1) == 1  # content floor, not the pinned 0
+    assert v.natural_width(1) == 20  # cross axis still reports the stretch
+
+    h = HBox(0, 0)
+    h.add(Label(0, 0, "wide"))  # content width 4
+    h.dock_resize(0, 3, 1)  # a band clamped to zero width
+    assert h.natural_width(1) == 4
+    assert h.natural_height(1) == 3
+
+
+def test_a_clamped_bottom_dock_recovers_after_the_screen_grows():
+    # The same bug end-to-end through the real dock path: three stacked bands
+    # that don't all fit at first, then do once the rectangle grows.
+    header = VBox(0, 0)
+    footer = VBox(0, 0)
+    for _ in range(3):
+        header.add(Label(0, 0, "x"))  # height 3
+        footer.add(Label(0, 0, "x"))  # height 3
+    bar = VBox(0, 0)
+    bar.add(Label(0, 0, "x"))  # height 1
+    items = [(header, "top", 0), (footer, "bottom", 0), (bar, "bottom", 0)]
+
+    dock_layout(items, 0, 0, 80, 5, 1)  # only 5 rows: header+footer eat it all
+    assert bar._dock_rect[3] == 0  # the bar is clamped to zero this pass
+
+    dock_layout(items, 0, 0, 80, 20, 1)  # screen grows
+    assert bar._dock_rect[3] == 1  # ...and the bar comes back, not stuck at 0

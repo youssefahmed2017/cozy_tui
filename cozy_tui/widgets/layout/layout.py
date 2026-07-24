@@ -94,21 +94,38 @@ class Layout(Widget):
     def dock_resize(self, w, h, scale) -> None:
         """Grow to fill the assigned slice (App.dock()/Box.dock()) -- unlike
         the default shrink-to-fit-children size, a docked/filled layout
-        reports exactly this size from then on, and (VBox/HBox only, see
-        their own `_arrange()`) redistributes any space beyond what its
+        reports this size from then on (but never smaller than its content
+        needs -- see `_display_width`/`_display_height`), and (VBox/HBox only,
+        see their own `_arrange()`) redistributes any space beyond what its
         children naturally need to whichever children were added with
         `flex=`."""
         self._target_w = w
         self._target_h = h
         self._dirty = True
 
+    # A docked/filled layout reports its assigned target size -- but never less
+    # than its content actually needs. The max() is load-bearing: a top/bottom
+    # (or left/right) dock sizes its band as min(natural_size, remaining_space),
+    # so a single layout pass made while the container is momentarily too small
+    # -- a terminal resized tiny, or an early frame before the real size is
+    # known -- clamps the band, and dock_resize pins _target to that clamp.
+    # Since natural_* then reports the pinned value, the *next* pass computes
+    # min(pinned, remaining) and stays clamped: the layout is stranded collapsed
+    # (down to zero height) even after space frees up. Reporting the content
+    # floor lets the band grow back on the next pass. In the normal case a band
+    # dock's target already equals its content and a fill dock's target is
+    # larger, so max() changes nothing; it only ever rescues the clamped case.
     @property
     def _display_width(self) -> int:
-        return self._target_w if self._target_w is not None else self._computed_width
+        if self._target_w is None:
+            return self._computed_width
+        return max(self._target_w, self._computed_width)
 
     @property
     def _display_height(self) -> int:
-        return self._target_h if self._target_h is not None else self._computed_height
+        if self._target_h is None:
+            return self._computed_height
+        return max(self._target_h, self._computed_height)
 
     def natural_width(self, scale):
         if self._dirty:
