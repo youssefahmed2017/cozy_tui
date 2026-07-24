@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from cozy_tui import App, Style
+from cozy_tui import App, State, Style
 from cozy_tui.events import Key
 from cozy_tui.widgets import Box, Button, HBox, Label, VBox
 
@@ -14,8 +14,14 @@ from cozy_tui.widgets import Box, Button, HBox, Label, VBox
 app = App(full=True, size=None, style=Style(fg="white", bg="black"), title="CALCULATOR")
 
 # ── state ─────────────────────────────────────────────────────────────────────
+# The two display lines are States. The actions below only ever set these; the
+# Labels are bound to them (see the layout section) and repaint themselves, so
+# there's no `label.text = ...` plumbing threaded through every handler.
 
-_expr = ""  # expression being built
+expr_text = State("")  # the small grey expression line
+result_text = State("0")  # the big green result line
+
+_expr = ""  # expression being built (logic, distinct from what's displayed)
 _just_evaluated = False  # True right after = was pressed
 
 # ── layout ───────────────────────────────────────────────────────────────────
@@ -36,8 +42,8 @@ box = Box(
     title=" CALCULATOR ",
 )
 
-lbl_expr = Label(2, 2, " ", style=Style(fg="bright_black"))
-lbl_result = Label(2, 3, "0", style=Style(fg="bright_green", styles=["bold"]))
+lbl_expr = Label(2, 2, expr_text, style=Style(fg="bright_black"))
+lbl_result = Label(2, 3, result_text, style=Style(fg="bright_green", styles=["bold"]))
 lbl_sep = Label(1, 4, "─" * 35, style=Style(fg="cyan"))
 
 box.add(lbl_expr)
@@ -77,7 +83,7 @@ def push(text: str) -> None:
             _expr = ""
         _just_evaluated = False
     _expr += text
-    lbl_expr.text = _expr
+    expr_text.set(_expr)
 
 
 def do_equals() -> None:
@@ -86,12 +92,12 @@ def do_equals() -> None:
         return
     try:
         val = _eval(_expr)
-        lbl_result.text = val
+        result_text.set(val)
         _expr = val
         _just_evaluated = True
-        lbl_expr.text = ""
+        expr_text.set("")
     except Exception:
-        lbl_result.text = "Error"
+        result_text.set("Error")
         _just_evaluated = False
 
 
@@ -99,17 +105,17 @@ def do_clear() -> None:
     global _expr, _just_evaluated
     _expr = ""
     _just_evaluated = False
-    lbl_expr.text = ""
-    lbl_result.text = "0"
+    expr_text.set("")
+    result_text.set("0")
 
 
 def do_back() -> None:
     global _expr, _just_evaluated
     _just_evaluated = False
     _expr = _expr[:-1]
-    lbl_expr.text = _expr
+    expr_text.set(_expr)
     if not _expr:
-        lbl_result.text = "0"
+        result_text.set("0")
 
 
 # ── button factory ────────────────────────────────────────────────────────────

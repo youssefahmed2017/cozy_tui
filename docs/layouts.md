@@ -149,6 +149,8 @@ app.dock(buttons, "bottom")
 | `"around"` | Equal space around each child (half-size gaps at the ends) |
 | `"evenly"` | Equal space everywhere, ends included |
 
+All three are also **properties** — `vbox.align = "center"`, `vbox.padding = 2` — and reassigning one re-lays-out on the next frame, just like changing `gap`. (Cozy DevTools' Elements panel shows and edits them live.)
+
 ---
 
 ### `Grid`

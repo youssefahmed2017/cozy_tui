@@ -11,7 +11,7 @@ from cozy_tui._devtools_edit import (
     parse_snippet,
 )
 from cozy_tui.events import Key
-from cozy_tui.widgets import Box, Checkbox, Label, ProgressBar
+from cozy_tui.widgets import Box, Checkbox, Label, ProgressBar, VBox
 
 from tests.test_devtools import make_ui
 
@@ -52,6 +52,21 @@ def test_snippet_uses_raw_bg_so_it_round_trips():
 def test_a_clean_round_trip_reports_no_changes():
     label = Label(1, 1, "same")
     assert apply_snippet(label, build_snippet(label)) == []
+
+
+def test_snippet_shows_layout_align_justify_and_padding():
+    snippet = build_snippet(VBox(0, 0, gap=1, align="center", justify="end", padding=2))
+    assert "align='center'," in snippet
+    assert "justify='end'," in snippet
+    assert "padding=(2, 2, 2, 2)," in snippet  # the tuple field round-trips
+
+
+def test_editing_a_layouts_align_and_padding_applies_live():
+    v = VBox(0, 0, gap=1)
+    changed = apply_snippet(v, "VBox(x=0, y=0, align='end', padding=(1, 0, 1, 0), gap=1)")
+    assert set(changed) == {"align", "padding"}
+    assert v.align == "end"
+    assert v.padding == (1, 0, 1, 0)
 
 
 # ── parsing ──────────────────────────────────────────────────────────────────

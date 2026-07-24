@@ -39,6 +39,40 @@ class Layout(Widget):
         self._target_w: int | None = None
         self._target_h: int | None = None
 
+    # Public, mutable, and reactive: assigning re-dirties the cached arrangement
+    # so the change lands next frame -- same as reassigning `gap`, `text`, etc.
+    # This is also what lets Cozy DevTools' Elements panel show and edit them.
+    @property
+    def align(self):
+        return self._align
+
+    @align.setter
+    def align(self, value):
+        if value not in self._ALIGN:
+            raise ValueError(f"align must be one of {self._ALIGN}, got {value!r}")
+        self._align = value
+        self._dirty = True
+
+    @property
+    def justify(self):
+        return self._justify
+
+    @justify.setter
+    def justify(self, value):
+        if value not in self._JUSTIFY:
+            raise ValueError(f"justify must be one of {self._JUSTIFY}, got {value!r}")
+        self._justify = value
+        self._dirty = True
+
+    @property
+    def padding(self):
+        return self._padding
+
+    @padding.setter
+    def padding(self, value):
+        self._padding = self._norm_padding(value)
+        self._dirty = True
+
     def add(self, widget, flex: int = 0):
         """Append widget. flex=0 (default) is today's fixed-natural-size
         behavior. flex=N>0 marks it to share, proportional to N against

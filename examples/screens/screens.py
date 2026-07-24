@@ -69,13 +69,18 @@ menu = app.screen("menu")
 menu.dock(Label(0, 0, "COZY ARCADE", style=TITLE), "top", margin=1)
 menu.dock(footer_for("menu", "Enter/click a button · Esc quits"), "bottom", margin=1)
 
-menu_buttons = VBox(4, 3, gap=1)
+# A docked VBox with align/justify centers the button column in whatever space
+# is left between the title and footer — no manual x/y, and it re-centers on
+# resize. Docking is what makes `align` visible for equal-width buttons: the
+# cross-axis extent becomes the full width, so the column gets centered in it
+# rather than just within its own widest child.
+menu_buttons = VBox(0, 0, gap=1, align="center", justify="center")
 menu_buttons.add(Button(0, 0, "Play", width=14).on_click(lambda _b: start_round()))
 menu_buttons.add(
     Button(0, 0, "Settings", width=14).on_click(lambda _b: app.show("settings"))
 )
 menu_buttons.add(Button(0, 0, "Quit", width=14).on_click(lambda _b: app.quit()))
-menu.add(menu_buttons)
+menu.dock(menu_buttons, "fill")
 menu.focus(menu_buttons.children[0])
 
 
@@ -186,15 +191,18 @@ over = app.screen("over")
 over.dock(Label(0, 0, "ROUND OVER", style=TITLE), "top", margin=1)
 over.dock(footer_for("over", "Enter/click · Esc = menu"), "bottom", margin=1)
 
-result = Label(4, 2, "")
-over.add(result)
-over_buttons = VBox(4, 4, gap=1)
-over_buttons.add(
+# The result line and the two buttons live in one centered column. `padding`
+# adds a little breathing room around the group; align/justify center it the
+# same way the menu is centered.
+over_content = VBox(0, 0, gap=1, align="center", justify="center", padding=2)
+result = Label(0, 0, "")
+over_content.add(result)
+over_content.add(
     Button(0, 0, "Play again", width=14).on_click(lambda _b: start_round())
 )
-over_buttons.add(Button(0, 0, "Menu", width=14).on_click(lambda _b: app.show("menu")))
-over.add(over_buttons)
-over.focus(over_buttons.children[0])
+over_content.add(Button(0, 0, "Menu", width=14).on_click(lambda _b: app.show("menu")))
+over.dock(over_content, "fill")
+over.focus(over_content.children[1])
 
 
 def show_over() -> None:

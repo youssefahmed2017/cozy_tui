@@ -55,6 +55,8 @@ _FIELDS = (
     "width",
     "height",
     "align",
+    "justify",
+    "padding",
     "gap",
 )
 
@@ -64,6 +66,17 @@ _FIELDS = (
 EDITABLE = frozenset(_POSITION + _FIELDS + ("style",))
 
 _LITERAL_TYPES = (str, int, float, bool)
+
+
+def _is_displayable(value: Any) -> bool:
+    """Whether a field value can be shown as an editable literal. Plain scalars
+    and ``None`` qualify; so does a tuple of them (that's `padding`, the one
+    non-scalar field), since ``ast.literal_eval`` round-trips it faithfully."""
+    if value is None or isinstance(value, _LITERAL_TYPES):
+        return True
+    if isinstance(value, tuple):
+        return all(isinstance(v, _LITERAL_TYPES) for v in value)
+    return False
 
 
 # ── building the snippet ─────────────────────────────────────────────────────
@@ -76,7 +89,7 @@ def snippet_fields(widget) -> list[tuple[str, Any]]:
         if not hasattr(widget, name):
             continue
         value = getattr(widget, name)
-        if isinstance(value, _LITERAL_TYPES) or value is None:
+        if _is_displayable(value):
             fields.append((name, value))
     return fields
 

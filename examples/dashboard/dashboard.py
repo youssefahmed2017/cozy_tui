@@ -22,9 +22,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from cozy_tui import App, Style
+from cozy_tui import App, State, Style
 from cozy_tui.events import Key
-from cozy_tui.widgets import Box, Button, Label, Log, ProgressBar, Spinner, Tabs
+from cozy_tui.widgets import Box, Button, HBox, Label, Log, ProgressBar, Spinner, Tabs
 
 ACCENT = Style(fg="bright_cyan")
 MUTED = Style(fg="bright_black")
@@ -42,13 +42,35 @@ FILES = [
 def main():
     app = App(full=True, style=BG, title="Cozy Dashboard")
 
+    # The header's content is an HBox filling the box, split by `justify`: a
+    # description on the left, a live "N / N downloaded" status on the right. The
+    # status is a State (see the footer) — this Label is bound to it and repaints
+    # itself whenever the download loop sets it.
+    status = State(f"0 / {len(FILES)} downloaded")
     header = Box(0, 0, "10x10", title="⬇ Cozy Downloader", border="rounded", style=BG)
-    header.add(Label(1, 1, "Tabs · Log · ProgressBar · Spinner · toasts", MUTED))
+    header_bar = HBox(0, 0, align="center", justify="between", padding=(0, 1))
+    header_bar.add(Label(0, 0, "Tabs · Log · ProgressBar · Spinner · toasts", MUTED))
+    header_bar.add(Label(0, 0, status, ACCENT))
+    header.dock(header_bar, "fill")
     app.dock(header, "top")
 
+    # The footer's content is likewise a filled HBox split by `justify`: the key
+    # hints on the left, the controls (a spinner + Start) on the right, kept on
+    # one line by `align="center"`. The spinner is only `visible` while a batch
+    # runs — a hidden child collapses its own gap, so Start slides left to meet
+    # the edge when there's no spinner.
     footer = Box(0, 0, "10x10", title="keys", border="rounded", style=BG)
-    hint = Label(1, 1, "Tab: focus · ←/→: switch tab · Enter: Start · Esc: quit", MUTED)
-    footer.add(hint)
+    spinner = Spinner(0, 0, label="downloading…")
+    spinner.visible = False
+    start_btn = Button(0, 0, "Start")
+    controls = HBox(0, 0, gap=2, align="center")
+    controls.add(spinner)
+    controls.add(start_btn)
+    hint = Label(0, 0, "Tab: focus · ←/→: switch tab · Enter: Start · Esc: quit", MUTED)
+    footer_bar = HBox(0, 0, gap=2, align="center", justify="between", padding=(0, 1))
+    footer_bar.add(hint)
+    footer_bar.add(controls)
+    footer.dock(footer_bar, "fill")
     app.dock(footer, "bottom")
 
     tabs = Tabs(0, 0, "10x10", accent="bright_cyan")
@@ -67,8 +89,6 @@ def main():
         downloads_panel.add(bar)
         downloads.append({"name": name, "bar": bar, "speed": speed, "done": False})
 
-    start_row = 2 + len(FILES)
-    spinner = Spinner(12, start_row, label="downloading…")
     state = {"running": False, "timer": None}
 
     # ── Activity tab: a Log ─────────────────────────────────────────────────────
@@ -103,8 +123,7 @@ def main():
             app.cancel(state["timer"])
             state["timer"] = None
         state["running"] = False
-        if spinner in downloads_panel.children:
-            downloads_panel.children.remove(spinner)
+        spinner.visible = False
         add_log("all downloads complete", "bright_green")
         app.toast("All downloads complete 🎉", level="success")
 
@@ -118,6 +137,7 @@ def main():
                 d["done"] = True
                 add_log(f"completed {d['name']}", "bright_green")
                 app.toast(f"{d['name']} finished", level="success")
+        status.set(f"{sum(d['done'] for d in downloads)} / {len(downloads)} downloaded")
         if all(d["done"] for d in downloads):
             finish()
 
@@ -128,14 +148,14 @@ def main():
             for d in downloads:
                 d["done"] = False
                 d["bar"].set(0)
+            status.set(f"0 / {len(downloads)} downloaded")
         state["running"] = True
-        if spinner not in downloads_panel.children:
-            downloads_panel.add(spinner)
+        spinner.visible = True
         add_log("started downloads", "bright_cyan")
         app.toast(f"Starting {len(downloads)} downloads…", level="info")
         state["timer"] = app.every(0.12, tick)
 
-    downloads_panel.add(Button(1, start_row, "Start").on_click(start))
+    start_btn.on_click(start)
 
     def on_tab(index):
         hint.text = {

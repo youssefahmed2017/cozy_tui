@@ -456,3 +456,44 @@ def test_align_and_justify_reject_bad_values():
         VBox(0, 0, align="middle")
     with pytest.raises(ValueError):
         VBox(0, 0, justify="spread")
+
+
+# ── the properties are public, mutable, and reactive ──────────────────────────
+
+
+def test_align_justify_padding_are_readable_properties():
+    v = VBox(0, 0, align="center", justify="end", padding=(1, 2))
+    assert v.align == "center"
+    assert v.justify == "end"
+    assert v.padding == (1, 2, 1, 2)  # normalized to (top, right, bottom, left)
+
+
+def test_reassigning_align_re_arranges_next_measure():
+    v = VBox(0, 0)
+    v.add(Label(0, 0, "a"))  # w 1
+    v.add(Label(0, 0, "wiiide"))  # w 6
+    v.natural_height(1)
+    assert v.children[0].x == 0  # start (default)
+    v.align = "end"
+    v.natural_height(1)  # setter re-dirtied, so this re-arranges
+    assert v.children[0].x == 6 - 1
+
+
+def test_padding_setter_normalizes_and_regrows():
+    v = VBox(0, 0)
+    v.add(Label(0, 0, "a"))
+    v.natural_width(1)
+    assert v.natural_width(1) == 1
+    v.padding = 2  # int → all four sides
+    assert v.padding == (2, 2, 2, 2)
+    assert v.natural_width(1) == 1 + 2 + 2
+
+
+def test_align_justify_setters_validate():
+    import pytest
+
+    v = VBox(0, 0)
+    with pytest.raises(ValueError):
+        v.align = "middle"
+    with pytest.raises(ValueError):
+        v.justify = "spread"

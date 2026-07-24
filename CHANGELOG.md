@@ -29,8 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   VBox(0, 0, align="center", padding=2)  # centered rows, 2-cell inset
   ```
 
+  `align`, `justify`, and `padding` are also **readable/writable properties** —
+  reassigning one re-lays-out on the next frame, the same as `gap`. Cozy
+  DevTools' Elements panel shows and edits all three live.
+
 ### Changed
 
+- **Examples use the new layout controls and `State`.** `calculator`'s two
+  display lines are now `State`s the key handlers `.set()` (no more
+  `label.text =` plumbing); `screens` centers its menu with a docked
+  `align`/`justify` `VBox`; `dashboard` gains a `justify="between"` header/footer
+  bar and a `State`-bound "N / N downloaded" status.
 - **Markup background syntax is now a `-bg` suffix**, not the `on` keyword:
   `"[white red-bg]"` instead of `"[white on red]"`, `"[blue-bg]"` instead of
   `"[on blue]"`. It works on every color form (`#222-bg`, `rgb(20,20,20)-bg`,
