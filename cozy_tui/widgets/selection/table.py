@@ -1,3 +1,4 @@
+from cozy_tui.ansi import tint
 from cozy_tui.events import Key
 from cozy_tui.style import Style, selection_style
 from cozy_tui.widget import Widget
@@ -50,7 +51,9 @@ class Table(Widget):
 
     focusable = True
 
-    THUMB = "█"
+    # Horizontal scrollbar: a heavy rule for the thumb over a light one for the
+    # track -- thin like the vertical bar (widgets/_scrollbar), not a full block.
+    THUMB = "━"
     TRACK = "─"
 
     def __init__(
@@ -62,6 +65,8 @@ class Table(Widget):
         height: int | None = None,
         show_header: bool = True,
         show_border: bool = False,
+        zebra: bool = False,
+        hover: bool = False,
         style=None,
         accent="bright_cyan",
     ):
@@ -76,6 +81,11 @@ class Table(Widget):
         self.height = height
         self.show_header = show_header
         self.show_border = show_border
+        self.zebra = zebra  # tint every other data row for readability
+        self.hover = hover  # highlight the row under the mouse
+        if hover:
+            self.mouse_moves = True  # opt into MouseMove so we can track the row
+        self._hover_index: int | None = None
         self.accent = accent
         self._select_handler = None
         self._col_width_cache: list[int] | None = None
@@ -392,6 +402,29 @@ class Table(Widget):
             if self._select_handler:
                 self._select_handler(self.selected_row)
 
+    def _row_at(self, col: int | None, row: int | None) -> int | None:
+        """Data-row index under absolute ``(col, row)``, or None if the point
+        isn't over a data row."""
+        if row is None:
+            return None
+        if col is not None and not (
+            self.abs_x <= col < self.abs_x + self._viewport_width()
+        ):
+            return None
+        start = self._data_start_y()
+        offset = row - start
+        if not (0 <= offset < self._visible_rows()):
+            return None
+        idx = self._scroll_off + offset
+        return idx if 0 <= idx < len(self._rows) else None
+
+    def on_mouse_move(self, col=None, row=None) -> None:
+        if self.hover:
+            self._hover_index = self._row_at(col, row)
+
+    def on_mouse_leave(self) -> None:
+        self._hover_index = None
+
     def on_mouse_drag(self, col=None, row=None) -> None:
         if self._dragging_h_bar and col is not None:
             self._bar_scroll_to(col)
@@ -500,6 +533,30 @@ class Table(Widget):
             canvas.write(ox, y, sep, self.style)
             y += 1
 
+        # Zebra / hover styles derived from the base once per draw. Zebra nudges
+        # the row background toward the foreground a hair; hover washes it toward
+        # the accent. Both leave text color/attrs alone, and both defer to any
+        # selection or per-row style below.
+        # Tint against the table's own background, falling back to the canvas
+        # background so striping still shows when the table has no explicit
+        # style (the common case) instead of silently doing nothing.
+        base_bg = table_raw_bg or canvas.style.raw_bg
+        zebra_style = None
+        if self.zebra and base_bg:
+            toward = self.style.fg or "white"
+            zebra_style = Style(
+                fg=self.style.fg,
+                bg=tint(base_bg, toward, 0.08),
+                styles=self.style.styles,
+            )
+        hover_style = None
+        if self.hover and base_bg:
+            hover_style = Style(
+                fg=self.style.fg,
+                bg=tint(base_bg, self.accent, 0.22),
+                styles=self.style.styles,
+            )
+
         # Data rows
         for row_off in range(vis):
             idx = self._scroll_off + row_off
@@ -518,8 +575,14 @@ class Table(Widget):
             elif is_sel:
                 row_style = selection_style(dim=True)
                 highlight_col = None
+            elif hover_style is not None and idx == self._hover_index:
+                row_style = hover_style
+                highlight_col = None
             elif row.style is not None:
                 row_style = row.style
+                highlight_col = None
+            elif zebra_style is not None and idx % 2 == 1:
+                row_style = zebra_style
                 highlight_col = None
             else:
                 row_style = self.style

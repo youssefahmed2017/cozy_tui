@@ -1,7 +1,7 @@
 from cozy_tui.events import Key
-from cozy_tui.motion import Tween, ease_out
-from cozy_tui.style import Style
+from cozy_tui.motion import Tween, ease_out, now
 from cozy_tui.widget import Widget
+from cozy_tui.widgets import _scrollbar
 
 
 class ScrollView(Widget):
@@ -31,8 +31,10 @@ class ScrollView(Widget):
     focusable = True
     scrollable = True  # the App routes wheel / page keys here when focused
 
-    THUMB = "█"
-    TRACK = "│"
+    # The thin, auto-hiding edge scrollbar shared with BarChart (see
+    # widgets/_scrollbar.py). Exposed as class attrs so tests reference them.
+    THUMB = _scrollbar.THUMB
+    TRACK = _scrollbar.TRACK
 
     def __init__(
         self,
@@ -62,6 +64,9 @@ class ScrollView(Widget):
         self._max_scroll = 0
         self._bar_col = None
         self._dragging_bar = False
+        # Wall-clock time of the last scroll, driving the bar's auto-hide fade.
+        # Seeded to "now" so a freshly built view shows its bar, then fades.
+        self._bar_activity = now()
 
     # ── building ──────────────────────────────────────────────────────────────
 
@@ -86,6 +91,7 @@ class ScrollView(Widget):
     def scroll_to(self, offset):
         self._scroll = max(0, min(offset, self._max_scroll))
         self._pin_bottom = self._scroll >= self._max_scroll
+        self._bar_activity = now()  # wake the scrollbar out of its faded idle
 
     def scroll_by(self, delta):
         self.scroll_to(self._scroll + delta)
@@ -219,17 +225,17 @@ class ScrollView(Widget):
 
     def _draw_scrollbar(self, canvas, col, top, vh, content_h):
         self._bar_col = col
-        raw_bg = self.style.raw_bg
-        thumb = max(1, min(vh, round(vh * vh / content_h)))
-        span = vh - thumb
-        pos = round(span * (self._disp / self._max_scroll)) if self._max_scroll else 0
-        thumb_style = Style(fg=self.accent, bg=raw_bg)
-        track_style = Style(fg="bright_black", bg=raw_bg)
-        for r in range(vh):
-            on_thumb = pos <= r < pos + thumb
-            canvas.write(
-                col,
-                top + r,
-                self.THUMB if on_thumb else self.TRACK,
-                thumb_style if on_thumb else track_style,
-            )
+        # _disp is the eased displayed offset, so the thumb glides with a smooth
+        # scroll rather than jumping to the target row.
+        _scrollbar.draw(
+            canvas,
+            col,
+            top,
+            vh,
+            content_h,
+            self._disp,
+            self._max_scroll,
+            self.accent,
+            self.style.raw_bg,
+            self._bar_activity,
+        )

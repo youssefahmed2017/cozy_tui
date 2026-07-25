@@ -1568,7 +1568,7 @@ except Exception as exc:
 A scrollable, keyboard-navigable table with sortable columns and optional border.
 
 ```python
-Table(x, y, *, width=None, height=None, show_header=True, show_border=False, style=None, accent="bright_cyan")
+Table(x, y, *, width=None, height=None, show_header=True, show_border=False, zebra=False, hover=False, style=None, accent="bright_cyan")
 ```
 
 | Parameter | Description |
@@ -1578,7 +1578,9 @@ Table(x, y, *, width=None, height=None, show_header=True, show_border=False, sty
 | `height` | Number of visible data rows. `None` = show all rows. |
 | `show_header` | Draw the column header row (default `True`) |
 | `show_border` | Draw a border around the table (default `False`) |
-| `accent` | Color for the horizontal scrollbar thumb and the sort indicator (`▲`/`▼`) |
+| `zebra` | Tint every other data row a hair for readability (default `False`). Defers to selection and per-row styles. |
+| `hover` | Highlight the row under the mouse, washed toward `accent` (default `False`). Opts the table into mouse-move tracking. |
+| `accent` | Color for the horizontal scrollbar thumb, the sort indicator (`▲`/`▼`), and the hover-row wash |
 
 **Building the table:**
 
@@ -1688,7 +1690,7 @@ box.add(tabs)
 
 ### `ScrollView`
 
-A scrollable viewport. Add widgets whose combined height exceeds the box; only the visible slice is drawn (clipped to the viewport), with a Textual-style **scrollbar** on the right edge. Child `y` positions are in **content space** (`0` = top of the content, may exceed the viewport height).
+A scrollable viewport. Add widgets whose combined height exceeds the box; only the visible slice is drawn (clipped to the viewport), with a thin, **auto-hiding scrollbar** on the right edge — a slim right-edge bar (`▐`/`▕`) that rides at full strength while you scroll, then fades to a faint idle sliver a moment later, brightening again on the next scroll (never vanishing entirely, so it stays grabbable). Child `y` positions are in **content space** (`0` = top of the content, may exceed the viewport height).
 
 ```python
 ScrollView(x, y, size, *, autoscroll=True, scrollbar=True, smooth=True, style=None, accent="bright_cyan")

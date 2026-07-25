@@ -26,7 +26,16 @@ __all__ = [
     "lerp",
     "lerp_color",
     "Tween",
+    "now",
 ]
+
+
+def now() -> float:
+    """The monotonic clock the tweens run off, as a plain float. Reads the
+    module-global ``time`` so the test Harness's virtual clock (which rebinds
+    ``cozy_tui.motion.time``) drives non-Tween timing too -- e.g. ScrollView's
+    auto-hiding scrollbar."""
+    return time.monotonic()
 
 
 # ── easing curves (t and the return value are both in [0, 1]) ────────────────────

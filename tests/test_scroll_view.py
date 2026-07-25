@@ -152,3 +152,52 @@ def test_smooth_false_snaps_instantly():
     sv.scroll_to(10)
     app.snapshot()
     assert sv._disp == 10  # no easing when smooth=False
+
+
+# ── thin, auto-hiding scrollbar (polish) ─────────────────────────────────────
+
+
+def _thumb_fg(app, sv):
+    from cozy_tui.ansi import resolve_rgb
+
+    col = sv._bar_col
+    for r in range(sv._vh):
+        cell = app.buffer[sv.abs_y + r][col]
+        if cell.char == ScrollView.THUMB:
+            return resolve_rgb(cell.style.fg)
+    return None
+
+
+def test_scrollbar_uses_thin_edge_glyphs():
+    # a slim right-edge thumb/track, not a heavy full block
+    assert ScrollView.THUMB == "▐"
+    assert ScrollView.TRACK == "▕"
+
+
+def test_scrollbar_fades_when_idle_then_rebrightens_on_scroll():
+    from cozy_tui.testing import Harness
+
+    app = make_app()
+    sv = make_sv(app, autoscroll=False, n=40)
+    ui = Harness(app)
+    ui.compose()
+    full = _thumb_fg(app, sv)  # freshly built: full strength
+    ui.advance(2.0)  # past hold + fade
+    faded = _thumb_fg(app, sv)
+    assert full is not None and faded is not None
+    assert sum(faded) < sum(full)  # dimmer toward the background
+    sv.scroll_by(3)
+    ui.compose()
+    assert _thumb_fg(app, sv) == full  # scrolling wakes it back to full
+
+
+def test_scrollbar_never_fades_completely_away():
+    from cozy_tui.testing import Harness
+
+    app = make_app()
+    sv = make_sv(app, autoscroll=False, n=40)
+    ui = Harness(app)
+    ui.advance(5.0)  # long idle
+    # the thumb glyph is still on screen (idle floor, not gone) so it stays grabbable
+    assert _thumb_fg(app, sv) is not None
+    assert ScrollView.THUMB in app.snapshot()

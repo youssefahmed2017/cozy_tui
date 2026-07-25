@@ -294,7 +294,7 @@ def page_selection(app, box):
 
 def page_data(app, box):
     box.add(Label(2, 1, "Table:", ACCENT))
-    tbl = Table(2, 2, height=3, show_border=True)
+    tbl = Table(2, 2, height=3, show_border=True, zebra=True, hover=True)
     tbl.add_column("Package", width=12)
     tbl.add_column("Kind", width=8)
     tbl.add_column("Stars", width=7, align="right")

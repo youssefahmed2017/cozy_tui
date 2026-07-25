@@ -4,7 +4,9 @@ of horizontal bars. Both take plain numbers and both accept a
 :class:`~cozy_tui.state.State`, so a live feed is `chart.data = state` once."""
 
 from cozy_tui.events import Key
+from cozy_tui.motion import now
 from cozy_tui.widget import Widget
+from cozy_tui.widgets import _scrollbar
 
 
 def _fmt(v) -> str:
@@ -113,8 +115,9 @@ class BarChart(Widget):
 
     focusable = False
     scrollable = False  # set True per-instance once a `height` cap is given
-    THUMB = "█"
-    TRACK = "│"
+    # The same thin, auto-hiding scrollbar ScrollView uses (widgets/_scrollbar).
+    THUMB = _scrollbar.THUMB
+    TRACK = _scrollbar.TRACK
     _EIGHTHS = " ▏▎▍▌▋▊▉█"  # index 0..8 = that many eighths filled
 
     def __init__(
@@ -142,6 +145,7 @@ class BarChart(Widget):
         self._max_scroll = 0
         self._bar_col = None
         self._dragging_bar = False
+        self._bar_activity = now()  # drives the scrollbar's auto-hide fade
         # A capped chart is an interactive viewport: focusable so it can hold
         # keyboard focus, scrollable so the App routes wheel/page keys to it
         # (same contract ScrollView uses). An uncapped chart is inert, as before.
@@ -153,6 +157,7 @@ class BarChart(Widget):
     # ── scrolling (only live when `height` caps the viewport) ──────────────────
 
     def scroll_to(self, offset) -> "BarChart":
+        self._bar_activity = now()  # wake the scrollbar out of its faded idle
         self._scroll = max(0, min(offset, self._max_scroll))
         return self
 
@@ -296,20 +301,16 @@ class BarChart(Widget):
             self._bar_col = None
 
     def _draw_scrollbar(self, canvas, col, vh, content_h) -> None:
-        from cozy_tui.style import Style
-
         self._bar_col = col
-        raw_bg = self.style.raw_bg
-        thumb = max(1, min(vh, round(vh * vh / content_h)))
-        span = vh - thumb
-        pos = round(span * (self._scroll / self._max_scroll)) if self._max_scroll else 0
-        thumb_style = Style(fg=self.accent, bg=raw_bg)
-        track_style = Style(fg="bright_black", bg=raw_bg)
-        for r in range(vh):
-            on_thumb = pos <= r < pos + thumb
-            canvas.write(
-                col,
-                self.abs_y + r,
-                self.THUMB if on_thumb else self.TRACK,
-                thumb_style if on_thumb else track_style,
-            )
+        _scrollbar.draw(
+            canvas,
+            col,
+            self.abs_y,
+            vh,
+            content_h,
+            self._scroll,
+            self._max_scroll,
+            self.accent,
+            self.style.raw_bg,
+            self._bar_activity,
+        )

@@ -131,3 +131,83 @@ def test_clear_resets_col_scroll_off():
     assert tbl._col_scroll_off != 0
     tbl.clear()
     assert tbl._col_scroll_off == 0
+
+
+# ── zebra striping & hover (polish) ──────────────────────────────────────────
+
+
+def _bg(app, col, row):
+    from cozy_tui.ansi import resolve_rgb
+
+    return resolve_rgb(app.buffer[row][col].style.raw_bg)
+
+
+def make_ui_table(**kw):
+    from cozy_tui.testing import Harness
+
+    app = make_app()
+    tbl = Table(0, 0, **kw)
+    tbl.add_column("Name")
+    tbl.add_column("Qty", align="right")
+    for i in range(6):
+        tbl.add_row(f"item{i}", str(i))
+    app.add(tbl)
+    return Harness(app), tbl
+
+
+def test_zebra_is_off_by_default():
+    ui, tbl = make_ui_table()
+    ui.compose()
+    ds = tbl._data_start_y()
+    # every plain row shares the same (bare) background
+    assert _bg(ui.app, 2, ds) == _bg(ui.app, 2, ds + 1)
+
+
+def test_zebra_tints_only_the_odd_rows():
+    ui, tbl = make_ui_table(zebra=True)
+    ui.compose()
+    ds = tbl._data_start_y()
+    even = _bg(ui.app, 2, ds)  # row 0: untouched base
+    odd = _bg(ui.app, 2, ds + 1)  # row 1: tinted stripe
+    assert odd is not None and odd != even
+    assert _bg(ui.app, 2, ds + 2) == even  # row 2 back to base
+    assert _bg(ui.app, 2, ds + 3) == odd  # row 3 tinted again
+
+
+def test_hover_opts_into_mouse_moves():
+    _ui, tbl = make_ui_table(hover=True)
+    assert tbl.mouse_moves is True
+    _ui2, plain = make_ui_table()
+    assert getattr(plain, "mouse_moves", False) is False
+
+
+def test_hover_highlights_the_row_under_the_mouse():
+    ui, tbl = make_ui_table(hover=True, zebra=True)
+    ds = tbl._data_start_y()
+    ui.hover((3, ds + 2))
+    assert tbl._hover_index == 2
+    hovered = _bg(ui.app, 2, ds + 2)
+    plain = _bg(ui.app, 2, ds)
+    assert hovered is not None and hovered != plain  # washed toward the accent
+
+
+def test_hover_clears_when_the_mouse_leaves():
+    ui, tbl = make_ui_table(hover=True)
+    ds = tbl._data_start_y()
+    ui.hover((3, ds + 1))
+    assert tbl._hover_index == 1
+    ui.hover((5, ds + 999))  # below every row
+    assert tbl._hover_index is None
+
+
+def test_selection_outranks_hover_and_zebra():
+    from cozy_tui.ansi import resolve_rgb
+    from cozy_tui.style import selection_style
+
+    ui, tbl = make_ui_table(hover=True, zebra=True)
+    ui.app.focus(tbl)
+    tbl._index = 1  # select the row that would otherwise be a zebra stripe
+    tbl._hover_index = 1  # and hover it
+    ui.compose()
+    ds = tbl._data_start_y()
+    assert _bg(ui.app, 2, ds + 1) == resolve_rgb(selection_style().raw_bg)

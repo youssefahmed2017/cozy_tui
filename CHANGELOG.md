@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Thin, auto-hiding scrollbars** — the vertical scrollbar shared by
+  `ScrollView` and a capped `BarChart` is now a slim right-edge bar (`▐`/`▕`)
+  instead of a full `█` column, and it auto-hides: full strength while you
+  scroll, fading to a faint idle sliver ~1.7s later and brightening again on the
+  next scroll (never vanishing, so it stays grabbable). Factored into a shared
+  `widgets/_scrollbar.py`. `Table`'s horizontal scrollbar thumb is thinned to
+  match (`━`).
+
+- **`Table` zebra striping & hover row** — `Table(..., zebra=True)` tints every
+  other data row a hair for readability; `hover=True` highlights the row under
+  the mouse (washed toward `accent`). Both defer to selection and per-row
+  styles, and both tint against the table's background (falling back to the
+  canvas background when the table has no style of its own).
+
 - **Overlay drop shadows & entrance motion** — every overlay (toasts, tooltips,
   menus, and the modal dialogs/palettes) now fades and slides into place when it
   opens beneath a soft drop shadow that deepens as it settles, so it reads as floating above
