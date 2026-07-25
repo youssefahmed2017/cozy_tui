@@ -45,6 +45,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box.add(Rule(3, 13, title="Recent Records")) # divider + header in one widget
   ```
 
+- **`Sparkline` and `BarChart` widgets** — tiny inline charts drawn from block
+  glyphs, no dependency. `Sparkline` is a one-row trend line (`▁▂▃▄▅▆▇█`) with a
+  `push()` for live scrolling feeds; `BarChart` is a stack of horizontal bars at
+  eighth-of-a-cell precision, taking `(label, value)` pairs, a dict, or numbers.
+  Both accept a `State`. New `examples/charts/` drives both live.
+  See [docs/widgets.md](docs/widgets.md#sparkline).
+
+  ```python
+  Sparkline(2, 3, [], width=48, minimum=0, maximum=100)   # push() to feed it
+  BarChart(2, 3, [("apples", 42), ("pears", 18), ("plums", 63)])
+  ```
+
 ### Changed
 
 - **Examples use the new layout controls and `State`.** `calculator`'s two

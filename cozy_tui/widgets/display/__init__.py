@@ -6,6 +6,7 @@ from .animated_label import (
     RainbowAnimation,
 )
 from .bindings import Bindings
+from .charts import BarChart, Sparkline
 from .code import Code
 from .diff import Diff
 from .hyperlink import Hyperlink
@@ -30,6 +31,8 @@ __all__ = [
     "RainbowAnimation",
     "LevitateAnimation",
     "Bindings",
+    "BarChart",
+    "Sparkline",
     "Code",
     "Diff",
     "Hyperlink",

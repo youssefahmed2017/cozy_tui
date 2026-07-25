@@ -1203,6 +1203,58 @@ box.add(bar)
 
 ---
 
+### `Sparkline`
+
+A one-row trend line drawn from block glyphs (`▁▂▃▄▅▆▇█`) — each value becomes one of eight heights, scaled between the data's min and max. Zero dependencies, no canvas.
+
+```python
+Sparkline(x, y, values=None, *, width=None, minimum=None, maximum=None, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `values` | A list of numbers (may be a [`State`](concepts.md#reactive-state-cozy_tuistate)) |
+| `width` | Max cells to show — the most recent that many values, so a `push()`-fed line scrolls left. Omit to show them all |
+| `minimum` / `maximum` | Scale bounds; default to the data's own range |
+| `style` | Optional style override |
+
+`push(value)` appends a sample (trimming to `width`), for driving a live line from a timer without a `State`:
+
+```python
+spark = Sparkline(2, 3, [], width=48, minimum=0, maximum=100)
+app.every(0.2, lambda: spark.push(read_cpu()))
+```
+
+---
+
+### `BarChart`
+
+A column of horizontal bars, one row per item, drawn to eighth-of-a-cell precision (`█…▏`). Bars scale to the largest value (or an explicit `maximum`).
+
+```python
+BarChart(x, y, data=None, *, width=30, maximum=None, show_values=True, bar_style=None, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `data` | `(label, value)` pairs, a `{label: value}` dict, or a bare list of numbers (may be a [`State`](concepts.md#reactive-state-cozy_tuistate)). A `(label, value, color)` triple colors that one bar |
+| `width` | Total width in cells (label + bar + value) |
+| `maximum` | Value that fills the bar; default is the largest value |
+| `show_values` | Print each value after its bar (default `True`) |
+| `bar_style` | Style for every bar; defaults to the theme accent |
+| `style` | Optional style override (labels and values) |
+
+```python
+BarChart(2, 3, [("apples", 42), ("pears", 18), ("plums", 63)], width=34)
+BarChart(2, 3, {"cpu": 72, "mem": 40}, bar_style=Style(fg="magenta"))
+```
+
+> Both charts render into whatever space they're given; when a `BarChart` can grow taller than the screen, put it inside a [`ScrollView`](layouts.md). See [`examples/charts/`](../examples/charts/charts.py) for a live monitor using both.
+
+---
+
 ### `Slider`
 
 A draggable numeric control — the interactive counterpart to `ProgressBar`. Click or drag anywhere on the track to jump the handle straight there; when focused, arrow keys nudge it.
