@@ -270,6 +270,16 @@ def test_vbox_flex_is_a_noop_when_undocked():
     assert vbox.natural_height(1) == 2
 
 
+def test_grid_rejects_non_positive_cols():
+    # cols is a divisor in _arrange(); zero/negative would crash the render loop
+    # on the first draw, so it's rejected loudly at construction instead.
+    import pytest
+
+    for bad in (0, -1):
+        with pytest.raises(ValueError):
+            Grid(0, 0, cols=bad)
+
+
 def test_grid_accepts_but_ignores_flex():
     app = make_app()
     grid = Grid(0, 0, cols=2)

@@ -151,6 +151,9 @@ Assignment is the API: `s.value = x` notifies. `s.set(x)` is the same thing as a
 | `Box` | `text`, `title` |
 | `Text` | `text` (re-wraps on change) |
 | `ProgressBar` | `progress` (clamped on change) |
+| `Sparkline` | `values` |
+| `BarChart` | `data` |
+| `Code` | `code` |
 
 A plain value passed to any of them behaves exactly as it always has — nothing is subscribed and nothing is tracked. Reactivity is strictly opt-in by wrapping the value in `State(...)`; a bare `name = "HELLO"` never becomes reactive.
 

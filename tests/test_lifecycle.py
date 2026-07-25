@@ -413,3 +413,24 @@ def test_a_layout_reserves_a_tall_buttons_full_height():
 
 def test_button_height_is_clamped_to_at_least_one_row():
     assert Button(0, 0, "x", height=0).natural_height(10) == 1
+
+
+def test_removing_a_widget_during_draw_does_not_skip_the_next_one():
+    # A widget may remove another from app.widgets during its own draw() (e.g.
+    # the aquarium's shark eating a fish). The draw pass iterates a snapshot, so
+    # the widget following the removed one is still painted this frame.
+    class Remover(Label):
+        def draw(self, canvas):
+            # Remove the victim (drawn after us) mid-iteration.
+            if victim in canvas.widgets:
+                canvas.widgets.remove(victim)
+            super().draw(canvas)
+
+    victim = Label(0, 1, "VICTIM")
+    remover = Remover(0, 0, "REMOVER")
+    marker = Label(0, 2, "MARKER")  # comes after the victim in the list
+    ui = make_ui(remover, victim, marker)
+
+    ui.compose()
+    # The widget after the removed one must still have been drawn.
+    assert "MARKER" in ui.line(2)

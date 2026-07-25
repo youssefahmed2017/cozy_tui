@@ -10,6 +10,10 @@ class Grid(Layout):
 
     def __init__(self, x, y, cols, gap_x=1, gap_y=0, style=None, *, padding=0):
         super().__init__(x, y, style, padding=padding)
+        # cols is a divisor in _arrange(); a zero/negative value would crash the
+        # render loop on the first draw. Fail loudly at construction instead.
+        if cols < 1:
+            raise ValueError(f"Grid cols must be >= 1, got {cols!r}")
         self.cols = cols
         self.gap_x = gap_x
         self.gap_y = gap_y

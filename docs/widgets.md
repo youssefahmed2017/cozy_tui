@@ -49,7 +49,7 @@ app.open_command_palette()   # Ctrl+P by default — searchable list of register
 app.register_command(name, callback, description="")  # add/override a Ctrl+P palette entry
 ```
 
-**Debugging:**
+### Debugging (`App(debug=True)`)
 
 ```bash
 cozy-tui run --debug myapp.py
@@ -687,6 +687,31 @@ The **F12 DevTools live editor** is built on this — see [Debugging](#debugging
 
 ---
 
+### `Markdown`
+
+A read-only widget that renders a Markdown string as styled Rich text — the non-editable counterpart of `MarkdownInput`. Use it for help panels, rendered notes, or any static Markdown.
+
+```python
+Markdown(x, y, width, value="", *, placeholder="", style=None)
+```
+
+| Parameter | Meaning |
+|-----------|---------|
+| `width` | Wrap width in cells. |
+| `value` | The Markdown source to render. |
+| `placeholder` | Shown when `value` is empty. |
+
+> **Uses Rich.** `rich` is a required dependency, so real Markdown (headings, bold, italic, code blocks, lists) is always available; if Rich were somehow absent it falls back to plain text.
+
+```python
+from cozy_tui.widgets import Markdown
+
+md = Markdown(2, 2, 60, value="# Notes\n\nSupports **bold**, *italic*, and `code`.")
+box.add(md)
+```
+
+---
+
 ### `MarkdownInput`
 
 A multi-line text editor that renders its content as **live Markdown** using [Rich](https://github.com/Textualize/rich) when not focused. All editing behaviour is inherited from `Input` — only the rendering differs.
@@ -826,6 +851,35 @@ lv = ListView(2, 2, [
 ], height=5)
 lv.on_select(lambda val: print(f"Chose: {val}"))
 box.add(lv)
+```
+
+---
+
+### `SearchBar`
+
+An inline, non-modal search box: a one-line query field with a live, scroll-clamped list of matches beneath it — the same query-filtered-list pattern as the Ctrl+P/Ctrl+T palettes, but embedded in your own layout (`.add()` it like any other widget) instead of shown as a modal overlay. Borderless like `ListView`'s bare rows; wrap it in a `Box` yourself for a border.
+
+```python
+SearchBar(x, y, items=None, *, width=30, height=6,
+          placeholder="", fuzzy_searching=False, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `items` | The candidate strings to filter. |
+| `width` | Width in cells (min 4). |
+| `height` | Max visible match rows (the query row is separate). |
+| `placeholder` | Shown in the query field while empty. |
+| `fuzzy_searching` | `True` switches from substring matching to ranked subsequence matching (query characters need only appear in order). |
+
+Type to filter; **Up/Down/Home/End** move the highlight; **Enter** or a click fires `on_select(value)`; **Esc** clears the query. `on_change(fn)` fires with the query text on every change. `set_items(...)`, `append(...)`, and `clear()` manage the candidate list; `selected`/`matches` read current state.
+
+```python
+from cozy_tui.widgets import SearchBar
+
+bar = SearchBar(2, 2, ["apple", "banana", "cherry"], placeholder="Filter fruit…")
+bar.on_select(lambda v: print(f"Picked: {v}"))
+box.add(bar)
 ```
 
 ---

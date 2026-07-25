@@ -988,6 +988,7 @@ def main() -> None:
                 price=species.price,
                 environment=environment,
                 paused=paused,
+                favorite_foods=species.favorite_foods,
             )
             f.display_name = saved.get("name", species.name)
             for attr in (

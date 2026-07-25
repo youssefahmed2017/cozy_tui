@@ -55,6 +55,14 @@ Demonstrates `Input`, `Button`, `Checkbox`, `ProgressBar`, `Dropdown`, `ListView
 python examples/timer_app/timer.py
 ```
 
+### `examples/charts/charts.py` — Live Charts (system monitor)
+
+A mock system monitor showing off `Sparkline` and `BarChart`: a one-row CPU trend fed a new sample each tick with `push()` (the line scrolls as history rolls off), and a per-process memory `BarChart` driven by a reassigned `State`. There are more processes than rows, so a `height=` cap turns the chart into a scrolling viewport (mouse wheel / arrows / drag the thin scrollbar). Space pauses the feed, Esc quits.
+
+```bash
+python examples/charts/charts.py
+```
+
 ### `examples/command_palette/command_palette.py` — Command Palette
 
 A Spotlight/VS Code-style fuzzy command launcher in a modal overlay: a custom widget with its own text buffer and filtered result list. Press `p` to open, type to fuzzy-search, Enter/click to run. Includes a background-worker command that keeps the UI responsive.

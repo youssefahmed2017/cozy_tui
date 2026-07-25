@@ -263,7 +263,8 @@ def confirm(_btn):
 
 ```python
 app.open_overlay(widget, *, modal=True, dim=True, center=True,
-                 close_on_escape=True, close_on_click_outside=False, on_close=None)
+                 close_on_escape=True, close_on_click_outside=False,
+                 on_close=None, shadow=True)
 app.close_overlay(widget=None)   # topmost, or the overlay wrapping `widget`
 ```
 
@@ -275,6 +276,7 @@ app.close_overlay(widget=None)   # topmost, or the overlay wrapping `widget`
 | `close_on_escape` | Esc dismisses the topmost modal (default `True`). |
 | `close_on_click_outside` | A click outside the overlay dismisses it (default `False`). |
 | `on_close` | `func(widget)` called when the overlay closes. |
+| `shadow` | Cast a soft drop shadow behind the overlay (default `True`). Set `False` for a flat overlay. |
 
 **Behaviour:**
 

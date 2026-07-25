@@ -485,3 +485,21 @@ def test_load_unlocked_achievements_survives_a_corrupt_file(tmp_path):
     path.write_text("not json", encoding="utf-8")
 
     assert load_unlocked_achievements(home=tmp_path) == set()
+
+
+def test_safe_filename_dodges_windows_reserved_names():
+    # A save named after a Windows device (CON, NUL, COM1, ...) is illegal there
+    # even with the .json extension, and would raise OSError on write. It must be
+    # nudged aside rather than left to crash.
+    from examples.aquarium.termquarium.save import safe_filename
+
+    for reserved in ("CON", "nul", "COM1", "LPT9", "aux"):
+        out = safe_filename(reserved)
+        assert out.upper() not in {
+            "CON", "PRN", "AUX", "NUL",
+            *(f"COM{i}" for i in range(1, 10)),
+            *(f"LPT{i}" for i in range(1, 10)),
+        }
+        assert out  # never empty
+    # Ordinary names are untouched.
+    assert safe_filename("My Tank") == "My Tank"

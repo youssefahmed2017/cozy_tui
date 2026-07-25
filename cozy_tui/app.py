@@ -1576,7 +1576,11 @@ class App:
             self._debug_layout_ms = 0.0  # accumulated by Layout.draw() below
         self.clear()
         self._apply_docks()
-        for widget in self.widgets:
+        # Iterate a snapshot: a widget may remove another (or itself) from
+        # self.widgets during its own draw() -- e.g. a predator eating prey --
+        # and mutating the live list mid-iteration would silently skip the
+        # following widget. The shallow copy is O(n) noise next to drawing n.
+        for widget in list(self.widgets):
             if widget.visible:
                 widget.draw(self)
         if self._devtools_active and self._selected_widget is not None:

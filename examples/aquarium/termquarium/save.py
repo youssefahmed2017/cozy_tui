@@ -80,9 +80,21 @@ def format_relative_time(iso_timestamp: str, now: datetime | None = None) -> str
     return f"{years} year{'s' if years != 1 else ''} ago"
 
 
+# Windows reserves these device names -- a file called CON.json is still
+# illegal there even with the extension, so a save named after one must be
+# nudged aside rather than left to raise OSError on write.
+_WIN_RESERVED = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
 def safe_filename(name: str) -> str:
     """Make a friendly save name safe on every supported filesystem."""
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip().rstrip(".")
+    if cleaned.upper() in _WIN_RESERVED:
+        cleaned = f"{cleaned}_"
     return cleaned or "Untitled Aquarium"
 
 

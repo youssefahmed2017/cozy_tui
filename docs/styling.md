@@ -118,7 +118,7 @@ A `Theme` is a named bundle of colors the library's shared visual language draws
 from cozy_tui import Theme, get_theme, set_theme
 
 Theme.MODES   # every built-in preset name, e.g. "default", "monochromatic",
-              # "ocean", "forest", "cyberpunk", ... (over 20 and growing)
+              # "ocean", "forest", "cyberpunk", ... (over 30 and growing)
 
 theme = Theme(mode="ocean")            # from a built-in preset (case-insensitive)
 theme = Theme(style=Style(fg="white", bg="#1a1a2e"))  # custom base, default preset for the rest

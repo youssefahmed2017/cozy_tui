@@ -111,6 +111,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A widget that removed another during its own `draw()` skipped the next
+  widget for a frame.** The draw pass iterated `App.widgets` directly, so
+  mutating that list mid-draw (e.g. a predator eating prey, then removing it)
+  dropped the following widget from that frame. The pass now iterates a snapshot
+  of the list.
+
+- **`Grid(cols=0)` (or a negative `cols`) crashed the render loop.** `cols` is a
+  divisor in the layout math and was never validated; it now raises `ValueError`
+  at construction, matching how every sibling container guards its own divisors.
+
+- **TermQuarium: a save named after a Windows reserved device** (`CON`, `NUL`,
+  `COM1`, …) raised an uncaught `OSError` on write — such names are illegal even
+  with a `.json` extension. `safe_filename()` now nudges them aside.
+
+- **TermQuarium: loading a save dropped each fish's favorite foods.**
+  `_load_snapshot` rebuilt fish without passing `favorite_foods`, so a restored
+  fish silently lost its "their favorite" treat reaction. Now carried through.
+
 - **A dismissing toast (or any non-modal overlay) stole keyboard focus.**
   `close_overlay` restored the focus captured when the overlay opened — correct
   for a modal, but a non-modal overlay (toast, tooltip) never *took* focus, so
