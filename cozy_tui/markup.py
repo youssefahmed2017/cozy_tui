@@ -143,14 +143,14 @@ def escape(text: str) -> str:
     return text.replace("[", "\\[")
 
 
-def runs_width(runs) -> int:
+def runs_width(runs: list[tuple[str, Style]]) -> int:
     """Display width of a run list, wide glyphs included."""
     from cozy_tui._width import text_width
 
     return sum(text_width(text) for text, _style in runs)
 
 
-def write_runs(canvas, x: int, y: int, runs) -> int:
+def write_runs(canvas, x: int, y: int, runs: list[tuple[str, Style]]) -> int:
     """Paint *runs* left to right starting at ``(x, y)``; returns the total
     width written. Advances by display width, so a run following a wide glyph
     still lands on the right cell."""
@@ -164,7 +164,7 @@ def write_runs(canvas, x: int, y: int, runs) -> int:
     return dx
 
 
-def split_lines(runs) -> list[list[tuple[str, Style]]]:
+def split_lines(runs: list[tuple[str, Style]]) -> list[list[tuple[str, Style]]]:
     """Split a run list on newlines into one run list per line. A run spanning
     a newline is divided, so no returned run contains one."""
     lines: list[list[tuple[str, Style]]] = [[]]
@@ -178,7 +178,7 @@ def split_lines(runs) -> list[list[tuple[str, Style]]]:
     return lines
 
 
-def slice_runs(runs, start: int, end: int) -> list[tuple[str, Style]]:
+def slice_runs(runs: list[tuple[str, Style]], start: int, end: int) -> list[tuple[str, Style]]:
     """The runs covering character positions ``[start, end)``.
 
     Indices count *characters* of the plain text, matching how the wrapping and
