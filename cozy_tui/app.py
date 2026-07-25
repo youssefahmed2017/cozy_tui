@@ -663,8 +663,9 @@ class App:
         return widget
 
     def close_overlay(self, widget=None):
-        """Close the topmost overlay, or the one wrapping `widget`. Restores the
-        focus that was active when it opened and fires its `on_close(widget)`."""
+        """Close the topmost overlay, or the one wrapping `widget`. For a modal,
+        restores the focus that was active when it opened; fires its
+        `on_close(widget)`."""
         if not self._overlays:
             return
         if widget is None:
@@ -674,7 +675,13 @@ class App:
             if entry is None:
                 return
             self._overlays.remove(entry)
-        self._set_focused(entry.prev_focus)
+        # Only a modal ever took focus (see open_overlay), so only a modal
+        # restores it. A non-modal overlay -- a toast, a tooltip -- never held
+        # focus, so restoring prev_focus here would *steal* focus from wherever
+        # the user has since moved: e.g. a toast opened while on one button,
+        # auto-dismissing seconds later and yanking focus back to it.
+        if entry.modal:
+            self._set_focused(entry.prev_focus)
         self.invalidate()
         if entry.on_close is not None:
             entry.on_close(entry.widget)

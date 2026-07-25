@@ -107,6 +107,22 @@ def test_non_modal_overlay_does_not_confine_focus():
     assert app._collect_focusables() == [base_btn]
 
 
+def test_closing_a_non_modal_overlay_never_moves_focus():
+    # A non-modal overlay (toast/tooltip) never took focus, so closing it must
+    # not restore prev_focus -- doing so would steal focus from wherever the
+    # user has since moved. Regression: a toast opened while on one button then
+    # auto-dismissing yanked focus back to it seconds later.
+    app, first_btn = base_with_button()
+    second_btn = Button(1, 3, "Second")
+    app.widgets[0].add(second_btn)  # into the same box
+
+    tip = Box(0, 0, "100x40")
+    app.open_overlay(tip, modal=False, dim=False)  # captures prev_focus=first_btn
+    app.focus(second_btn)  # user moves on
+    app.close_overlay(tip)  # non-modal close must leave focus alone
+    assert app.focused is second_btn
+
+
 def test_stacked_modals_topmost_wins():
     app, _ = base_with_button()
     first, first_ok = dialog_with_ok()

@@ -111,6 +111,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A dismissing toast (or any non-modal overlay) stole keyboard focus.**
+  `close_overlay` restored the focus captured when the overlay opened — correct
+  for a modal, but a non-modal overlay (toast, tooltip) never *took* focus, so
+  restoring it *moved* focus to wherever it happened to be when the toast
+  appeared. Symptom: pop a toast while on one button, Tab elsewhere, and a few
+  seconds later the toast's auto-dismiss yanked focus back. Focus is now
+  restored only when closing a modal.
+
 - **A top/bottom/left/right-docked `VBox`/`HBox`/`Grid` could get stranded
   collapsed.** A dock band is sized `min(natural_size, remaining_space)`, so a
   layout pass made while the container was momentarily too small (a terminal
