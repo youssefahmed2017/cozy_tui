@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from cozy_tui import App, Style
 from cozy_tui.events import Key
 from cozy_tui.widget import Widget
-from cozy_tui.widgets import Box, Button, HBox, Input, Label, ProgressBar
+from cozy_tui.widgets import Box, Button, HBox, Input, Label, ProgressBar, Rule
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data layer
@@ -287,7 +287,7 @@ timer_box = Box(
 
 countdown = CountdownTimer(3, 2, width=30, style=Style(fg="cyan", bg="black"))
 timer_box.add(countdown)
-timer_box.add(Label(3, 8, "─" * 30, style=Style(fg="cyan")))
+timer_box.add(Rule(3, 8, length=30, style=Style(fg="cyan")))
 
 inp_minutes = Input(12, 9, 8, placeholder="e.g. 5")
 timer_box.add(Label(3, 9, "Minutes:"))
@@ -305,10 +305,8 @@ _btn_reset.on_click(lambda _b: countdown.reset())
 _ctrl.add(btn_set).add(_btn_pause).add(_btn_reset)
 timer_box.add(_ctrl)
 
-timer_box.add(Label(3, 13, "─" * 30, style=Style(fg="cyan")))
-timer_box.add(
-    Label(3, 14, "Recent Records", style=Style(fg="bright_white", styles=["bold"]))
-)
+# A titled Rule stands in for a divider + section header in one widget.
+timer_box.add(Rule(3, 13, length=30, title="Recent Records", style=Style(fg="cyan")))
 
 # Five fixed slots, filled by refresh_records(). Fixed rather than add()-ed per
 # record so switching users never rebuilds the layout — an unused slot just
@@ -319,7 +317,7 @@ for _label in record_labels:
 no_records = Label(4, 15, "No records yet.", style=MUTED)
 timer_box.add(no_records)
 
-timer_box.add(Label(3, 21, "─" * 30, style=Style(fg="cyan")))
+timer_box.add(Rule(3, 21, length=30, style=Style(fg="cyan")))
 _btn_logout = Button(3, 22, "Logout", width=12, style=Style(fg="white", bg="magenta"))
 _btn_logout.on_click(lambda _b: logout())
 timer_box.add(_btn_logout)

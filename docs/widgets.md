@@ -200,6 +200,40 @@ err = Label(2, 6, "[bold red]Error[/] connecting", markup=True)
 
 ---
 
+### `Rule`
+
+A horizontal or vertical divider line, optionally titled — the widget form of `"─" * n`. Instead of hardcoding a width, a `Rule` **sizes itself to its container**, so it follows a resize.
+
+```python
+Rule(x=0, y=0, *, length=None, orientation="horizontal", title="", char=None, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `length` | Explicit size in cells. Omit to auto-fill (see below) |
+| `orientation` | `"horizontal"` (default) or `"vertical"` |
+| `title` | Labels a **horizontal** rule: `── Setup ─────` (may be a [`State`](concepts.md#reactive-state-cozy_tuistate)) |
+| `char` | Line glyph override (default `─` / `│`) |
+| `style` | Optional style override |
+
+**Auto-sizing.** With no `length`, a `Rule` fills its context:
+
+- inside a `Box`, `box.add(Rule(1, 4))` spans from its `x` to the box's far interior edge — the divider-between-sections case;
+- docked (`app.dock`/`box.dock`) or stretched (a `VBox`/`HBox` child with `align="stretch"`), it fills the assigned band;
+- with nothing to measure against, it falls back to a small default — pass `length=` for those.
+
+```python
+box.add(Rule(1, 4))                          # full-width divider inside a panel
+box.add(Rule(3, 12, length=44))              # matches a 44-wide list above it
+box.add(Rule(3, 13, title="Recent Records")) # a divider that doubles as a header
+Rule(orientation="vertical", length=8)       # a column separator
+```
+
+Rules are decorative — never focusable, and they don't take part in the Tab order.
+
+---
+
 ### `Hyperlink`
 
 A focusable, clickable text link. When focused, **Enter** or **Space** opens the URL in the default web browser; a mouse **click** opens it directly. Renders like a `Label` (blue, bold, underlined) and highlights while focused.

@@ -33,13 +33,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reassigning one re-lays-out on the next frame, the same as `gap`. Cozy
   DevTools' Elements panel shows and edits all three live.
 
+- **`Rule` widget** — a horizontal or vertical divider line, the widget form of
+  `"─" * n`. It sizes itself to its container (a `Box`'s interior, a docked
+  band, or an `align="stretch"` layout child) instead of hardcoding a width, so
+  it follows a resize; `length=` forces an explicit size. A horizontal rule can
+  carry a `title` (`── Setup ─────`), which doubles as a lightweight section
+  header. See [docs/widgets.md](docs/widgets.md#rule).
+
+  ```python
+  box.add(Rule(1, 4))                          # full-width divider in a panel
+  box.add(Rule(3, 13, title="Recent Records")) # divider + header in one widget
+  ```
+
 ### Changed
 
 - **Examples use the new layout controls and `State`.** `calculator`'s two
   display lines are now `State`s the key handlers `.set()` (no more
   `label.text =` plumbing); `screens` centers its menu with a docked
   `align`/`justify` `VBox`; `dashboard` gains a `justify="between"` header/footer
-  bar and a `State`-bound "N / N downloaded" status.
+  bar and a `State`-bound "N / N downloaded" status. `calculator`, `todo_app`,
+  and `timer_app` replace their `Label("─" * n)` dividers with `Rule`.
 - **Markup background syntax is now a `-bg` suffix**, not the `on` keyword:
   `"[white red-bg]"` instead of `"[white on red]"`, `"[blue-bg]"` instead of
   `"[on blue]"`. It works on every color form (`#222-bg`, `rgb(20,20,20)-bg`,

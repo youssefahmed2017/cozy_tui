@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from cozy_tui import App, State, Style
 from cozy_tui.events import Key
-from cozy_tui.widgets import Box, Button, HBox, Label, VBox
+from cozy_tui.widgets import Box, Button, HBox, Label, Rule, VBox
 
 # ── app ───────────────────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ box = Box(
 
 lbl_expr = Label(2, 2, expr_text, style=Style(fg="bright_black"))
 lbl_result = Label(2, 3, result_text, style=Style(fg="bright_green", styles=["bold"]))
-lbl_sep = Label(1, 4, "─" * 35, style=Style(fg="cyan"))
+lbl_sep = Rule(1, 4, style=Style(fg="cyan"))  # auto-fills the box interior
 
 box.add(lbl_expr)
 box.add(lbl_result)

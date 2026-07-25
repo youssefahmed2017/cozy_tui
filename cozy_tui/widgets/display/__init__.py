@@ -14,6 +14,7 @@ from .label import Label
 from .log import Log
 from .markdown import Markdown
 from .progress_bar import ProgressBar
+from .rule import Rule
 from .spinner import Spinner
 from .text import Text
 from .toast import Toast
@@ -35,6 +36,7 @@ __all__ = [
     "Image",
     "Markdown",
     "ProgressBar",
+    "Rule",
     "Spinner",
     "Text",
     "Toast",

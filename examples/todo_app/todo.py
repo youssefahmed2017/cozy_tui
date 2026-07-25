@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from cozy_tui import App, Key, Style
-from cozy_tui.widgets import Box, Button, CheckItem, CheckList, HBox, Input, Label
+from cozy_tui.widgets import Box, Button, CheckItem, CheckList, HBox, Input, Label, Rule
 
 # ── Data layer ────────────────────────────────────────────────────────────────
 
@@ -211,7 +211,7 @@ todo_box.add(status_label)
 
 check_list = CheckList(3, 3, height=8, width=44, style=Style(fg="white", bg="black"))
 todo_box.add(check_list)
-todo_box.add(Label(3, 12, "─" * 44, style=Style(fg="cyan")))
+todo_box.add(Rule(3, 12, length=44, style=Style(fg="cyan")))  # matches the list width
 
 new_task = Input(3, 14, 32, placeholder="New task…")
 todo_box.add(new_task)
