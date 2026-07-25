@@ -112,6 +112,12 @@ class Harness:
         # into a full-screen crash view, which in a test means a hang on a
         # terminal that isn't there and a green run for broken code.
         app.catch_errors = False
+        # Overlay drop shadows and the open/dismiss fade+slide are cosmetic and
+        # time-based; off here so a test reading the buffer right after opening a
+        # dialog sees the settled frame (full colors, no slide offset), not a
+        # half-faded one. Flip it back on in a test that specifically drives the
+        # animation with advance().
+        app._overlay_fx = False
         self.app = app
         _install_clock()
         _CLOCK.offset = 0.0

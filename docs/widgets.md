@@ -1420,6 +1420,8 @@ app.toast("Saved successfully.", level="success")
 app.toast("Upload failed.", level="error", duration=5.0)
 ```
 
+> **Motion & shadows.** Every overlay — toasts, tooltips, menus, and the modal dialogs — fades and slides into place when it opens beneath a soft drop shadow that deepens as it settles, so it reads as floating above the page rather than pasted onto it. A toast also fades back out when it's dismissed. This is all cosmetic (it never affects hit-testing or focus) and self-terminating (the loop returns to zero-CPU idle once the animation ends). It's on by default in a real run; the [test `Harness`](../cozy_tui/testing.py) turns it off (`app._overlay_fx = False`) so tests read the settled frame — flip it back on in a test that drives the animation with `advance()`.
+
 ---
 
 ### `Tooltip` / `app.set_tooltip`

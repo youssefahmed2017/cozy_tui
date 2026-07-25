@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Overlay drop shadows & entrance motion** — every overlay (toasts, tooltips,
+  menus, and the modal dialogs/palettes) now fades and slides into place when it
+  opens beneath a soft drop shadow that deepens as it settles, so it reads as floating above
+  the page instead of pasted onto it; a modal's backdrop scrim fades in with it,
+  and a toast fades back out when dismissed. Purely cosmetic — no effect on
+  hit-testing or focus — and self-terminating, so the loop returns to zero-CPU
+  idle once the animation ends. On by default; the test `Harness` disables it
+  (`app._overlay_fx = False`) so tests read the settled frame. Tunables live on
+  `App` (`_OVERLAY_ENTER`, `_OVERLAY_SLIDE`, `_SHADOW_*`); `open_overlay` gains a
+  `shadow=` toggle.
+
 - **Layout alignment & padding** — `VBox`/`HBox` gain `align`, `justify`, and
   `padding`; `Grid` gains `padding`. All opt-in, all defaulting to the previous
   behavior exactly. See [docs/layouts.md](docs/layouts.md#alignment--padding).

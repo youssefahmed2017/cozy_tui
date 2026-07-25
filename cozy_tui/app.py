@@ -10,7 +10,7 @@ from pathlib import Path
 from cozy_tui._console import enable_raw, flush_input, restore, wait_input
 from cozy_tui._dock import SIDES, dock_layout
 from cozy_tui._width import char_width
-from cozy_tui.ansi import TERMINAL_CURSOR_STYLES, cursor_shape_esc, style_esc
+from cozy_tui.ansi import TERMINAL_CURSOR_STYLES, cursor_shape_esc, style_esc, tint
 from cozy_tui.events import (
     Key,
     MouseClick,
@@ -58,7 +58,12 @@ class _Overlay:
     """A widget layered above the base UI. `modal` confines keyboard/mouse input
     to it (and, with `dim`, grays the background); a non-modal overlay is purely
     visual (e.g. a tooltip, an actionable Toast's buttons). `prev_focus` is
-    restored when the overlay closes."""
+    restored when the overlay closes.
+
+    `shadow` casts a soft drop shadow beneath the widget once it has settled;
+    `enter`/`exit` are the entrance/dismiss `Tween`s (0→1 / 1→0) that fade and
+    slide it, or `None` when overlay effects are off (headless tests). All three
+    are purely cosmetic -- they never touch hit-testing or focus."""
 
     __slots__ = (
         "widget",
@@ -69,6 +74,9 @@ class _Overlay:
         "close_on_click_outside",
         "on_close",
         "prev_focus",
+        "shadow",
+        "enter",
+        "exit",
     )
 
     def __init__(
@@ -81,6 +89,8 @@ class _Overlay:
         close_on_click_outside,
         on_close,
         prev_focus,
+        shadow=True,
+        enter=None,
     ):
         self.widget = widget
         self.modal = modal
@@ -90,6 +100,9 @@ class _Overlay:
         self.close_on_click_outside = close_on_click_outside
         self.on_close = on_close
         self.prev_focus = prev_focus
+        self.shadow = shadow
+        self.enter = enter  # Tween(0→1) or None
+        self.exit = None  # Tween(1→0), set when a dismiss animation starts
 
 
 class App:
@@ -97,6 +110,16 @@ class App:
     BLINK_INTERVAL = 0.5
     # Two clicks on the same widget within this window count as a double click.
     DOUBLE_CLICK_INTERVAL = 0.4
+    # Overlay entrance/dismiss timing and the soft drop-shadow shape. The
+    # entrance is eased in-and-out over ~quarter-second so it reads as a
+    # deliberate glide (a faster ease_out snapped to full almost instantly).
+    _OVERLAY_ENTER = 0.24  # seconds for an overlay to fade+slide into place
+    _OVERLAY_EXIT = 0.18  # seconds for a toast to fade+slide out on dismiss
+    _OVERLAY_SLIDE = 3  # cells the overlay travels while fading in
+    _SHADOW_DX = 2  # shadow offset right (cells are ~2:1, so >dy reads square)
+    _SHADOW_DY = 1  # shadow offset down
+    _SHADOW_NEAR = 0.5  # darken amount for the ring touching the widget
+    _SHADOW_FAR = 0.28  # darken amount for the outer, softer ring
 
     def __init__(
         self,
@@ -244,6 +267,14 @@ class App:
         self._toasts: list = []
         # Overlay/z-layer stack drawn above the base widgets (last == topmost).
         self._overlays: list[_Overlay] = []
+        # Overlay "modern" effects -- soft drop shadows plus a fade/slide on
+        # open and dismiss. On for real runs; Harness turns it off so the buffer
+        # a test reads is the settled frame (no half-faded colors, no slide
+        # offset), keeping every existing overlay assertion deterministic.
+        self._overlay_fx = True
+        # Temporary vertical draw offset applied inside write() during an
+        # overlay's own draw() (its entrance slide); 0 the rest of the time.
+        self._overlay_dy = 0
         # write() honours scroll_y normally; overlays are screen-fixed, so it is
         # flipped off while they draw.
         self._scroll_active = True
@@ -589,6 +620,7 @@ class App:
         close_on_escape=True,
         close_on_click_outside=False,
         on_close=None,
+        shadow=True,
     ):
         """Push `widget` onto the overlay stack, drawn above everything else.
 
@@ -599,9 +631,18 @@ class App:
         dialog). `close_on_escape` / `close_on_click_outside` give light
         dismissal. Whatever was focused before a modal overlay opens is
         restored when it closes. Overlays are screen-fixed (ignore
-        scrolling). Returns `widget`.
+        scrolling). `shadow` casts a soft drop shadow once it settles (a purely
+        cosmetic darkening of the cells behind it -- no effect on hit-testing).
+        Returns `widget`.
         """
+        from cozy_tui.motion import Tween, ease_in_out
+
         widget.parent = None
+        enter = (
+            Tween(0.0, 1.0, self._OVERLAY_ENTER, ease_in_out)
+            if self._overlay_fx
+            else None
+        )
         entry = _Overlay(
             widget,
             modal,
@@ -611,6 +652,8 @@ class App:
             close_on_click_outside,
             on_close,
             self.focused,
+            shadow,
+            enter,
         )
         self._overlays.append(entry)
         if modal:
@@ -829,6 +872,23 @@ class App:
         return toast
 
     def _dismiss_toast(self, toast):
+        if toast not in self._toasts:
+            return
+        entry = next((e for e in self._overlays if e.widget is toast), None)
+        # With effects on, fade+slide the toast out before removing it. It stays
+        # in _toasts (holding its slot in the stack) until the tween finishes, so
+        # the ones above it don't jump down early. Effects off (tests) closes it
+        # at once, exactly as before.
+        if self._overlay_fx and entry is not None and entry.exit is None:
+            from cozy_tui.motion import Tween, ease_in_out
+
+            entry.exit = Tween(1.0, 0.0, self._OVERLAY_EXIT, ease_in_out)
+            self.after(self._OVERLAY_EXIT, lambda: self._remove_toast(toast))
+            self.request_frame(0.033)
+        else:
+            self._remove_toast(toast)
+
+    def _remove_toast(self, toast):
         if toast in self._toasts:
             self._toasts.remove(toast)
             self.close_overlay(toast)
@@ -1095,25 +1155,133 @@ class App:
         if not self._overlays:
             return
         self._scroll_active = False  # overlays position in screen space
+        animating = False
         try:
             for entry in self._overlays:
+                # p is the overlay's visibility: 1 fully in place, 0 gone. The
+                # entrance tween runs 0→1, a dismiss tween 1→0; without either
+                # (effects off, or settled) it's a plain 1.
+                p = 1.0
+                if entry.exit is not None:
+                    p = entry.exit.value()
+                    animating = animating or not entry.exit.done
+                elif entry.enter is not None:
+                    p = entry.enter.value()
+                    animating = animating or not entry.enter.done
+
                 if entry.dim:
-                    self._apply_backdrop()
+                    self._apply_backdrop(p)
                 if entry.center:
                     self._center(entry.widget)
+
+                # Slide the widget in from a few cells away (up for a top-corner
+                # toast, otherwise a gentle rise), easing to its resting spot.
+                corner = str(getattr(entry.widget, "corner", ""))
+                sign = -1 if corner.startswith("top") else 1
+                oy = round((1.0 - p) * self._OVERLAY_SLIDE * sign)
+                self._overlay_dy = oy
                 entry.widget.draw(self)
+                self._overlay_dy = 0
+
+                x0, y0, w, h = self._overlay_footprint(entry.widget)
+                y0 += oy
+                # Shadow first, tracking the sliding widget and deepening with p
+                # (so it grows in *with* the overlay rather than snapping in once
+                # settled); then fade the widget's own cells toward the
+                # background so it materializes instead of popping. The two never
+                # overlap -- the shadow is the strip outside the footprint.
+                if entry.shadow and self._overlay_fx:
+                    self._cast_shadow(x0, y0, w, h, scale=p)
+                if p < 1.0:
+                    self._fade_region(x0, y0, w, h, 1.0 - p)
         finally:
             self._scroll_active = True
+        if animating:
+            self.request_frame(0.033)  # keep the loop ticking through the anim
 
-    def _apply_backdrop(self):
-        """Gray every already-drawn cell (chars kept) as a scrim behind a modal."""
+    def _overlay_footprint(self, widget):
+        """The widget's on-screen rectangle ``(x, y, w, h)`` in cells. Prefers a
+        ``_bounds`` cache (Box, Toast set one in draw()); otherwise derives it
+        from the widget's absolute position and natural size."""
+        b = getattr(widget, "_bounds", None)
+        if b and b[2] > 0 and b[3] > 0:
+            return b
+        return (
+            widget.abs_x,
+            widget.abs_y,
+            widget.natural_width(self.SCALE),
+            widget.natural_height(self.SCALE),
+        )
+
+    def _apply_backdrop(self, amount=1.0):
+        """Gray every already-drawn cell (chars kept) as a scrim behind a modal.
+        ``amount`` (0→1) fades the scrim in with the overlay; at 1.0 it is the
+        full flat scrim (the settled state every non-animated frame uses)."""
         # Recomputed from self.style every call (like every other raw_bg use in
         # this codebase) rather than cached, so the scrim tracks the active
         # theme's background even after a theme switch post-__init__.
-        style = Style(fg="bright_black", bg=self.style.raw_bg)
-        for row in self.buffer:
+        if amount >= 1.0:
+            style = Style(fg="bright_black", bg=self.style.raw_bg)
+            for row in self.buffer:
+                for cell in row:
+                    cell.style = style
+            return
+        for row in self.buffer:  # partial: ease each cell's fg toward the scrim
             for cell in row:
-                cell.style = style
+                s = cell.style
+                if s.fg:
+                    # bg=s.raw_bg (not s.bg): the setter re-applies the "_bg"
+                    # suffix, so feeding it the already-suffixed value doubles it.
+                    cell.style = Style(
+                        fg=tint(s.fg, "bright_black", amount),
+                        bg=s.raw_bg,
+                        styles=s.styles,
+                    )
+
+    def _fade_region(self, x0, y0, w, h, amount):
+        """Blend every cell in the rectangle toward the app background by
+        ``amount`` (0 = untouched, 1 = fully background) -- an overlay fading
+        in/out. Character content is left intact; only colors move."""
+        base_bg = self.style.raw_bg
+        for y in range(y0, y0 + h):
+            if not (0 <= y < len(self.buffer)):
+                continue
+            row = self.buffer[y]
+            for x in range(x0, x0 + w):
+                if not (0 <= x < len(row)):
+                    continue
+                cell = row[x]
+                s = cell.style
+                new_fg = tint(s.fg, base_bg, amount) if s.fg else s.fg
+                new_bg = tint(s.raw_bg, base_bg, amount) if s.raw_bg else s.bg
+                cell.style = Style(fg=new_fg, bg=new_bg, styles=s.styles)
+
+    def _cast_shadow(self, x0, y0, w, h, scale=1.0):
+        """Darken the L-shaped strip below/right of the widget's rectangle, so it
+        reads as floating above the page. Two intensities give a soft edge; the
+        cells behind the widget itself are never touched. ``scale`` (0→1) fades
+        the whole shadow in with the overlay's entrance."""
+        if scale <= 0:
+            return
+        x1, y1 = x0 + w, y0 + h
+        for y in range(y0 + self._SHADOW_DY, y1 + self._SHADOW_DY):
+            if not (0 <= y < len(self.buffer)):
+                continue
+            row = self.buffer[y]
+            for x in range(x0 + self._SHADOW_DX, x1 + self._SHADOW_DX):
+                if x < x1 and y < y1:
+                    continue  # still under the widget -- would be covered
+                if not (0 <= x < len(row)):
+                    continue
+                depth = max(x - (x1 - 1), y - (y1 - 1))  # 1 nearest, up to DX
+                amount = (self._SHADOW_NEAR if depth <= 1 else self._SHADOW_FAR) * scale
+                cell = row[x]
+                s = cell.style
+                base = s.raw_bg or self.style.raw_bg or "black"
+                new_fg = tint(s.fg, "black", amount) if s.fg else s.fg
+                cell.style = Style(
+                    fg=new_fg, bg=tint(base, "black", amount), styles=s.styles
+                )
 
     def _center(self, widget):
         w = widget.natural_width(self.SCALE)
@@ -1340,7 +1508,9 @@ class App:
                 self._content_rows = y + 1
             vy = y - self.scroll_y
         else:
-            vy = y  # overlay pass: screen-fixed, no scroll offset or content growth
+            # overlay pass: screen-fixed, no scroll offset or content growth.
+            # _overlay_dy is the entrance slide (0 except mid-animation).
+            vy = y + self._overlay_dy
         if not (0 <= vy < len(self.buffer)):
             return
         row = self.buffer[vy]
