@@ -1233,7 +1233,7 @@ app.every(0.2, lambda: spark.push(read_cpu()))
 A column of horizontal bars, one row per item, drawn to eighth-of-a-cell precision (`█…▏`). Bars scale to the largest value (or an explicit `maximum`).
 
 ```python
-BarChart(x, y, data=None, *, width=30, maximum=None, show_values=True, bar_style=None, style=None)
+BarChart(x, y, data=None, *, width=30, height=None, maximum=None, show_values=True, bar_style=None, style=None, accent="bright_cyan")
 ```
 
 | Parameter | Description |
@@ -1241,17 +1241,28 @@ BarChart(x, y, data=None, *, width=30, maximum=None, show_values=True, bar_style
 | `x`, `y` | Position |
 | `data` | `(label, value)` pairs, a `{label: value}` dict, or a bare list of numbers (may be a [`State`](concepts.md#reactive-state-cozy_tuistate)). A `(label, value, color)` triple colors that one bar |
 | `width` | Total width in cells (label + bar + value) |
+| `height` | Viewport height in cells. With more items than rows the chart becomes a **scrolling viewport**; `None` (default) grows to fit every item |
 | `maximum` | Value that fills the bar; default is the largest value |
 | `show_values` | Print each value after its bar (default `True`) |
 | `bar_style` | Style for every bar; defaults to the theme accent |
 | `style` | Optional style override (labels and values) |
+| `accent` | Scrollbar thumb color (only shown when scrolling) |
 
 ```python
 BarChart(2, 3, [("apples", 42), ("pears", 18), ("plums", 63)], width=34)
 BarChart(2, 3, {"cpu": 72, "mem": 40}, bar_style=Style(fg="magenta"))
 ```
 
-> Both charts render into whatever space they're given; when a `BarChart` can grow taller than the screen, put it inside a [`ScrollView`](layouts.md). See [`examples/charts/`](../examples/charts/charts.py) for a live monitor using both.
+Bars are **normalized** to `width` — the longest bar fills the bar area and the rest are drawn as their fraction of it, so nothing runs off the right edge (a horizontal scrollbar would reveal nothing). The axis a bar chart overflows is the **number of rows**; that's what `height` scrolls:
+
+```python
+# 40 processes, 10 rows: focus it and scroll (wheel / ↑↓ / PageUp-Down /
+# Home-End, or drag the scrollbar thumb on the right edge).
+chart = BarChart(2, 2, processes, width=52, height=10)
+app.add(chart); app.focus(chart)
+```
+
+> A capped `BarChart` is focusable and scrollable on its own — no `ScrollView` wrapper needed (though composition, `ScrollView.add(chart)`, still works if you want the chart alongside other widgets in one scroll region). See [`examples/charts/`](../examples/charts/charts.py) for a live monitor using both charts.
 
 ---
 

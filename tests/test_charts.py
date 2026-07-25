@@ -113,6 +113,58 @@ def test_barchart_data_may_be_a_state():
     assert ui.line(1).startswith("b ")
 
 
-def test_charts_are_never_focusable():
+def test_uncapped_charts_are_inert():
+    # No height cap → decorative: not a Tab stop, doesn't grab scroll keys.
     assert Sparkline(0, 0).focusable is False
     assert BarChart(0, 0).focusable is False
+    assert BarChart(0, 0).scrollable is False
+
+
+# ── BarChart scrolling (height cap) ─────────────────────────────────────────────
+
+
+def _rows(n):
+    return [(f"p{i}", i + 1) for i in range(n)]
+
+
+def test_a_height_cap_makes_the_chart_a_scrollable_viewport():
+    bc = BarChart(0, 0, _rows(20), width=20, height=5)
+    assert bc.focusable is True  # can take keyboard focus
+    assert bc.scrollable is True  # App routes wheel/page keys to it
+    assert bc.natural_height(1) == 5  # reserves the fixed viewport, not 20 rows
+
+
+def test_only_the_visible_window_is_drawn():
+    bc = BarChart(0, 0, _rows(20), width=20, height=5)
+    ui = make_ui(bc)
+    # labels rjust to the widest ("p19"), so shorter ones carry a leading space
+    assert ui.line(0).lstrip().startswith("p0 ")  # top of the list
+    assert ui.line(4).lstrip().startswith("p4 ")  # fifth row is the last visible
+    # row 5 is below the viewport: the chart drew nothing there
+    assert "p5" not in ui.line(5)
+
+
+def test_scrolling_advances_the_window():
+    bc = BarChart(0, 0, _rows(20), width=20, height=5)
+    ui = make_ui(bc)
+    bc.scroll_by(3)
+    ui.compose()
+    assert ui.line(0).lstrip().startswith("p3 ")  # window moved down by three items
+
+
+def test_scroll_clamps_to_the_content_floor_and_ceiling():
+    bc = BarChart(0, 0, _rows(20), width=20, height=5)
+    make_ui(bc).compose()
+    assert bc._max_scroll == 15  # 20 items - 5 rows
+    bc.scroll_to(999)
+    assert bc._scroll == 15  # can't scroll past the last full page
+    bc.scroll_by(-999)
+    assert bc._scroll == 0
+
+
+def test_no_scrollbar_when_everything_fits():
+    bc = BarChart(0, 0, _rows(3), width=20, height=8)
+    ui = make_ui(bc)
+    ui.compose()
+    assert bc._max_scroll == 0
+    assert bc._bar_col is None  # nothing to scroll → no scrollbar column

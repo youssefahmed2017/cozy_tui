@@ -3,7 +3,8 @@
   * Sparkline — a one-row CPU trend, fed a new sample every tick with `push()`,
     so the line scrolls left as history rolls off its fixed `width`.
   * BarChart  — memory per process, driven by a `State` the tick reassigns; the
-    bars rescale themselves as the values drift.
+    bars rescale themselves as the values drift. More processes than rows, so a
+    `height=` cap turns it into a scrolling viewport (wheel / arrows / drag).
 
 Both are plain-number widgets: no canvas, no dependency, just block glyphs.
 
@@ -35,15 +36,22 @@ cpu_spark = Sparkline(2, 3, [], width=48, minimum=0, maximum=100, style=ACCENT)
 cpu_box.add(cpu_spark)
 app.add(cpu_box)
 
-# ── Memory: a BarChart driven by a State ──────────────────────────────────────
+# ── Memory: a scrollable BarChart driven by a State ───────────────────────────
+# More processes than fit the box, so `height=` caps it to a scrolling viewport:
+# focus it and use the wheel / ↑↓ / PageUp-Down / Home-End, or drag the thumb.
 mem_box = Box(2, 8, "560x150", title=" Memory by process ", border="rounded")
 mem_box.add(Rule(1, 1, title="MB", style=MUTED))
-PROCS = ["python", "chrome", "code", "docker", "postgres"]
+PROCS = [
+    "python", "chrome", "code", "docker", "postgres", "node", "firefox",
+    "slack", "spotify", "ssh-agent", "systemd", "gnome-shell", "pipewire",
+]  # fmt: skip
 mem = State([(name, random.randint(200, 1400)) for name in PROCS])
-mem_box.add(BarChart(2, 3, mem, width=52))
+mem_chart = BarChart(2, 3, mem, width=52, height=9)
+mem_box.add(mem_chart)
 app.add(mem_box)
+app.focus(mem_chart)  # so the wheel / arrow keys scroll the chart
 
-app.dock(Label(0, 0, "Space pauses · Esc quits", MUTED), "bottom", margin=1)
+app.dock(Label(0, 0, "Space pauses · scroll the chart · Esc quits", MUTED), "bottom", margin=1)
 
 _cpu = 30.0
 running = [True]

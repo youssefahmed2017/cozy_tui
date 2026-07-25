@@ -57,6 +57,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   BarChart(2, 3, [("apples", 42), ("pears", 18), ("plums", 63)])
   ```
 
+- **Scrollable `BarChart`** — a `height=` cap (in cells) turns a bar chart with
+  more items than rows into a self-contained scrolling viewport: it becomes
+  focusable and grabs the wheel / ↑↓ / PageUp-Down / Home-End, with a scrollbar
+  thumb you can drag on the right edge. No `ScrollView` wrapper needed — the
+  chart knows its own item count. Bars stay normalized to `width` (nothing
+  overflows horizontally), so rows are the only axis that scrolls. Uncapped
+  charts are unchanged: they grow to fit every item and stay non-interactive.
+
+  ```python
+  chart = BarChart(2, 2, processes, width=52, height=10)
+  app.add(chart); app.focus(chart)
+  ```
+
 ### Changed
 
 - **Examples use the new layout controls and `State`.** `calculator`'s two
