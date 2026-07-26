@@ -63,16 +63,21 @@
             <div class="plate-frame" style="max-width:640px">
               <div class="plate-titlebar"><span class="tab"><span class="led"></span>shell</span></div>
               <div class="tank" style="min-height:auto">pyinstaller TermQuarium.spec   # -&gt; dist/TermQuarium.exe
+pyinstaller update.spec        # -&gt; dist/update.exe  (the updating launcher)
 iscc TermQuarium.iss           # -&gt; Output/TermQuarium-Setup.exe</div>
             </div>
 
-            <p>The second step needs Inno Setup installed for its <code class="mono">iscc</code> compiler. The resulting <code class="mono">TermQuarium-Setup.exe</code> is exactly what's attached to each GitHub release.</p>
+            <p>The last step needs Inno Setup installed for its <code class="mono">iscc</code> compiler. The resulting <code class="mono">TermQuarium-Setup.exe</code> is exactly what's attached to each GitHub release.</p>
+
+            <h2>How auto-updates work</h2>
+            <p>The installed shortcuts launch <code class="mono">update.exe</code>, not the game directly. On Windows you can't overwrite a running executable, so the game can never replace its own binary — a separate launcher that runs <em>first</em> sidesteps that. Each run it applies any update staged on a previous launch (a fast local file swap), starts the game, and — at most once a day, in a detached background process — checks <code class="mono">termquarium.vercel.app/version.json</code> and downloads any newer build to stage for next time. Every failure path (offline, unreachable manifest, corrupt download, mismatched checksum) falls through to launching the installed build, so the updater can never block startup. The install is per-user, so staging a new build never needs an admin prompt.</p>
+            <p>Cutting a release means bumping the version in <code class="mono">constants.py</code> and <code class="mono">TermQuarium.iss</code>, building the two executables and the installer, then updating <code class="mono">website/version.json</code> with the new version, download URL, and the build's SHA-256. All the update logic lives in <code class="mono">termquarium/updater.py</code> (pure standard library, no extra dependency).</p>
 
             <h2>Running the tests</h2>
-            <p>The game's pure logic — steering, hunger, economy, relationships, the save format — is unit-tested independently of any real terminal:</p>
+            <p>The game's pure logic — steering, hunger, economy, relationships, the save format, and the updater — is unit-tested independently of any real terminal:</p>
             <div class="plate-frame" style="max-width:640px">
               <div class="plate-titlebar"><span class="tab"><span class="led"></span>shell</span></div>
-              <div class="tank" style="min-height:auto">python -m pytest tests/test_aquarium.py tests/test_termquarium_save.py tests/test_termquarium_world.py -q</div>
+              <div class="tank" style="min-height:auto">python -m pytest tests/test_aquarium.py tests/test_termquarium_save.py tests/test_termquarium_world.py tests/test_termquarium_updater.py -q</div>
             </div>
 
           </div>
