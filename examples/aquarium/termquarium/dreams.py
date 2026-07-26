@@ -353,18 +353,42 @@ def _build_dream(category: str, variant: DreamVariant, **format_kwargs) -> Dream
     return Dream(category, _CATEGORY_ICON[category], title, description, frames)
 
 
-def make_dream(f, category: str = "happy") -> Dream:
+def _pick_variant(category: str, variant_title: str | None) -> DreamVariant:
+    """Choose a variant within `category`: random by default, or the one whose
+    title matches `variant_title` (case-insensitive substring, so "ice" finds
+    "The Water Turned to Ice"). Raises ValueError with the available titles when
+    nothing matches -- lets the cheat console force one specific dream (e.g. to
+    reproduce a bug) instead of rolling for it."""
+    variants = DREAM_FRAMES[category]
+    if variant_title is None:
+        return random.choice(variants)
+    needle = variant_title.strip().lower()
+    matches = [v for v in variants if needle in v.title.lower()]
+    if not matches:
+        available = "; ".join(v.title for v in variants)
+        raise ValueError(
+            f"No {category!r} dream matching {variant_title!r}. "
+            f"Available: {available}."
+        )
+    return random.choice(matches)
+
+
+def make_dream(
+    f, category: str = "happy", *, variant_title: str | None = None
+) -> Dream:
     """Build a Dream of an explicit `category` for `f` -- the deterministic
     counterpart to choose_dream()'s weighted roll, used by the cheat
     console's give_dream/give_nightmare. Handles the variants that need a
     name (friendship/reunion), falling back gracefully when there's nobody
-    to name. Raises ValueError for an unknown category."""
+    to name. `variant_title` forces one specific dream within the category
+    (see _pick_variant); omit it for the usual random pick. Raises ValueError
+    for an unknown category or an unmatched `variant_title`."""
     if category not in DREAM_FRAMES:
         valid = ", ".join(sorted(DREAM_FRAMES))
         raise ValueError(f"Unknown dream category {category!r}. Try one of: {valid}.")
     if category == "friendship" and f.friend is None:
         category = "happy"  # nobody to dream about -- same fallback as choose_dream()
-    variant = random.choice(DREAM_FRAMES[category])
+    variant = _pick_variant(category, variant_title)
     if category == "friendship":
         return _build_dream(category, variant, friend=f.friend.display_name)
     if category == "reunion":

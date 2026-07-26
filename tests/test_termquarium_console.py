@@ -130,8 +130,10 @@ def _build_registry():
         events.append(("spawn_food", kind, amount))
         return amount, "Pizza"
 
-    def give_nightmare(f):
-        events.append(("give_nightmare", f.display_name))
+    def give_nightmare(f, variant=None):
+        events.append(("give_nightmare", f.display_name, variant))
+        if variant is not None and variant.lower() not in ("ice", "shark"):
+            raise ValueError(f"No 'bad' dream matching {variant!r}.")
 
     def give_dream(f, category=None):
         events.append(("give_dream", f.display_name, category))
@@ -274,7 +276,24 @@ def test_give_nightmare_command_targets_a_named_fish():
     commands, _fish, _state, events = _build_registry()
     run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
     run_console_command(commands, 'give_nightmare("Steve")')
-    assert ("give_nightmare", "Steve") in events
+    assert ("give_nightmare", "Steve", None) in events
+
+
+def test_give_nightmare_command_can_force_a_specific_variant():
+    commands, _fish, _state, events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    run_console_command(commands, 'give_nightmare("Steve", "ice")')
+    assert ("give_nightmare", "Steve", "ice") in events
+    # keyword form works too
+    run_console_command(commands, 'give_nightmare(fish_name="Steve", variant="ice")')
+    assert events.count(("give_nightmare", "Steve", "ice")) == 2
+
+
+def test_give_nightmare_command_reports_an_unknown_variant():
+    commands, _fish, _state, _events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'give_nightmare("Steve", "banana")')
 
 
 def test_give_dream_command_targets_a_named_fish_and_reports_the_title():

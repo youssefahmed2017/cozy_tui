@@ -232,9 +232,15 @@ def build_console_commands(
     def cmd_give_nightmare(args, kwargs):
         name = kwargs.get("fish_name", args[0] if args else None)
         if name is None:
-            raise ConsoleError('Usage: give_nightmare(fish_name="Steve")')
+            raise ConsoleError(
+                'Usage: give_nightmare(fish_name="Steve", variant="ice" (optional))'
+            )
+        variant = kwargs.get("variant", args[1] if len(args) > 1 else None)
         target = _find_fish(str(name))
-        give_nightmare(target)
+        try:
+            give_nightmare(target, str(variant) if variant is not None else None)
+        except ValueError as error:
+            raise ConsoleError(str(error))
         return f"Gave {target.display_name} a nightmare."
 
     def cmd_give_dream(args, kwargs):
@@ -292,7 +298,8 @@ def build_console_commands(
             cmd_spawn,
         ),
         "give_nightmare": Command(
-            "give_nightmare(fish_name: the fish to spook) -- a forced bad "
+            "give_nightmare(fish_name: the fish to spook, variant: which bad "
+            'dream, e.g. "ice" (optional; random if omitted)) -- a forced bad '
             "dream and the wake-up scare that follows",
             cmd_give_nightmare,
         ),
