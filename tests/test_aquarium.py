@@ -4003,7 +4003,7 @@ def test_give_dream_command_sets_a_viewable_dream(tmp_path, monkeypatch):
     assert any("I dreamed about" in m for m in steve.memory_log)
 
 
-def test_give_nightmare_command_scares_the_fish(tmp_path, monkeypatch):
+def test_give_nightmare_command_shows_the_dream_then_scares(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     toasts = []
     monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
@@ -4014,11 +4014,40 @@ def test_give_nightmare_command_scares_the_fish(tmp_path, monkeypatch):
 
     _type_into_console(console, 'give_nightmare("Steve")')
 
-    # The scare consumes the dream and marks the fish as freshly spooked.
+    # The bad dream shows first (😴💭); the scare is scheduled, not immediate --
+    # so a wake doesn't wipe the dream before it can be seen.
+    assert steve.dream is not None
+    assert steve.dream.category == "bad"
+    assert steve._nightmare_wake_at is not None
+    assert steve._just_scared_until is None
+    assert any("dreamed about" in m.lower() for m in steve.memory_log)
+
+    # After the wake delay, the per-second tick fires the scare (😨).
+    steve._nightmare_wake_at = time.monotonic()  # due now
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
     assert steve.dream is None
     assert steve._just_scared_until is not None
     assert any("nightmare" in t.lower() for t in toasts)
-    assert any("nightmare" in m.lower() for m in steve.memory_log)
+
+
+def test_give_nightmare_command_scare_false_lingers_without_waking(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+
+    _type_into_console(console, 'give_nightmare("Steve", "ice", scare=False)')
+
+    # The exact bad dream is set, viewable, and no wake-up is scheduled.
+    assert steve.dream is not None
+    assert steve.dream.title == "The Water Turned to Ice"
+    assert steve._nightmare_wake_at is None
+    assert steve._just_scared_until is None
 
 
 def test_hud_treat_dropdown_drops_from_inventory_and_warns_when_empty(

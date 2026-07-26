@@ -1300,18 +1300,20 @@ def main() -> None:
         return amount, item.kind
 
     def _give_nightmare(f: Fish, variant: str = None, scare: bool = True) -> None:
-        # A forced bad dream plus (by default) the real scare (wake, 😨 flash,
-        # and the relocation-to-a-friend follow-up all play out via the normal
-        # _process_nightmares() path afterward) -- see _trigger_nightmare_scare().
-        # `variant` forces one specific nightmare (e.g. "ice") instead of a
-        # random roll. `scare=False` skips the wake-up entirely, so the fish
-        # keeps sleeping and the bad dream *lingers* -- the only way to actually
-        # sit and watch it (or click into it from the castle), since the scare
-        # wakes the fish and a wake clears its dream. Handy for reproducing a
-        # bug tied to one dream.
+        # A forced bad dream that plays out exactly like a natural one
+        # (_assign_dreams): by default the dream shows first (😴💭) and, after
+        # NIGHTMARE_WAKE_DELAY_SECONDS, _process_nightmares() fires the wake-up
+        # scare (😨) and the relocation-to-a-friend follow-up. Setting the timer
+        # rather than scaring on the spot is what lets you actually watch the
+        # 😴💭 before the 😨 -- scaring immediately clears the dream (a wake
+        # wipes f.dream) before it's ever visible. `variant` forces one specific
+        # nightmare (e.g. "ice"); `scare=False` skips the wake-up entirely, so
+        # the bad dream just *lingers* on the sleeping fish indefinitely (handy
+        # for sitting and watching one, or reproducing a dream-specific bug).
         f.dream = make_dream(f, "bad", variant_title=variant)
+        _log_memory(f, f"I dreamed about {f.dream.title}. {f.dream.description}")
         if scare:
-            _trigger_nightmare_scare(f)
+            f._nightmare_wake_at = time.monotonic() + NIGHTMARE_WAKE_DELAY_SECONDS
 
     def _give_dream(f: Fish, category: str = None) -> str:
         key = (category or "happy").strip().lower()
