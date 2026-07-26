@@ -6,6 +6,7 @@ from rich.console import Console
 from rich.markdown import Markdown as _RichMarkdown
 
 from cozy_tui._rich_bridge import to_cozy_style as _to_cozy_style
+from cozy_tui._width import text_width
 from cozy_tui.style import Style
 from cozy_tui.widget import Widget
 
@@ -93,7 +94,7 @@ class Markdown(Widget):
             col = self.abs_x
             for text, style in spans:
                 canvas.write(col, vy, text, style)
-                col += len(text)
+                col += text_width(text)
             fill = self.abs_x + w - col
             if fill > 0:
                 canvas.write(col, vy, " " * fill, self.style)

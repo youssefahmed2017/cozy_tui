@@ -111,6 +111,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Emoji with a variation selector (`❄️`, `⚠️`, `▶️`, …) mis-measured and
+  split across cells.** A base symbol followed by U+FE0F (VS16, the
+  "render me as emoji" selector) is drawn two columns wide by the terminal, but
+  the width layer counted the selector as zero-width and the base as one, so
+  labels, boxes, and clipping desynced by a column and the diff renderer could
+  emit the base and selector into separate cells. `text_width` now honors
+  VS16/VS15 (emoji vs. text presentation), and `App.write` keeps each
+  base+selector pair in a single cell so the whole sequence reaches the
+  terminal together. New `iter_cells()` in `cozy_tui._width` is the
+  presentation-aware cell iterator behind both. `Code`, `MarkdownInput`'s
+  rendered view, `Markdown`, and `TracebackView` also advanced their replay
+  cursor by `len(text)` (codepoint count) rather than display width, so a wide
+  glyph in a comment/string/prose run overlapped the next run; they now measure
+  with `text_width`.
+
 - **A widget that removed another during its own `draw()` skipped the next
   widget for a frame.** The draw pass iterated `App.widgets` directly, so
   mutating that list mid-draw (e.g. a predator eating prey, then removing it)

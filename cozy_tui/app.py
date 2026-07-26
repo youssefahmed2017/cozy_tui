@@ -9,7 +9,7 @@ from pathlib import Path
 
 from cozy_tui._console import enable_raw, flush_input, restore, wait_input
 from cozy_tui._dock import SIDES, dock_layout
-from cozy_tui._width import char_width
+from cozy_tui._width import char_width, iter_cells
 from cozy_tui.ansi import TERMINAL_CURSOR_STYLES, cursor_shape_esc, style_esc, tint
 from cozy_tui.events import (
     Key,
@@ -1523,8 +1523,15 @@ class App:
         row = self.buffer[vy]
         n = len(row)
         col = x
-        for ch in text:
-            w = char_width(ch)
+        # Common case: iterate characters directly (no allocation). When an
+        # emoji/text variation selector is present, `iter_cells` merges each
+        # base+selector into one cell whose `char` carries the whole sequence,
+        # so the terminal renders (and advances for) the selected presentation.
+        if "️" in text or "︎" in text:
+            cells = iter_cells(text)
+        else:
+            cells = ((ch, char_width(ch)) for ch in text)
+        for ch, w in cells:
             if w == 0:
                 # Zero-width (combining marks, ZWJ, BOM): carries no column of
                 # its own. Dropped rather than merged, which keeps the grid model

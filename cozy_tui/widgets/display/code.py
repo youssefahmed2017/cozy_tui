@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 from cozy_tui._rich_bridge import to_cozy_style
+from cozy_tui._width import text_width
 from cozy_tui.widget import Widget
 
 #: Rich's own terminal-oriented theme, deliberately preferred over its default
@@ -179,4 +180,4 @@ class Code(Widget):
             cx = self.abs_x
             for text, style in cells:
                 canvas.write(cx, vy, text, style)
-                cx += len(text)
+                cx += text_width(text)

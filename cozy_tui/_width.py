@@ -97,9 +97,50 @@ def char_width(ch: str) -> int:
     return 1
 
 
+# Variation selectors that override the presentation (and thus width) of the
+# base character before them: VS16 forces *emoji* presentation (width 2), VS15
+# forces *text* presentation (width 1). They must ride along in the same cell as
+# their base -- emitting the base alone would make the terminal fall back to the
+# default presentation and mis-measure it (e.g. "❄️" rendering as a width-1 "❄").
+_VS16 = "️"  # emoji presentation
+_VS15 = "︎"  # text presentation
+
+
+def iter_cells(text: str):
+    """Yield ``(cell_text, width)`` for each display cell in ``text``.
+
+    A base character immediately followed by an emoji/text variation selector
+    (U+FE0F / U+FE0E) is merged with it into a single cell whose width reflects
+    the selected presentation (2 for emoji, 1 for text); the selector is not
+    yielded separately. Every other character is yielded on its own with its
+    ``char_width`` (zero-width marks included, as ``(ch, 0)`` -- callers drop
+    those). This is the string-level counterpart to :func:`char_width`, which
+    can't see the following selector.
+    """
+    n = len(text)
+    i = 0
+    while i < n:
+        ch = text[i]
+        nxt = text[i + 1] if i + 1 < n else None
+        if nxt == _VS16:
+            yield ch + nxt, 2
+            i += 2
+        elif nxt == _VS15:
+            yield ch + nxt, 1
+            i += 2
+        else:
+            yield ch, char_width(ch)
+            i += 1
+
+
 def text_width(text: str) -> int:
     """Return the total column width of a string."""
-    return sum(char_width(c) for c in text)
+    # Fast path: with no variation selectors, per-char widths sum directly. The
+    # `in` scans are C-level and cheap, so common (ASCII/CJK) text pays almost
+    # nothing while emoji-presentation sequences still measure correctly.
+    if _VS16 not in text and _VS15 not in text:
+        return sum(char_width(c) for c in text)
+    return sum(w for _, w in iter_cells(text))
 
 
 def clip_text(text: str, width: int) -> str:

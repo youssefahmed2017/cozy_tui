@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.traceback import Traceback as _RichTraceback
 
 from cozy_tui._rich_bridge import to_cozy_style
+from cozy_tui._width import text_width
 from cozy_tui.widget import Widget
 
 
@@ -87,7 +88,7 @@ class TracebackView(Widget):
             cx = self.abs_x
             for text, style in cells:
                 canvas.write(cx, vy, text, style)
-                cx += len(text)
+                cx += text_width(text)
 
     def contains(self, col: int, row: int) -> bool:
         w = self._clip_width or self.width

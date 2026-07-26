@@ -30,6 +30,17 @@ def test_wide_char_occupies_two_cells_and_shifts_following():
     assert chars[3] == "b"  # pushed to column 3, not 2
 
 
+def test_emoji_variation_selector_writes_one_wide_cell():
+    app = make_app()
+    app.clear()
+    app.write(0, 0, "a❄️b", app.style)  # a + snowflake + VS16 + b
+    chars = row_chars(app, 0)
+    assert chars[0] == "a"
+    assert chars[1] == "❄️"  # base + selector share one cell, emitted together
+    assert chars[2] == ""  # continuation cell — the emoji advances two columns
+    assert chars[3] == "b"  # pushed to column 3, not 2
+
+
 def test_zero_width_char_consumes_no_column():
     app = make_app()
     app.clear()
