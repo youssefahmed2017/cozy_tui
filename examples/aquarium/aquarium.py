@@ -1299,14 +1299,19 @@ def main() -> None:
             _drop_special_food(item.kind, x, y)
         return amount, item.kind
 
-    def _give_nightmare(f: Fish, variant: str = None) -> None:
-        # A forced bad dream plus the real scare (wake, 😨 flash, and the
-        # relocation-to-a-friend follow-up all play out via the normal
+    def _give_nightmare(f: Fish, variant: str = None, scare: bool = True) -> None:
+        # A forced bad dream plus (by default) the real scare (wake, 😨 flash,
+        # and the relocation-to-a-friend follow-up all play out via the normal
         # _process_nightmares() path afterward) -- see _trigger_nightmare_scare().
         # `variant` forces one specific nightmare (e.g. "ice") instead of a
-        # random roll -- handy for reproducing a bug tied to one dream.
+        # random roll. `scare=False` skips the wake-up entirely, so the fish
+        # keeps sleeping and the bad dream *lingers* -- the only way to actually
+        # sit and watch it (or click into it from the castle), since the scare
+        # wakes the fish and a wake clears its dream. Handy for reproducing a
+        # bug tied to one dream.
         f.dream = make_dream(f, "bad", variant_title=variant)
-        _trigger_nightmare_scare(f)
+        if scare:
+            _trigger_nightmare_scare(f)
 
     def _give_dream(f: Fish, category: str = None) -> str:
         key = (category or "happy").strip().lower()

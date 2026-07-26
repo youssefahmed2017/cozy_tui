@@ -233,15 +233,24 @@ def build_console_commands(
         name = kwargs.get("fish_name", args[0] if args else None)
         if name is None:
             raise ConsoleError(
-                'Usage: give_nightmare(fish_name="Steve", variant="ice" (optional))'
+                "Usage: give_nightmare(fish_name=\"Steve\", "
+                'variant="ice" (optional), scare=True (optional))'
             )
         variant = kwargs.get("variant", args[1] if len(args) > 1 else None)
+        scare = kwargs.get("scare", args[2] if len(args) > 2 else True)
         target = _find_fish(str(name))
         try:
-            give_nightmare(target, str(variant) if variant is not None else None)
+            give_nightmare(
+                target, str(variant) if variant is not None else None, bool(scare)
+            )
         except ValueError as error:
             raise ConsoleError(str(error))
-        return f"Gave {target.display_name} a nightmare."
+        if scare:
+            return f"Gave {target.display_name} a nightmare."
+        return (
+            f"Gave {target.display_name} a lingering nightmare "
+            "(watch it while it sleeps)."
+        )
 
     def cmd_give_dream(args, kwargs):
         name = kwargs.get("fish_name", args[0] if args else None)
@@ -299,8 +308,9 @@ def build_console_commands(
         ),
         "give_nightmare": Command(
             "give_nightmare(fish_name: the fish to spook, variant: which bad "
-            'dream, e.g. "ice" (optional; random if omitted)) -- a forced bad '
-            "dream and the wake-up scare that follows",
+            'dream, e.g. "ice" (optional; random if omitted), scare: True by '
+            "default -- pass False to let the bad dream linger so you can watch "
+            "it instead of it waking the fish) -- a forced bad dream",
             cmd_give_nightmare,
         ),
         "give_dream": Command(

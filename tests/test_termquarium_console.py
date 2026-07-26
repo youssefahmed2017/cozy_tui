@@ -130,8 +130,8 @@ def _build_registry():
         events.append(("spawn_food", kind, amount))
         return amount, "Pizza"
 
-    def give_nightmare(f, variant=None):
-        events.append(("give_nightmare", f.display_name, variant))
+    def give_nightmare(f, variant=None, scare=True):
+        events.append(("give_nightmare", f.display_name, variant, scare))
         if variant is not None and variant.lower() not in ("ice", "shark"):
             raise ValueError(f"No 'bad' dream matching {variant!r}.")
 
@@ -276,17 +276,25 @@ def test_give_nightmare_command_targets_a_named_fish():
     commands, _fish, _state, events = _build_registry()
     run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
     run_console_command(commands, 'give_nightmare("Steve")')
-    assert ("give_nightmare", "Steve", None) in events
+    assert ("give_nightmare", "Steve", None, True) in events
 
 
 def test_give_nightmare_command_can_force_a_specific_variant():
     commands, _fish, _state, events = _build_registry()
     run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
     run_console_command(commands, 'give_nightmare("Steve", "ice")')
-    assert ("give_nightmare", "Steve", "ice") in events
+    assert ("give_nightmare", "Steve", "ice", True) in events
     # keyword form works too
     run_console_command(commands, 'give_nightmare(fish_name="Steve", variant="ice")')
-    assert events.count(("give_nightmare", "Steve", "ice")) == 2
+    assert events.count(("give_nightmare", "Steve", "ice", True)) == 2
+
+
+def test_give_nightmare_command_can_let_the_dream_linger():
+    commands, _fish, _state, events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    result = run_console_command(commands, 'give_nightmare("Steve", "ice", scare=False)')
+    assert ("give_nightmare", "Steve", "ice", False) in events
+    assert "linger" in result.lower()
 
 
 def test_give_nightmare_command_reports_an_unknown_variant():
