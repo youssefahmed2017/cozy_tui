@@ -66,21 +66,50 @@ The `TermQuarium.spec` (PyInstaller) and `TermQuarium.iss` (Inno Setup) files in
 
 ```bash
 pyinstaller TermQuarium.spec        # -> dist/TermQuarium.exe
+pyinstaller update.spec             # -> dist/update.exe (the updating launcher)
 iscc TermQuarium.iss                # -> Output/TermQuarium-Setup.exe (needs Inno Setup)
 ```
+
+## Auto-updates
+
+The installed shortcuts launch `update.exe`, not `TermQuarium.exe` directly. On
+each run it applies any update staged on a previous launch (a fast local swap —
+you can't overwrite a running exe on Windows, which is exactly why the launcher
+is separate), starts the game, and — at most once a day, in a detached
+background process — checks `termquarium.vercel.app/version.json` and downloads
+any newer build to stage for next time. Every failure (offline, bad download,
+checksum mismatch) falls through to launching the installed build, so the
+updater can never stop you from playing. `update.py --skip` bypasses the check.
+
+The install is per-user (`PrivilegesRequired=lowest`) so staging a new build
+never needs an admin/UAC prompt. All the decision logic lives in
+`termquarium/updater.py` (pure standard library, unit-tested in
+`tests/test_termquarium_updater.py`); `update.py` is just the glue.
+
+**Cutting a release:**
+
+1. Bump `GAME_VERSION` in `termquarium/constants.py` and `MyAppVersion` in
+   `TermQuarium.iss` to the new version.
+2. Build `dist/TermQuarium.exe` and `dist/update.exe` (above), and the
+   installer.
+3. Upload the new `TermQuarium.exe` to the release URL, compute its SHA-256
+   (`sha256sum dist/TermQuarium.exe`), and update `website/version.json`'s
+   `version`, `url`, and `sha256`. Deploying the site publishes the manifest;
+   installed clients pick it up within a day.
 
 ## Tests
 
 The game's pure logic (steering, hunger, economy, relationships, save format) is unit-tested independently of any real terminal:
 
 ```bash
-python -m pytest tests/test_aquarium.py tests/test_termquarium_save.py tests/test_termquarium_world.py tests/test_termquarium_cloud.py tests/test_termquarium_cloud_api.py tests/test_termquarium_console.py -q
+python -m pytest tests/test_aquarium.py tests/test_termquarium_save.py tests/test_termquarium_world.py tests/test_termquarium_cloud.py tests/test_termquarium_cloud_api.py tests/test_termquarium_console.py tests/test_termquarium_updater.py -q
 ```
 
 ## Project layout
 
 ```
 aquarium.py              # main() only -- wires everything into one running App
+update.py                # the updating launcher the installed shortcut runs
 termquarium/
   constants.py           # every tuning constant, species/decoration catalogs
   steering.py            # pure movement math (steer, avoid, school, ...)
@@ -94,5 +123,6 @@ termquarium/
   save.py                # versioned JSON save/load
   dreams.py              # the Dream System: categories, memory-linking, the animation widget
   console.py             # the Cheat Console: command parser, registry, the widget
+  updater.py             # self-update logic for update.exe (version compare, staging, applying)
   shop.py, ui.py, inspectors.py   # Shop, menus, and Inspector panel builders
 ```

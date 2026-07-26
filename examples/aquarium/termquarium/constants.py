@@ -2,6 +2,13 @@
 
 from collections import namedtuple
 
+# The installed game's release version. Baked into the build (PyInstaller
+# freezes this source), so `update.py` reads it as the "local version" to
+# compare against the published manifest -- see termquarium/updater.py.
+# Keep this in step with MyAppVersion in TermQuarium.iss and the "version"
+# field published in website/version.json.
+GAME_VERSION = "1.3.0"
+
 # A single tank-level toast is shown when one or more fish cross this level.
 # It is intentionally below starvation (100) so the player has time to act.
 HUNGER_WARNING_THRESHOLD = 50.0
