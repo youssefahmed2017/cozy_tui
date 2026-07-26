@@ -1,7 +1,7 @@
 {
-  "version": "1.3.0",
-  "url": "https://termquarium.vercel.app/releases/TermQuarium-1.3.0.exe",
-  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "version": "1.4.0",
+  "url": "https://termquarium.vercel.app/releases/TermQuarium-1.4.0.exe",
+  "sha256": "463b3de3a6eeb651a53db79e03a88402fdaae90dacdecead641a50fe51373405",
   "mandatory": false,
   "min_supported": "1.0.0",
   "notes": "See the changelog at https://termquarium.vercel.app/changelog"
