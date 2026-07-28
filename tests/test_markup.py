@@ -21,9 +21,7 @@ from cozy_tui.widgets import (
 
 def styled(markup, base=None):
     """render() as (text, fg, bg, styles) tuples — easier to assert on."""
-    return [
-        (text, s.fg, s.bg, s.styles) for text, s in render(markup, base)
-    ]
+    return [(text, s.fg, s.bg, s.styles) for text, s in render(markup, base)]
 
 
 # ── parsing ──────────────────────────────────────────────────────────────────
@@ -37,12 +35,12 @@ def test_a_tag_colors_the_text_until_it_is_closed():
 
 
 def test_several_words_in_one_tag_combine():
-    (text, fg, bg, styles), = styled("[bold red]Error[/]")
+    ((text, fg, bg, styles),) = styled("[bold red]Error[/]")
     assert (text, fg, styles) == ("Error", "red", ("bold",))
 
 
 def test_a_bg_suffix_sets_the_background():
-    (_text, fg, bg, _styles), = styled("[white red-bg]bad[/]")
+    ((_text, fg, bg, _styles),) = styled("[white red-bg]bad[/]")
     assert (fg, bg) == ("white", "red_bg")
 
 
@@ -55,7 +53,7 @@ def test_a_bg_suffix_works_on_every_color_form():
         ("[rgb(20, 20, 20)-bg]", "rgb(20,20,20)"),
         ("[color(17)-bg]", "color(17)"),
     ]:
-        (_text, fg, got_bg, _styles), = styled(f"{tag}x[/]")
+        ((_text, fg, got_bg, _styles),) = styled(f"{tag}x[/]")
         assert (fg, got_bg) == (None, bg)
 
 

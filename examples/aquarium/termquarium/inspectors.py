@@ -4,7 +4,7 @@ small Box-building functions with no shared state between them."""
 import time
 
 from cozy_tui import Style, clipboard
-from cozy_tui.widgets import Box, Button, Checkbox, Label
+from cozy_tui.widgets import Box, Button, Checkbox, Label, ScrollView
 
 from .constants import TREAT_SHOP_ITEMS
 from .fish import Fish, occupants_of
@@ -13,7 +13,9 @@ from .styles import HEART_STYLE, MUTED
 from .tank_objects import Decoration
 
 
-def _build_inspector(app, f: Fish, on_rename, on_sell, treats, on_feed_treat) -> Box:
+def _build_inspector(
+    app, f: Fish, on_rename, on_sell, treats, on_feed_treat, on_view_history=None
+) -> Box:
     """A read-only stat card for one Fish (name/species/age+growth/health/
     hunger/personality/favorite spot/favorite foods/sell value) with Rename
     and Sell buttons. A snapshot at open-time, not live-refreshing --
@@ -56,6 +58,20 @@ def _build_inspector(app, f: Fish, on_rename, on_sell, treats, on_feed_treat) ->
     box.add(Label(2, 5, personality_line))
     box.add(Label(2, 6, f"Favorite spot: {spot}"))
     y = 7
+    if f.relaxing and f._relax_spot is not None:
+        # Surfaces the relax mechanic in the one place a player is already
+        # looking at this fish -- a snapshot of "what are you up to right now",
+        # shown only when it's actually settled (see fish.py's relax/join
+        # branches). `_relax_spot` rather than `favorite_decoration`: while
+        # joined at a friend's spot they can differ, and a joiner may have no
+        # favorite_decoration of its own at all.
+        companion = (
+            f", with {f._relaxing_with.display_name}"
+            if f._relaxing_with is not None
+            else ""
+        )
+        box.add(Label(2, y, f"Status: 😌 Relaxing near the {f._relax_spot.kind}{companion}"))
+        y += 1
     if f.favorite_foods:
         emojis = " ".join(
             item.emoji for item in TREAT_SHOP_ITEMS if item.kind in f.favorite_foods
@@ -84,13 +100,22 @@ def _build_inspector(app, f: Fish, on_rename, on_sell, treats, on_feed_treat) ->
         # This fish's own diary (aquarium.py's _log_memory()) -- distinct
         # from the friend/rival "why" lines above, which are a shared pair
         # record. Newest last, like the log itself; only the last 5 shown
-        # so this section stays glanceable rather than a scrolling wall.
+        # so this section stays glanceable rather than a scrolling wall --
+        # "See All History" below is the uncapped version, for the player
+        # rather than for the fish (see fish.py's full_memory_log).
         box.add(Label(2, y, "Memory Log", Style(styles=["bold"])))
         y += 1
         for entry in f.memory_log[-5:]:
             box.add(Label(2, y, entry, MUTED))
             y += 1
         y += 1
+        if on_view_history is not None:
+            box.add(
+                Button(2, y, "See All History").on_click(
+                    lambda _w: on_view_history(f)
+                )
+            )
+            y += 2
 
     box.add(Label(2, y, f"Sell value: ${f.sell_value}"))
     y += 2
@@ -122,6 +147,34 @@ def _build_inspector(app, f: Fish, on_rename, on_sell, treats, on_feed_treat) ->
     box.add(Button(2, y, "Rename").on_click(lambda _w: on_rename(f)))
     box.add(Button(14, y, "Sell").on_click(_on_sell))
     box.add(Button(24, y, "Close").on_click(lambda _w: app.close_overlay(box)))
+    return box
+
+
+def _build_fish_history(app, f: Fish) -> Box:
+    """Every entry ever logged for this fish (aquarium.py's _log_memory()),
+    with no cap -- purely a player-facing archive (fish.py's
+    full_memory_log), reached via the ordinary Inspector's "See All History"
+    button. Deliberately separate from what the fish itself "remembers":
+    the Inspector's own Memory Log section (last 5 of the *capped*
+    memory_log) is what still feeds dream selection and what actually fades
+    with time -- this view exists so a real moment the player cared about
+    isn't lost just because the fish has since moved on. Read-only, and
+    scrollable (ScrollView, the same widget the crash screen's traceback and
+    DevTools' Console tab use) since a long-lived fish's full history can
+    run well past a fixed panel's height."""
+    box = Box(
+        0,
+        0,
+        "400x420",
+        title=f"{f.display_name}'s History",
+        border="rounded",
+        style=app.style,
+    )
+    view = ScrollView(2, 1, "360x330", autoscroll=False, style=app.style)
+    for i, entry in enumerate(f.full_memory_log):
+        view.add(Label(0, i, entry, MUTED))
+    box.add(view)
+    box.add(Button(2, 36, "Close").on_click(lambda _w: app.close_overlay(box)))
     return box
 
 

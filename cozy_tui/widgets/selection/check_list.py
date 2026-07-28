@@ -91,6 +91,10 @@ class CheckList(Widget):
         """Values of all checked items."""
         return [item.value for item in self._items if item.checked]
 
+    @property
+    def items(self):
+        return self._items
+
     def get(self):
         return self.selected
 

@@ -1104,6 +1104,426 @@ def test_relaxing_fish_settles_down_once_it_arrives():
     assert math.hypot(f.vx, f.vy) < math.hypot(3.0, 4.0)
 
 
+# ── Relaxation surfacing (existing relax mechanic, made visible) ────────────
+
+
+def _relaxed_fish(bounds=(0.0, 0.0, 50.0, 50.0), kind="Rock"):
+    """A fish already settled at its favorite spot -- same setup as
+    test_relaxing_fish_settles_down_once_it_arrives(), one draw() call in."""
+    spot = aq.Decoration(6.0, 5.0, aq.ROCK_ART, aq.ROCK_COLORS, kind=kind)
+    f = _neutral_fish(5.0, 5.0, bounds, decorations=[spot])
+    f.favorite_decoration = spot
+    f._next_turn = float("inf")
+    f._next_relax_check = float("inf")
+    f._relaxing_until = float("inf")
+    _age(f)
+    f.draw(_FakeCanvas())
+    return f, spot
+
+
+def test_settling_to_relax_marks_the_fish_relaxing_and_flags_the_one_shot():
+    f, _spot = _relaxed_fish()
+    assert f.relaxing is True
+    assert f._relax_began is True  # consumed by aquarium.py's _process_relaxing
+
+
+def test_relax_one_shot_does_not_refire_on_a_later_frame_while_still_relaxing():
+    f, _spot = _relaxed_fish()
+    f._relax_began = False  # simulate _process_relaxing having consumed it
+
+    _age(f)
+    f.draw(_FakeCanvas())
+
+    assert f.relaxing is True
+    assert f._relax_began is False  # still relaxing, but not a fresh settle
+
+
+def test_relax_flash_shows_above_the_fish_right_after_settling():
+    f, _spot = _relaxed_fish()
+
+    writes = []
+    canvas = _FakeCanvas()
+    canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
+    _age(f, 0.01)  # small dt -- still well inside RELAX_FLASH_SECONDS
+    f.draw(canvas)
+
+    assert any(text == "😌" for _x, _y, text in writes)
+
+
+def test_relax_flash_fades_after_relax_flash_seconds():
+    f, _spot = _relaxed_fish()
+    f._relax_flash_until = time.monotonic() - 0.01  # already elapsed
+
+    writes = []
+    canvas = _FakeCanvas()
+    canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
+    _age(f)
+    f.draw(canvas)
+
+    assert not any(text == "😌" for _x, _y, text in writes)
+    assert f.relaxing is True  # the mechanic itself is unaffected -- just the flash
+
+
+def test_relaxing_stops_the_moment_it_leaves_the_spot():
+    f, _spot = _relaxed_fish()
+    assert f.relaxing is True
+
+    f._relaxing_until = 0.0  # the episode ends
+    _age(f)
+    f.draw(_FakeCanvas())
+
+    assert f.relaxing is False
+
+
+def test_sleep_mood_takes_visual_priority_over_the_relax_flash():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    spot = aq.Decoration(6.0, 5.0, aq.ROCK_ART, aq.ROCK_COLORS, kind="Rock")
+    f = _sleepy_fish(5.0, 5.0, bounds, decorations=[spot])
+    f.favorite_decoration = spot
+    f._relax_flash_until = time.monotonic() + 10.0
+
+    writes = []
+    canvas = _FakeCanvas()
+    canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
+    _age(f)
+    f.draw(canvas)
+
+    assert any(text in ("😴", "😴💭") for _x, _y, text in writes)
+    assert not any(text == "😌" for _x, _y, text in writes)
+
+
+def test_relax_status_appears_in_the_inspector_while_relaxing():
+    from cozy_tui import App
+
+    app = App(full=False, size="380x520")
+    f, spot = _relaxed_fish()
+
+    box = aq._build_inspector(app, f, lambda f: None, lambda f: None, {}, lambda f, k: None)
+    labels = [c.text for c in box.children if c.__class__.__name__ == "Label"]
+
+    assert any("Relaxing" in t and spot.kind in t for t in labels)
+
+
+def test_relax_status_absent_from_the_inspector_when_not_relaxing():
+    from cozy_tui import App
+
+    app = App(full=False, size="380x520")
+    f = _neutral_fish(5.0, 5.0)
+    f.favorite_decoration = aq.Decoration(
+        6.0, 5.0, aq.ROCK_ART, aq.ROCK_COLORS, kind="Rock"
+    )
+
+    box = aq._build_inspector(app, f, lambda f: None, lambda f: None, {}, lambda f, k: None)
+    labels = [c.text for c in box.children if c.__class__.__name__ == "Label"]
+
+    assert not any("Relaxing" in t for t in labels)
+
+
+def test_relax_toast_wording_is_specific_per_decoration_kind():
+    assert aq._relax_toast_message("Castle", "Steve") == (
+        "🏰 Steve is relaxing by the Castle."
+    )
+    assert aq._relax_toast_message("Rock", "Steve") == (
+        "🪨 Steve found some quiet time by the Rock."
+    )
+    assert aq._relax_toast_message("Plant", "Steve") == (
+        "🌿 Steve is relaxing near their favorite Plant."
+    )
+    assert aq._relax_toast_message("Driftwood", "Steve") == (
+        "🪵 Steve is drifting lazily by the Driftwood."
+    )
+
+
+def test_relax_toast_wording_falls_back_for_an_unknown_kind():
+    message = aq._relax_toast_message("Anemone", "Bob")
+    assert "Bob" in message
+
+
+def test_join_relax_toast_wording_matches_the_pitched_message():
+    message = aq._join_relax_toast_message("Rock", "Steve", "Alex")
+    assert message == "🪨 Steve joined Alex. Both of them happily relaxed together."
+
+
+# ── A friend joining one already relaxing ───────────────────────────────────
+
+
+def test_friend_steers_toward_a_relaxing_friends_spot_when_far():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    host, spot = _relaxed_fish(bounds, kind="Rock")  # already settled at `spot`
+
+    joiner = _neutral_fish(30.0, 30.0, bounds, decorations=[spot])
+    joiner._next_turn = float("inf")
+    joiner._next_relax_check = float("inf")
+    _befriend(host, joiner)
+    joiner.vx, joiner.vy = 0.0, 0.0
+
+    _age(joiner)
+    joiner.draw(_FakeCanvas())
+
+    # Steered toward the host's spot (not yet arrived) rather than settling.
+    assert joiner.relaxing is False
+    assert math.hypot(joiner.vx, joiner.vy) > 0
+    # Genuinely aimed at the spot (down-left of the joiner's start), not an
+    # arbitrary direction: both velocity components point that way.
+    assert joiner.vx < 0
+    assert joiner.vy < 0
+
+
+def test_friend_settles_and_becomes_relaxing_once_it_arrives_at_the_hosts_spot():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    host, spot = _relaxed_fish(bounds, kind="Rock")
+
+    joiner = _neutral_fish(6.5, 5.0, bounds, decorations=[spot])  # 1 cell away
+    joiner._next_turn = float("inf")
+    joiner._next_relax_check = float("inf")
+    _befriend(host, joiner)
+    joiner.vx, joiner.vy = 3.0, 4.0
+
+    _age(joiner)
+    joiner.draw(_FakeCanvas())
+
+    assert joiner.relaxing is True
+    assert joiner._relax_spot is spot
+    assert joiner._relaxing_with is host
+    assert joiner._joined_friend_relax is True
+    # Damped toward zero (IDLE_DAMPING), same settle shape as solo relaxing.
+    assert math.hypot(joiner.vx, joiner.vy) < math.hypot(3.0, 4.0)
+
+
+def test_joining_does_not_refire_the_one_shot_on_a_later_frame():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    host, spot = _relaxed_fish(bounds, kind="Rock")
+    joiner = _neutral_fish(6.5, 5.0, bounds, decorations=[spot])
+    joiner._next_turn = float("inf")
+    joiner._next_relax_check = float("inf")
+    _befriend(host, joiner)
+    _age(joiner)
+    joiner.draw(_FakeCanvas())
+    assert joiner._joined_friend_relax is True
+    joiner._joined_friend_relax = False  # simulate _process_relaxing consuming it
+
+    _age(joiner)
+    joiner.draw(_FakeCanvas())
+
+    assert joiner.relaxing is True  # still joined...
+    assert joiner._joined_friend_relax is False  # ...but not a fresh settle
+
+
+def test_joining_only_happens_between_actual_friends():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    host, spot = _relaxed_fish(bounds, kind="Rock")
+    stranger = _neutral_fish(6.5, 5.0, bounds, decorations=[spot])
+    stranger._next_turn = float("inf")
+    stranger._next_relax_check = float("inf")
+    # No _befriend() call -- host.friend is None for a stranger.
+
+    _age(stranger)
+    stranger.draw(_FakeCanvas())
+
+    assert stranger.relaxing is False
+    assert stranger._joined_friend_relax is False
+
+
+def test_joining_takes_priority_over_plain_friend_following():
+    # Without a relaxing friend, a fish with a Friend just generically follows
+    # them (the pre-existing "elif self.friend is not None" branch), aimed at
+    # the friend's live position. Once that friend is relaxing, the same
+    # steering should aim at the friend's fixed spot instead -- a different
+    # target whenever the friend's live position isn't already the spot.
+    # Two independent hosts (rather than flipping one mid-test) sidestep an
+    # unrelated, pre-existing precedence quirk: a *bonded* host's own
+    # draw() would itself just plain-follow the joiner back (friend-follow
+    # already outranks solo relaxing for any fish with a Friend), so it
+    # can never be made to genuinely settle by drawing it after befriending.
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    spot = aq.Decoration(6.0, 5.0, aq.ROCK_ART, aq.ROCK_COLORS, kind="Rock")
+
+    live_host = _neutral_fish(20.0, 2.0, bounds, decorations=[spot])  # not at `spot`
+    joiner_a = _neutral_fish(30.0, 30.0, bounds, decorations=[spot])
+    joiner_a._next_turn = float("inf")
+    joiner_a._next_relax_check = float("inf")
+    _befriend(live_host, joiner_a)
+    _age(joiner_a)
+    joiner_a.draw(_FakeCanvas())
+    vx_following, vy_following = joiner_a.vx, joiner_a.vy
+
+    relaxing_host, _spot = _relaxed_fish(bounds, kind="Rock")  # settled, no friend
+    joiner_b = _neutral_fish(30.0, 30.0, bounds, decorations=[spot])
+    joiner_b._next_turn = float("inf")
+    joiner_b._next_relax_check = float("inf")
+    _befriend(relaxing_host, joiner_b)
+    _age(joiner_b)
+    joiner_b.draw(_FakeCanvas())
+
+    # Aimed at the fixed spot (6.0, 5.0), not the live_host's live position
+    # (20.0, 2.0) the plain-follow case targeted -- a different direction.
+    assert (joiner_b.vx, joiner_b.vy) != (vx_following, vy_following)
+
+
+def test_inspector_status_mentions_the_friend_while_joined():
+    from cozy_tui import App
+
+    app = App(full=False, size="380x520")
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    host, spot = _relaxed_fish(bounds, kind="Rock")
+    host.display_name = "Steve"
+    joiner = _neutral_fish(6.5, 5.0, bounds, decorations=[spot])
+    joiner.display_name = "Alex"
+    joiner._next_turn = float("inf")
+    joiner._next_relax_check = float("inf")
+    _befriend(host, joiner)
+    _age(joiner)
+    joiner.draw(_FakeCanvas())
+
+    box = aq._build_inspector(
+        app, joiner, lambda f: None, lambda f: None, {}, lambda f, k: None
+    )
+    labels = [c.text for c in box.children if c.__class__.__name__ == "Label"]
+
+    assert any("Relaxing" in t and "Rock" in t and "Steve" in t for t in labels)
+
+
+def test_process_relaxing_fires_the_join_toast(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish_list = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    host, joiner = fish_list[0], fish_list[1]
+    host.display_name = "Steve"
+    joiner.display_name = "Alex"
+    rock = aq.Decoration(0.0, 0.0, aq.ROCK_ART, aq.ROCK_COLORS, kind="Rock")
+    joiner._relax_spot = rock
+    joiner._relaxing_with = host
+    joiner._joined_friend_relax = True
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert joiner._joined_friend_relax is False
+    assert (
+        "🪨 Alex joined Steve. Both of them happily relaxed together." in toasts
+    )
+
+
+# ── The tiny relax wiggle ────────────────────────────────────────────────────
+
+
+def test_relaxing_fish_occasionally_shows_a_wiggle_glyph():
+    f, _spot = _relaxed_fish()
+    f.species_name = "Goldfish"
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 5  # past Baby -- real "><>" glyph
+    base = f.right_glyph if f.vx >= 0 else f.left_glyph
+    aged = f.birth_time
+
+    # Sweep enough of a wiggle cycle to guarantee landing inside the wiggle
+    # window at least once, without depending on wall-clock timing. Each
+    # offset nudges only the sub-cycle phase -- `aged` keeps the fish's real
+    # age (and so growth stage) fixed regardless.
+    saw_wiggle = False
+    for offset in [i * 0.05 for i in range(60)]:
+        f.birth_time = aged - offset
+        glyph = f._glyph()
+        if glyph != base:
+            saw_wiggle = True
+            assert "~" in glyph
+            break
+    assert saw_wiggle
+
+
+def test_non_relaxing_fish_never_shows_the_wiggle_glyph():
+    f = _neutral_fish(5.0, 5.0)
+    f.species_name = "Goldfish"
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 5  # past Baby
+    assert f.relaxing is False
+    base = f.right_glyph if f.vx >= 0 else f.left_glyph
+    aged = f.birth_time
+
+    for offset in [i * 0.05 for i in range(60)]:
+        f.birth_time = aged - offset
+        assert f._glyph() == base
+
+
+def test_axolotls_own_resting_glyph_takes_priority_over_the_generic_wiggle():
+    f, _spot = _relaxed_fish()
+    f.species_name = "Axolotl"
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 5  # past Baby
+    f._relaxing_until = time.monotonic() + 10.0
+
+    assert f._glyph() == aq.AXOLOTL_RESTING_GLYPH
+
+
+def test_process_relaxing_consumes_the_one_shot_and_respects_the_toast_cooldown(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish_list = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    f = fish_list[0]
+    f.favorite_decoration = aq.Decoration(
+        0.0, 0.0, aq.ROCK_ART, aq.ROCK_COLORS, kind="Rock"
+    )
+    f._relax_began = True
+    # Always land inside both the memory and toast chances, and never blocked
+    # by the cooldown (nothing has toasted yet this test).
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert f._relax_began is False  # consumed
+    assert any("Rock" in t for t in toasts)
+    assert any("peaceful moment" in entry.lower() for entry in f.memory_log)
+
+
+def test_process_relaxing_second_settle_is_blocked_by_the_toast_cooldown(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish_list = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    a, b = fish_list[0], fish_list[1]
+    rock = aq.Decoration(0.0, 0.0, aq.ROCK_ART, aq.ROCK_COLORS, kind="Rock")
+    a.favorite_decoration = rock
+    b.favorite_decoration = rock
+    a._relax_began = True
+    b._relax_began = True
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # always inside chance
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    # Both settle this same tick, but the tank-wide cooldown allows only one
+    # ambient toast -- relaxing must stay rare, not become a notification per
+    # fish (see constants.RELAX_TOAST_COOLDOWN). Filtered to relax-specific
+    # wording since random.random() pinned at 0.0 also clears other unrelated
+    # per-second chance rolls (e.g. visitor donations) on this same tick.
+    relax_toasts = [t for t in toasts if "Rock" in t]
+    assert len(relax_toasts) == 1
+
+
+def test_process_relaxing_skips_a_fish_with_no_favorite_decoration(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.favorite_decoration = None
+    f._relax_began = True
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    # Still consumed, just nothing to announce (filtered for the same reason
+    # as the cooldown test above -- other unrelated per-second toasts can
+    # fire on this same tick once random.random() is pinned at 0.0).
+    assert f._relax_began is False
+    assert not any("😌" in t or "peaceful" in t.lower() for t in toasts)
+
+
 def test_axolotl_relax_check_uses_its_own_higher_chance_and_longer_duration(
     monkeypatch,
 ):
@@ -2651,6 +3071,48 @@ def test_choose_dream_interpolates_the_friends_name(monkeypatch):
     assert any("Alex" in line for frame in dream.frames for line in frame)
 
 
+def test_choose_dream_nudges_toward_home_after_a_recent_peaceful_moment(monkeypatch):
+    # Lazy's own preferred category is "happy" (dreams.py's
+    # _PERSONALITY_CATEGORY), not "home" -- proves the relax-memory nudge
+    # actually changed the pick rather than personality landing there anyway.
+    f = _neutral_fish(5.0, 5.0)
+    f.personality = "Lazy"
+    f.memory_log.append("[Day 4] Spent a peaceful moment by the Rock.")
+    monkeypatch.setattr(aq.random, "random", lambda: 0.5)  # personality-weighted pick
+
+    assert aq.choose_dream(f).category == "home"
+
+
+def test_choose_dream_friendship_nudge_still_wins_over_a_peaceful_memory(monkeypatch):
+    # If both a friend-mention and a peaceful-moment memory are recent, the
+    # existing friendship nudge takes priority (see choose_dream()'s
+    # docstring) -- the peaceful-moment nudge is only a fallback.
+    friend = _neutral_fish(6.0, 5.0)
+    friend.display_name = "Alex"
+    f = _neutral_fish(5.0, 5.0)
+    f.personality = "Lazy"
+    aq.set_relationship(f, friend, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
+    f.memory_log.append("[Day 4] Spent a peaceful moment by the Rock.")
+    f.memory_log.append("[Day 4] Swam alongside Alex all afternoon.")
+    monkeypatch.setattr(aq.random, "random", lambda: 0.5)
+
+    assert aq.choose_dream(f).category == "friendship"
+
+
+def test_choose_dream_ignores_a_peaceful_memory_outside_the_lookback_window(
+    monkeypatch,
+):
+    f = _neutral_fish(5.0, 5.0)
+    f.personality = "Lazy"
+    # Padded past MEMORY_DREAM_LOOKBACK with unrelated, more recent entries.
+    f.memory_log.append("[Day 1] Spent a peaceful moment by the Rock.")
+    for i in range(aq.MEMORY_DREAM_LOOKBACK):
+        f.memory_log.append(f"[Day {i + 2}] Ate some food.")
+    monkeypatch.setattr(aq.random, "random", lambda: 0.5)
+
+    assert aq.choose_dream(f).category == "happy"  # Lazy's own default, unnudged
+
+
 def test_choose_dream_can_roll_a_rare_nightmare(monkeypatch):
     f = _neutral_fish(5.0, 5.0)
     f.personality = "Lazy"
@@ -2945,6 +3407,35 @@ def test_memory_log_is_capped_at_the_limit(tmp_path, monkeypatch):
     assert len(target_fish.memory_log) == aq.MEMORY_LOG_LIMIT
 
 
+def test_full_memory_log_never_caps_while_memory_log_does(tmp_path, monkeypatch):
+    # Same real _log_memory() call site as the cap test above -- but this is
+    # the player-facing archive (fish.py's full_memory_log), which exists
+    # specifically so a real moment survives past MEMORY_LOG_LIMIT even
+    # though the fish itself has "forgotten" it (see the See All History
+    # feature: only the player sees this, not the fish's own dream/grief
+    # logic, which still reads the capped memory_log).
+    app = _headless_app(tmp_path, monkeypatch)
+    target_fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)
+
+    def _choice(seq):
+        if "showing_off" in seq:
+            return "showing_off"
+        return target_fish
+
+    monkeypatch.setattr(aq.random, "choice", _choice)
+
+    rounds = aq.MEMORY_LOG_LIMIT + 3
+    for _ in range(rounds):
+        _fire_daily_tick(app)
+
+    assert len(target_fish.memory_log) == aq.MEMORY_LOG_LIMIT
+    assert len(target_fish.full_memory_log) == rounds
+    # The capped log is exactly the uncapped log's tail -- same entries,
+    # same order, just windowed.
+    assert target_fish.memory_log == target_fish.full_memory_log[-aq.MEMORY_LOG_LIMIT:]
+
+
 def test_memory_log_round_trips_through_save_and_load(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
@@ -2984,6 +3475,137 @@ def test_memory_log_shown_in_the_inspector():
 
     assert any("Memory Log" in t for t in labels)
     assert any("[Day 2] Something happened." in t for t in labels)
+
+
+# ── "See All History": the player-facing uncapped memory archive ────────────
+
+
+def test_full_memory_log_round_trips_through_save_and_load(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    fish.display_name = "Steve"
+    # More entries than MEMORY_LOG_LIMIT -- proves the archive survives the
+    # round trip whole, not windowed the way memory_log itself would be.
+    fish.full_memory_log = [
+        f"[Day {i}] Entry {i}." for i in range(aq.MEMORY_LOG_LIMIT + 5)
+    ]
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Steve's Full History"
+    prompt.on_key(aq.Key.ENTER)
+
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c
+        for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+    steve = next(
+        w for w in app.widgets if isinstance(w, aq.Fish) and w.display_name == "Steve"
+    )
+    assert len(steve.full_memory_log) == aq.MEMORY_LOG_LIMIT + 5
+    assert steve.full_memory_log == fish.full_memory_log
+
+
+def test_loading_a_save_without_full_memory_log_seeds_it_from_memory_log(
+    tmp_path, monkeypatch
+):
+    # A save from before "See All History" existed has no full_memory_log key
+    # at all -- there's nothing to restore, so it should seed from whatever
+    # memory_log still has rather than starting completely blank.
+    aq.write_save(
+        "Old Save",
+        {
+            "state": {},
+            "day": 5,
+            "fish": [
+                {
+                    "species": "Goldfish",
+                    "name": "Steve",
+                    "x": 5.0,
+                    "y": 5.0,
+                    "memory_log": ["[Day 3] Something happened."],
+                }
+            ],
+        },
+        home=tmp_path,
+    )
+    app = _headless_app(tmp_path, monkeypatch)
+
+    _open_load_button(app, "Load").on_mouse_click()
+
+    steve = next(
+        w for w in app.widgets if isinstance(w, aq.Fish) and w.display_name == "Steve"
+    )
+    assert steve.full_memory_log == ["[Day 3] Something happened."]
+
+
+def test_inspector_see_all_history_button_only_appears_when_wired():
+    from cozy_tui import App
+
+    app = App(full=False, size="380x520")
+    f = _neutral_fish(5.0, 5.0)
+    f.memory_log.append("[Day 2] Something happened.")
+    f.full_memory_log.append("[Day 2] Something happened.")
+
+    wired = aq._build_inspector(
+        app, f, lambda f: None, lambda f: None, {}, lambda f, k: None, lambda f: None
+    )
+    unwired = aq._build_inspector(
+        app, f, lambda f: None, lambda f: None, {}, lambda f, k: None
+    )
+
+    wired_buttons = [c.text for c in wired.children if c.__class__.__name__ == "Button"]
+    unwired_buttons = [
+        c.text for c in unwired.children if c.__class__.__name__ == "Button"
+    ]
+    assert any("See All History" in t for t in wired_buttons)
+    assert not any("See All History" in t for t in unwired_buttons)
+
+
+def test_see_all_history_button_opens_every_entry_including_ones_older_than_the_cap():
+    from cozy_tui import App
+
+    app = App(full=False, size="380x520")
+    f = _neutral_fish(5.0, 5.0)
+    f.display_name = "Steve"
+    f.memory_log = [f"[Day {i}] Recent {i}." for i in range(3)]
+    f.full_memory_log = [f"[Day {i}] Old {i}." for i in range(20)] + f.memory_log
+    opened = []
+
+    box = aq._build_inspector(
+        app, f, lambda f: None, lambda f: None, {}, lambda f, k: None, opened.append
+    )
+    history_btn = next(
+        c
+        for c in box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "See All History"
+    )
+    history_btn.on_mouse_click()
+
+    assert opened == [f]
+
+
+def test_build_fish_history_lists_every_entry_in_the_full_log():
+    from cozy_tui import App
+
+    app = App(full=False, size="400x420")
+    f = _neutral_fish(5.0, 5.0)
+    f.display_name = "Steve"
+    f.full_memory_log = [f"[Day {i}] Entry {i}." for i in range(20)]
+
+    history_box = aq._build_fish_history(app, f)
+    scroll_view = next(
+        c for c in history_box.children if c.__class__.__name__ == "ScrollView"
+    )
+    entries = [c.text for c in scroll_view.children]
+
+    assert entries == f.full_memory_log
+    assert "Steve" in history_box.title
 
 
 # ── Phase 2: shark scares, home conflicts, relationship-crossing memories,
@@ -3698,6 +4320,111 @@ def test_castle_interior_shows_scared_and_comfort_moods():
 
     assert any("Steve" in t and "😨" in t for t in labels)
     assert any("Alice" in t and "🥺" in t for t in labels)
+
+
+def test_scared_mood_surfaces_above_a_housed_fish_even_while_tucked_in():
+    # A nightmare's scare phase deliberately leaves the fish tucked inside its
+    # claimed home (see aquarium.py's _trigger_nightmare_scare) -- so the mood
+    # must still reach the open tank view, not just the Castle Interior panel,
+    # or a player watching the tank (rather than that one decoration) never
+    # sees it at all.
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    f = _sleepy_fish(5.0, 5.0, bounds)
+    f.fish_list = [f]
+    f._entered = True
+    f._just_scared_until = time.monotonic() + 10.0
+
+    writes = []
+    canvas = _FakeCanvas()
+    canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
+    _age(f)
+    f.draw(canvas)
+
+    assert any(text == "😨" for _x, _y, text in writes)
+
+
+def test_comfort_mood_surfaces_above_a_housed_fish_even_while_tucked_in():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    f = _sleepy_fish(5.0, 5.0, bounds)
+    f.fish_list = [f]
+    f._entered = True
+    f._nightmare_comfort_until = time.monotonic() + 10.0
+
+    writes = []
+    canvas = _FakeCanvas()
+    canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
+    _age(f)
+    f.draw(canvas)
+
+    assert any(text == "🥺" for _x, _y, text in writes)
+
+
+def test_opening_a_dream_that_vanished_since_the_panel_was_drawn_falls_back_to_the_inspector(
+    tmp_path, monkeypatch
+):
+    # Reproduces the real crash: the Castle Interior panel draws a guest's
+    # dream button only while `guest.dream is not None` (inspectors.py), but
+    # that panel is a snapshot -- a nightmare firing on the per-second tick
+    # (aquarium.py's _trigger_nightmare_scare) clears `f.dream` without
+    # rebuilding the still-open panel, so the button the player is looking at
+    # now points at a dream that no longer exists. Clicking it used to crash
+    # deep in build_dream_view() with AttributeError: 'NoneType' object has no
+    # attribute 'frames'. _open_dream() must fall back to the ordinary
+    # Inspector instead.
+    app = _headless_app(tmp_path, monkeypatch)
+    fish_list = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    castle = next(
+        w
+        for w in app.widgets
+        if isinstance(w, aq.Decoration) and w.kind == "Castle"
+    )
+    guest = fish_list[0]
+    guest.display_name = "Steve"
+    guest.sleeping_in = castle
+    guest._entered = True
+    guest.dream = aq.choose_dream(guest)
+
+    app._mouse_handler(aq.MouseClick(castle.x, castle.y, 0))
+    decoration_box = app._overlays[-1].widget
+    enter_btn = next(
+        c
+        for c in decoration_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip().startswith("Enter")
+    )
+    enter_btn.on_mouse_click()
+    interior = app._overlays[-1].widget
+    dream_btn = next(
+        c
+        for c in interior.children
+        if c.__class__.__name__ == "Button" and "Steve" in c.text
+    )
+
+    # The dream vanishes exactly as a nightmare's scare phase would clear it,
+    # without the already-open panel being rebuilt.
+    guest.dream = None
+
+    dream_btn.on_mouse_click()  # must not raise
+
+    opened = app._overlays[-1].widget
+    assert opened.title == "Steve"  # the ordinary Inspector, not a dream view
+
+
+def test_housed_fish_with_no_active_nightmare_mood_stays_invisible():
+    # The exception is narrow: a housed fish with neither mood active must
+    # still draw nothing at all (the ordinary "tucked away, can't see through
+    # the walls" behavior), not just skip its body glyph.
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    f = _sleepy_fish(5.0, 5.0, bounds)
+    f.fish_list = [f]
+    f._entered = True
+
+    writes = []
+    canvas = _FakeCanvas()
+    canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
+    _age(f)
+    f.draw(canvas)
+
+    assert writes == []
 
 
 # ── Aging: Elder stage + natural death ──────────────────────────────────────

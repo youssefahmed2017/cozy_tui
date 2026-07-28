@@ -43,7 +43,7 @@ def selection_style(dim: bool = False) -> Style:
     softer variant used for "selected but not the cursor row" (bold
     foreground, no background fill). Colors come from the active theme's
     `selection_fg`/`selection_bg` (see `cozy_tui.theme`) -- imported locally
-    to avoid a circular import, since theme.py itself builds on Style."""
+    to avoid a circular import, sinceBro give me a full play theme.py itself builds on Style."""
     from cozy_tui.theme import get_theme
 
     return get_theme().selection_style(dim)

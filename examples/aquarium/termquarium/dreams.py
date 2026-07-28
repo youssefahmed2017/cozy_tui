@@ -100,6 +100,14 @@ DREAM_FRAMES = {
                 ("🌊    🌊    🌊", "      🐠", "〰️〰️〰️〰️〰️〰️"),
             ),
         ),
+    DreamVariant(
+        "A Moonlit Swim",
+        "Swimming under the calmest night sky.",
+        (
+            ("🌙 ⭐ ✨ ⭐", "    🐠", "🌊🌊🌊"),
+            (" ⭐ 🌙 ✨", "      🐠", "🌊🌊🌊"),
+        ),
+    )
     ],
     "food": [
         DreamVariant(
@@ -176,6 +184,14 @@ DREAM_FRAMES = {
                 ("🪨✨", "🐠🐡 zzz", "with {friend}"),
             ),
         ),
+        DreamVariant(
+            "A Sleepy Aquarium",
+            "Everyone was resting together peacefully, and I slept beside {friend}.",
+            (
+                ("🐠😴 zzz   🐡 zzz", "🪨 ✨"),
+                ("🐠😴🐡", "   zzz"),
+            ),
+        )
     ],
     "home": [
         DreamVariant(
@@ -200,6 +216,30 @@ DREAM_FRAMES = {
             "The Warmest Corner",
             "Doesn't need to be big. Just warm.",
             (("🏠", "🐠 zzz"), ("🏠✨", "🐠 zzz")),
+        ),
+        DreamVariant(
+            "The Endless Castle",
+            "Every room had another room. It never ended.",
+            (
+                ("🏰🏰🏰🏰", "🐠", "🏰🏰🏰🏰"),
+                ("🏰✨🏰✨", "  🐠", "🏰✨🏰✨"),
+            ),
+        ),
+        DreamVariant(
+            "A Quiet Forest Pond",
+            "Exploring a peaceful forest pond with sunlight through the trees.",
+            (
+                ("🌲   🌲   🌲", "    🐠", "🪵   🌿   🪵"),
+                ("🌲   🌲   🌲", "       🐠", "🌿   🪵   🌿"),
+            ),
+        ),
+        DreamVariant(
+            "A Gentle Rainstorm",
+            "Raindrops danced on the surface like tiny stars, I stayed in the castle.",
+            (
+                ("☁️ ☁️ ☁️", "💧 💧 💧", "🐠🏰"),
+                (" ☁️ ☁️ ", "  💧 💧", "  🐠🏰"),
+            ),
         ),
     ],
     "fantasy": [
@@ -233,6 +273,30 @@ DREAM_FRAMES = {
             (
                 ("🌊🌊🌊🌊🌊🌊🌊", "  🐠", "☁️     ☁️"),
                 ("🌊🌊🌊🌊🌊🌊🌊", "    🐠", "  ☁️     ☁️"),
+            ),
+        ),
+        DreamVariant(
+            "The Friendly Giant Shark",
+            "The biggest shark ever... and it just wanted to play.",
+            (
+                ("🦈😊     🐠", "🌊🌊🌊"),
+                ("  🦈😊   🐠", "🌊✨🌊"),
+            ),
+        ),
+        DreamVariant(
+            "The Bubble Maze",
+            "Every bubble was a path to somewhere new.",
+            (
+                ("o  O  o  O", "   🐠", "o  O  o"),
+                (" O  o  O  ", "      🐠", "o  O"),
+            ),
+        ),
+        DreamVariant(
+            "The Starfish Kingdom",
+            "Every starfish was a tiny royal guard.",
+            (
+                ("⭐ ⭐ ⭐ ⭐", "  🐠", "👑"),
+                (" ⭐ ⭐ ⭐", "    🐠", "👑✨"),
             ),
         ),
     ],
@@ -286,6 +350,14 @@ DREAM_FRAMES = {
             (
                 ("🌊  🐠🐡  🌊", "   one more day"),
                 ("🌊    🐠  🌊", "   (just a dream)"),
+            ),
+        ),
+        DreamVariant(
+            "The Favorite Spot, With {name}",
+            "I sat with {name} together in our favorite place, just like old times.",
+            (
+                ("🪨✨", "🐠🐡 🌊", "🌊🌊🌊"),
+                ("🪨✨✨", "🐠 🌊", "(just a dream)"),
             ),
         ),
     ],
@@ -411,7 +483,13 @@ def choose_dream(f) -> Dream:
     4. Otherwise, a personality-weighted category (falling back to "happy"
        for Friendly with no current friend to dream about) -- nudged toward
        "friendship" instead, regardless of personality, if a recent memory
-       already names the current friend.
+       already names the current friend; or, failing that, nudged toward
+       "home" if a recent memory recorded a peaceful moment relaxing
+       somewhere (aquarium.py's _process_relaxing(), RELAX_MEMORY_CHANCE) --
+       the same real-experience-gets-a-say idea as the friendship nudge,
+       just for a quieter kind of memory. Friendship still wins if both
+       apply; this is a lean on top of the personality weighting, not a
+       separate roll, so it never doubles a fish's total dream chance.
     """
     recent = f.memory_log[-MEMORY_DREAM_LOOKBACK:]
 
@@ -448,6 +526,12 @@ def choose_dream(f) -> Dream:
             # A recent memory already involves the current friend -- real
             # experience gets a say alongside plain personality weighting.
             category = "friendship"
+        elif category != "home" and any(
+            "peaceful moment" in entry.lower() for entry in recent
+        ):
+            # A recent relax memory -- lean toward a "home" dream tonight
+            # (the category already themed around a fish's own cozy spots).
+            category = "home"
 
     variant = random.choice(DREAM_FRAMES[category])
     if category == "friendship":

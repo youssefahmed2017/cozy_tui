@@ -51,7 +51,11 @@ mem_box.add(mem_chart)
 app.add(mem_box)
 app.focus(mem_chart)  # so the wheel / arrow keys scroll the chart
 
-app.dock(Label(0, 0, "Space pauses · scroll the chart · Esc quits", MUTED), "bottom", margin=1)
+app.dock(
+    Label(0, 0, "Space pauses · scroll the chart · Esc quits", MUTED),
+    "bottom",
+    margin=1,
+)
 
 _cpu = 30.0
 running = [True]

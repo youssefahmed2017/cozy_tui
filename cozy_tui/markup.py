@@ -178,7 +178,9 @@ def split_lines(runs: list[tuple[str, Style]]) -> list[list[tuple[str, Style]]]:
     return lines
 
 
-def slice_runs(runs: list[tuple[str, Style]], start: int, end: int) -> list[tuple[str, Style]]:
+def slice_runs(
+    runs: list[tuple[str, Style]], start: int, end: int
+) -> list[tuple[str, Style]]:
     """The runs covering character positions ``[start, end)``.
 
     Indices count *characters* of the plain text, matching how the wrapping and

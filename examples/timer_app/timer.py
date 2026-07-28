@@ -165,7 +165,12 @@ def credentials_form(screen, title, color, action_label, action, hints):
     the action button does, so one builder covers both. Returns the two Inputs
     and the error Label so the caller's handler can read and write them."""
     box = Box(
-        2, 1, "900x390", border="rounded", style=Style(fg=color, bg="black"), title=title
+        2,
+        1,
+        "900x390",
+        border="rounded",
+        style=Style(fg=color, bg="black"),
+        title=title,
     )
     inp_user = Input(13, 2, 22, placeholder=hints[0])
     inp_pass = Input(13, 4, 22, placeholder=hints[1], masked=True)
@@ -184,7 +189,9 @@ def credentials_form(screen, title, color, action_label, action, hints):
 
     row = HBox(3, 8, gap=2)
     btn_go = Button(0, 0, action_label, width=14, style=Style(fg="white", bg=color))
-    btn_back = Button(0, 0, "Back", width=12, style=Style(fg="white", bg="bright_black"))
+    btn_back = Button(
+        0, 0, "Back", width=12, style=Style(fg="white", bg="bright_black")
+    )
     btn_go.on_click(lambda _b: action())
     btn_back.on_click(lambda _b: app.show(welcome))
     row.add(btn_go).add(btn_back)
@@ -298,7 +305,9 @@ timer_box.add(minutes_error)
 
 _ctrl = HBox(3, 11, gap=2)
 btn_set = Button(0, 0, "Set & Start", width=14, style=Style(fg="white", bg="blue"))
-_btn_pause = Button(0, 0, "Pause/Resume", width=15, style=Style(fg="white", bg="yellow"))
+_btn_pause = Button(
+    0, 0, "Pause/Resume", width=15, style=Style(fg="white", bg="yellow")
+)
 _btn_reset = Button(0, 0, "Reset", width=10, style=Style(fg="white", bg="bright_black"))
 _btn_pause.on_click(lambda _b: countdown.toggle())
 _btn_reset.on_click(lambda _b: countdown.reset())

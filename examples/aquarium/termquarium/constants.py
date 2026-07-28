@@ -80,8 +80,8 @@ TREAT_SHOP_ITEMS = [
 PERSONALITIES = ("Friendly", "Explorer", "Shy", "Greedy", "Lazy", "Playful")
 
 AGE_SECONDS_PER_DAY = (
-    60.0 * 4
-)  # 4 real minutes = 1 "fish day" -- ages visibly within a sitting
+    60.0 * 6
+)  # 6 real minutes = 1 "fish day" -- ages visibly within a sitting
 
 # (stage name, minimum age_days to reach it, sell-value multiplier at that
 # stage). A Baby doesn't get its species' real glyph yet -- see BABY_RIGHT/
@@ -154,6 +154,33 @@ RELAX_STEER_RATE = 1.5  # blend rate toward the favorite spot while relaxing
 RELAX_ARRIVE_MARGIN = 1.0  # cells, added on top of a spot's radius + AVOID_MARGIN
 IDLE_DAMPING = 0.9  # velocity multiplier per frame once idling at the favorite spot
 
+# Surfacing the (already-existing) relax mechanic -- a quiet 😌 above a fish
+# that just settled by its favorite decoration, plus a *rare* ambient toast /
+# diary line so a player notices the little life without being nagged. The
+# indicator is a brief flash on arrival, not a permanent badge; the toast is
+# both low-chance *and* globally rate-limited so relaxing stays ambient rather
+# than a stream of notifications (see aquarium.py's _process_relaxing()).
+RELAX_FLASH_SECONDS = 3.0  # how long the 😌 shows after a fish settles to relax
+RELAX_TOAST_CHANCE = 0.18  # chance a settle is worth an ambient toast at all...
+RELAX_TOAST_COOLDOWN = 75.0  # ...and at most one such toast this often, tank-wide
+RELAX_MEMORY_CHANCE = 0.06  # rarer still: a peaceful moment becomes a diary memory
+# A tiny periodic wiggle while settled -- "just enough to look comfortable,"
+# not a real animation state. Stateless: fish.py's _glyph() phases each fish
+# by its own birth_time rather than tracking a per-fish timer, so a whole
+# tank of relaxing fish doesn't wiggle in lockstep. Axolotl is excluded (it
+# already has its own closed-eyes resting glyph, see AXOLOTL_RESTING_GLYPH).
+RELAX_WIGGLE_INTERVAL = 2.5  # seconds between wiggles
+RELAX_WIGGLE_DURATION = 0.4  # seconds the wiggle glyph shows each time
+
+# A friend swimming over to join one already relaxing (see fish.py's draw(),
+# the branch just above plain friend-following). Reuses RELAX_STEER_RATE/
+# RELAX_ARRIVE_MARGIN for the approach+settle -- it's the same "steer to a
+# spot, then damp to a stop" shape, just aimed at a friend's spot instead of
+# the joiner's own. No separate chance/cooldown the way solo relaxing has:
+# it only ever triggers when an actual Friend bond already exists AND that
+# friend happens to be relaxing AND nothing more urgent claims this fish's
+# frame, which is already rare enough without extra gating.
+
 # Axolotl-specific: real axolotls spend much of their time resting on the
 # substrate rather than swimming constantly -- reuses the exact same relax
 # mechanic above (favorite_decoration, RELAX_CHECK_MIN/MAX roll cadence),
@@ -163,7 +190,7 @@ IDLE_DAMPING = 0.9  # velocity multiplier per frame once idling at the favorite 
 AXOLOTL_RELAX_CHANCE = 0.75
 AXOLOTL_RELAX_DURATION_MIN = 12.0
 AXOLOTL_RELAX_DURATION_MAX = 25.0
-AXOLOTL_RESTING_GLYPH = "(-.-)~"  # closed-eyes, shown only while relaxing
+AXOLOTL_RESTING_GLYPH = "(-.-)~ 😌"  # closed-eyes with 😌, shown only while relaxing
 
 # Each decoration's `art` is real (plain-character) ASCII art, not emoji --
 # an emoji glyph is drawn by the terminal's own emoji font and mostly ignores
@@ -258,7 +285,7 @@ RELATIONSHIP_RIVAL_THRESHOLD = -50.0  # score <= this: 😠 Rival
 RELATIONSHIP_DISLIKE_THRESHOLD = -15.0  # score <= this (and > rival): 😒 Dislikes
 RELATIONSHIP_FRIEND_THRESHOLD = 15.0  # score >= this (and < best-friend): 🙂 Friend
 RELATIONSHIP_BEST_FRIEND_THRESHOLD = 50.0  # score >= this: ❤️ Best Friend
-RELATIONSHIP_MEMORY_LIMIT = 5  # reasons remembered per pair, oldest dropped first
+RELATIONSHIP_MEMORY_LIMIT = 7  # reasons remembered per pair, oldest dropped first
 
 # Interaction score deltas -- each one a real, currently-triggerable event
 # (see relationships.py's record_*() functions and their call sites):
@@ -625,7 +652,7 @@ FOREST_LEAF_SPAWN_INTERVAL = (0.5, 1.5)  # seconds between new leaves
 FOREST_LEAF_FALL_SPEED_RANGE = (0.6, 1.4)  # cells/second, falling
 FOREST_LEAF_DRIFT_RANGE = (-0.4, 0.4)  # cells/second, horizontal sway
 FOREST_LEAF_MAX_COUNT = 12
-FOREST_LEAF_GLYPHS = (",", "'", "`", ".")
+FOREST_LEAF_GLYPHS = (",", "'", "`", ".", "🍃")
 
 # Danger while foraging (Exploration Update vision) -- a Tiger Shark can
 # prowl into the Forest while fish are there (see aquarium.py's

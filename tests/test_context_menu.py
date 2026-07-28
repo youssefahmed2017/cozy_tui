@@ -7,7 +7,9 @@ from cozy_tui.widgets import Button, MenuItem, MenuSeparator, RightClickMenu
 
 def make_app():
     app = App(full=False, size="800x400", style=Style(fg="white", bg="black"))
-    app._overlay_fx = False  # settle overlays instantly; these test layout, not the fade
+    app._overlay_fx = (
+        False  # settle overlays instantly; these test layout, not the fade
+    )
     return app
 
 

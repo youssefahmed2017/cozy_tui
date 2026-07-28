@@ -84,7 +84,10 @@ def format_relative_time(iso_timestamp: str, now: datetime | None = None) -> str
 # illegal there even with the extension, so a save named after one must be
 # nudged aside rather than left to raise OSError on write.
 _WIN_RESERVED = {
-    "CON", "PRN", "AUX", "NUL",
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
 }

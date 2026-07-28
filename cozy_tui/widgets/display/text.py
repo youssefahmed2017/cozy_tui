@@ -112,7 +112,9 @@ class Text(Widget):
                 continue
             offset = 0
             for segment in segments:
-                run_lines.append(slice_runs(para_runs[i], offset, offset + len(segment)))
+                run_lines.append(
+                    slice_runs(para_runs[i], offset, offset + len(segment))
+                )
                 offset += len(segment)
 
         if not lines:
@@ -241,6 +243,10 @@ class Text(Widget):
             # alignment rather than by measuring `display`'s leading spaces,
             # which would also swallow any the wrapped line legitimately owns.
             pad = max(0, w - len(line[:w]))
-            indent = pad if self.align == "right" else pad // 2 if self.align == "center" else 0
+            indent = (
+                pad
+                if self.align == "right"
+                else pad // 2 if self.align == "center" else 0
+            )
             runs = run_lines[idx] if idx < len(run_lines) else []
             write_runs(canvas, tx + indent, ty + row_off, slice_runs(runs, 0, w))

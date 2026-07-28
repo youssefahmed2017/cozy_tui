@@ -64,7 +64,11 @@ class Rule(Widget):
         # interior edge -- the mid-content divider case, which docking can't
         # cover because the rule sits between children, not on an edge. Detected
         # by duck-typing a Box (its own `border` + pixel `width`/`height`).
-        if parent is not None and hasattr(parent, "border") and hasattr(parent, "width"):
+        if (
+            parent is not None
+            and hasattr(parent, "border")
+            and hasattr(parent, "width")
+        ):
             if self.orientation == "horizontal":
                 return max(1, parent.width // scale - self.x + 1)
             return max(1, parent.height // scale - self.y + 1)

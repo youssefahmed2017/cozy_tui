@@ -10,7 +10,9 @@ from cozy_tui.widgets import Button, Input, ScrollView
 
 
 def make_ui(**kw):
-    return Harness(App(full=False, size="400x100", style=Style(fg="white", bg="black"), **kw))
+    return Harness(
+        App(full=False, size="400x100", style=Style(fg="white", bg="black"), **kw)
+    )
 
 
 def test_global_key_handler_returning_quit_sets_should_quit():

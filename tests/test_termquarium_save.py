@@ -496,7 +496,10 @@ def test_safe_filename_dodges_windows_reserved_names():
     for reserved in ("CON", "nul", "COM1", "LPT9", "aux"):
         out = safe_filename(reserved)
         assert out.upper() not in {
-            "CON", "PRN", "AUX", "NUL",
+            "CON",
+            "PRN",
+            "AUX",
+            "NUL",
             *(f"COM{i}" for i in range(1, 10)),
             *(f"LPT{i}" for i in range(1, 10)),
         }

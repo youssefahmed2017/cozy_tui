@@ -233,7 +233,7 @@ def build_console_commands(
         name = kwargs.get("fish_name", args[0] if args else None)
         if name is None:
             raise ConsoleError(
-                "Usage: give_nightmare(fish_name=\"Steve\", "
+                'Usage: give_nightmare(fish_name="Steve", '
                 'variant="ice" (optional), scare=True (optional))'
             )
         variant = kwargs.get("variant", args[1] if len(args) > 1 else None)

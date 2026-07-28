@@ -6,7 +6,9 @@ from cozy_tui.widgets.display.bindings import Bindings
 
 
 def make_ui(**kw):
-    return Harness(App(full=False, size="800x300", style=Style(fg="white", bg="black"), **kw))
+    return Harness(
+        App(full=False, size="800x300", style=Style(fg="white", bg="black"), **kw)
+    )
 
 
 # ── Command / CommandPalette (direct, no App) ────────────────────────────────

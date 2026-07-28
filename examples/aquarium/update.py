@@ -110,7 +110,9 @@ def main(argv: list[str]) -> int:
     # Phase 1 + decision -- guarded so nothing here can stop the game launching.
     try:
         state = updater.load_state(state_path)
-        plan = updater.plan_launch(GAME_VERSION, state, updater._utc_now(), skip_check=skip)
+        plan = updater.plan_launch(
+            GAME_VERSION, state, updater._utc_now(), skip_check=skip
+        )
         if plan.apply_pending:
             applied = updater.apply_pending(state, root)
             updater.save_state(state, state_path)

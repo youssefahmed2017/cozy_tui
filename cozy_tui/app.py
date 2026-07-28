@@ -415,9 +415,7 @@ class App:
         successor = None
         if self._subtree_contains(widget, self.focused):
             stops = self._collect_focusables()
-            remaining = [
-                w for w in stops if not self._subtree_contains(widget, w)
-            ]
+            remaining = [w for w in stops if not self._subtree_contains(widget, w)]
             if remaining:
                 try:
                     idx = stops.index(self.focused)

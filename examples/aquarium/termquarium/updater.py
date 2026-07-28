@@ -160,9 +160,7 @@ def save_state(state: UpdaterState, path: Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(state.to_dict(), indent=2) + "\n", encoding="utf-8"
-    )
+    temporary.write_text(json.dumps(state.to_dict(), indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
 
 
@@ -230,10 +228,7 @@ def plan_launch(
         except UpdateError:
             apply = False
     check = (not skip_check) and should_check(state.last_check, now, interval_seconds)
-    reason = (
-        f"apply={'yes' if apply else 'no'}"
-        f" check={'yes' if check else 'no'}"
-    )
+    reason = f"apply={'yes' if apply else 'no'}" f" check={'yes' if check else 'no'}"
     return LaunchPlan(
         apply_pending=apply,
         pending_version=pending_version if apply else None,
@@ -345,9 +340,10 @@ def download(url: str, dest: Path, *, timeout: float = 30.0) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     request = urllib.request.Request(url, method="GET")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response, open(
-            dest, "wb"
-        ) as handle:
+        with (
+            urllib.request.urlopen(request, timeout=timeout) as response,
+            open(dest, "wb") as handle,
+        ):
             for chunk in iter(lambda: response.read(_HASH_CHUNK), b""):
                 handle.write(chunk)
     except urllib.error.URLError as error:

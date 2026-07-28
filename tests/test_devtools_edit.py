@@ -63,7 +63,9 @@ def test_snippet_shows_layout_align_justify_and_padding():
 
 def test_editing_a_layouts_align_and_padding_applies_live():
     v = VBox(0, 0, gap=1)
-    changed = apply_snippet(v, "VBox(x=0, y=0, align='end', padding=(1, 0, 1, 0), gap=1)")
+    changed = apply_snippet(
+        v, "VBox(x=0, y=0, align='end', padding=(1, 0, 1, 0), gap=1)"
+    )
     assert set(changed) == {"align", "padding"}
     assert v.align == "end"
     assert v.padding == (1, 0, 1, 0)

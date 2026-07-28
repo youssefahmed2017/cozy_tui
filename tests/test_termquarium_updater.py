@@ -75,9 +75,7 @@ def test_parse_manifest_reads_all_fields_and_lowercases_the_hash():
 
 
 def test_parse_manifest_defaults_optional_fields():
-    m = updater.parse_manifest(
-        {"version": "1.0.0", "url": "https://x", "sha256": "aa"}
-    )
+    m = updater.parse_manifest({"version": "1.0.0", "url": "https://x", "sha256": "aa"})
     assert m.mandatory is False
     assert m.min_supported is None
     assert m.notes == ""
@@ -280,7 +278,9 @@ _UNREACHABLE = object()
 
 def test_stage_update_downloads_verifies_and_records_pending(tmp_path, monkeypatch):
     build = b"the 1.0.0 build"
-    manifest = updater.parse_manifest(_manifest_dict(version="1.0.0", sha256=_sha(build)))
+    manifest = updater.parse_manifest(
+        _manifest_dict(version="1.0.0", sha256=_sha(build))
+    )
     _install_fake_network(monkeypatch, _manifest_dict(sha256=_sha(build)), build)
     state = UpdaterState()
 
@@ -310,7 +310,9 @@ def test_background_check_stages_a_newer_build_and_stamps_last_check(
     tmp_path, monkeypatch
 ):
     build = b"1.0.0 build"
-    _install_fake_network(monkeypatch, _manifest_dict(version="1.0.0", sha256=_sha(build)), build)
+    _install_fake_network(
+        monkeypatch, _manifest_dict(version="1.0.0", sha256=_sha(build)), build
+    )
     state = UpdaterState()
 
     result = updater.run_background_check("0.9.0", state, tmp_path, now=NOW)
@@ -322,7 +324,9 @@ def test_background_check_stages_a_newer_build_and_stamps_last_check(
 
 def test_background_check_does_not_stage_when_up_to_date(tmp_path, monkeypatch):
     build = b"same build"
-    _install_fake_network(monkeypatch, _manifest_dict(version="0.9.0", sha256=_sha(build)), build)
+    _install_fake_network(
+        monkeypatch, _manifest_dict(version="0.9.0", sha256=_sha(build)), build
+    )
     state = UpdaterState()
 
     result = updater.run_background_check("0.9.0", state, tmp_path, now=NOW)
@@ -346,10 +350,10 @@ def test_background_check_survives_an_unreachable_server(tmp_path, monkeypatch):
 
 def test_background_check_skips_an_already_staged_same_version(tmp_path, monkeypatch):
     build = b"1.0.0 build"
-    _install_fake_network(monkeypatch, _manifest_dict(version="1.0.0", sha256=_sha(build)), build)
-    state = UpdaterState(
-        pending={"version": "1.0.0", "filename": "x", "sha256": "aa"}
+    _install_fake_network(
+        monkeypatch, _manifest_dict(version="1.0.0", sha256=_sha(build)), build
     )
+    state = UpdaterState(pending={"version": "1.0.0", "filename": "x", "sha256": "aa"})
 
     result = updater.run_background_check("0.9.0", state, tmp_path, now=NOW)
 
@@ -363,7 +367,9 @@ def test_background_check_skips_an_already_staged_same_version(tmp_path, monkeyp
 def test_stage_then_apply_across_two_runs(tmp_path, monkeypatch):
     (tmp_path / "TermQuarium.exe").write_bytes(b"v0.9.0")
     build = b"v1.0.0 build"
-    _install_fake_network(monkeypatch, _manifest_dict(version="1.0.0", sha256=_sha(build)), build)
+    _install_fake_network(
+        monkeypatch, _manifest_dict(version="1.0.0", sha256=_sha(build)), build
+    )
 
     # Run 1: background check stages the update.
     state = updater.load_state(tmp_path / updater.STATE_FILENAME)

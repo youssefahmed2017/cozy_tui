@@ -107,7 +107,9 @@ def credentials_form(screen, title, color, action_label, action, hints):
 
     row = HBox(3, 8, gap=2)
     btn_go = Button(0, 0, action_label, width=14, style=Style(fg="white", bg=color))
-    btn_back = Button(0, 0, "Back", width=12, style=Style(fg="white", bg="bright_black"))
+    btn_back = Button(
+        0, 0, "Back", width=12, style=Style(fg="white", bg="bright_black")
+    )
     btn_go.on_click(lambda _b: action())
     btn_back.on_click(lambda _b: app.show(welcome))
     row.add(btn_go).add(btn_back)
@@ -219,7 +221,9 @@ btn_add = Button(37, 14, "Add", width=9, style=Style(fg="white", bg="green"))
 todo_box.add(btn_add)
 
 btn_delete = Button(3, 16, "Delete", width=12, style=Style(fg="white", bg="red"))
-btn_clear = Button(17, 16, "Clear Done", width=14, style=Style(fg="white", bg="magenta"))
+btn_clear = Button(
+    17, 16, "Clear Done", width=14, style=Style(fg="white", bg="magenta")
+)
 btn_logout = Button(
     33, 16, "Logout", width=11, style=Style(fg="white", bg="bright_black")
 )

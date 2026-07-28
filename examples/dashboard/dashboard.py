@@ -96,7 +96,9 @@ def main():
     # ever hands it a string. markup=True colors *within* a line: the timestamp
     # stays grey while the message takes the event's own color.
     activity_panel.add(Label(1, 0, "Activity log", ACCENT))
-    log = Log(1, 1, "760x130", markup=True, max_lines=500, style=Style(bg="rgb(18,20,26)"))
+    log = Log(
+        1, 1, "760x130", markup=True, max_lines=500, style=Style(bg="rgb(18,20,26)")
+    )
     activity_panel.add(log)
 
     def add_log(text, color="white"):

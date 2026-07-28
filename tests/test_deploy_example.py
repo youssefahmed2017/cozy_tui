@@ -16,7 +16,9 @@ from cozy_tui.testing import Harness
 
 import cozy_tui
 
-_PATH = pathlib.Path(__file__).resolve().parents[1] / "examples" / "deploy" / "deploy.py"
+_PATH = (
+    pathlib.Path(__file__).resolve().parents[1] / "examples" / "deploy" / "deploy.py"
+)
 
 
 @pytest.fixture

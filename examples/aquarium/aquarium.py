@@ -216,6 +216,7 @@ from examples.aquarium.termquarium.inspectors import (
     _build_castle_interior,
     _build_daily_summary,
     _build_decoration_inspector,
+    _build_fish_history,
     _build_inspector,
     _build_settings,
 )
@@ -303,6 +304,41 @@ from examples.aquarium.termquarium.world import (
 
 import math
 
+# Ambient wording for a fish settling by its favorite decoration, and for a
+# friend that swims over to join one already relaxing. Deliberately
+# observational ("look at their little life"), one emoji per decoration kind
+# shared by both toasts below, with a neutral fallback -- and pointedly not
+# piled with extra sentiment: relaxing is the game's *calm* beat, and both
+# toasts fire rarely enough (the solo one is chance-gated and tank-wide
+# cooldown'd, see RELAX_TOAST_* and _process_relaxing; the join one only fires
+# when two actual Friends' paths genuinely cross, already rare on its own)
+# that piling more emotion on top would cheapen the louder moments. Module-
+# level and pure so both are unit-testable without an App.
+_RELAX_EMOJI = {
+    "Castle": "🏰",
+    "Rock": "🪨",
+    "Plant": "🌿",
+    "Driftwood": "🪵",
+}
+_RELAX_TOAST_TEMPLATES = {
+    "Castle": "{emoji} {name} is relaxing by the Castle.",
+    "Rock": "{emoji} {name} found some quiet time by the Rock.",
+    "Plant": "{emoji} {name} is relaxing near their favorite Plant.",
+    "Driftwood": "{emoji} {name} is drifting lazily by the Driftwood.",
+}
+_RELAX_TOAST_FALLBACK = "😌 {name} is having a peaceful moment."
+
+
+def _relax_toast_message(kind: str, name: str) -> str:
+    emoji = _RELAX_EMOJI.get(kind, "😌")
+    template = _RELAX_TOAST_TEMPLATES.get(kind, _RELAX_TOAST_FALLBACK)
+    return template.format(emoji=emoji, name=name)
+
+
+def _join_relax_toast_message(kind: str, joiner_name: str, host_name: str) -> str:
+    emoji = _RELAX_EMOJI.get(kind, "😌")
+    return f"{emoji} {joiner_name} joined {host_name}. Both of them happily relaxed together."
+
 
 def main() -> None:
     app = App(full=True, style=Style(fg="white", bg="black"), title="TermQuarium")
@@ -377,6 +413,8 @@ def main() -> None:
     }
     hungry_warning_active = {"value": False}
     day_count = {"n": 0}
+    # Tank-wide cooldown so ambient relax toasts stay rare (see _process_relaxing).
+    relax_toast_at = {"t": 0.0}
     # Which tier ("rival"/"neutral"/"friend") each pair was in as of the
     # last daily scan (see _check_milestone_achievements()) -- lets a real
     # tier *crossing* get its own one-shot memory-log line ("I became
@@ -508,8 +546,14 @@ def main() -> None:
         # from Relationship.memories, which is a shared pair record. Every
         # call site below is an already-real, already-firing event; no new
         # mechanics invented just to have something to write down.
-        f.memory_log.append(f"[Day {day_count['n']}] {text}")
+        entry = f"[Day {day_count['n']}] {text}"
+        f.memory_log.append(entry)
         del f.memory_log[:-MEMORY_LOG_LIMIT]
+        # The player's uncapped archive (see fish.py's full_memory_log) --
+        # every entry that ever went into memory_log, kept forever, even once
+        # the fish itself has forgotten it. Same line, so "See All History"
+        # reads identically to the capped Memory Log section above it.
+        f.full_memory_log.append(entry)
 
     def _log_departure(departed: Fish, cause: str | None = None) -> None:
         # Must run before clear_relationships(departed, fish) -- that's what
@@ -527,6 +571,15 @@ def main() -> None:
                     _log_memory(other, cause.format(name=departed.display_name))
 
     def _open_dream(f: Fish) -> None:
+        if f.dream is None:
+            # The dream can vanish between its 😴💭 being drawn and this click --
+            # most sharply when a nightmare wakes the fish (clearing f.dream, see
+            # fish.py) while its button still sits in an already-open Castle
+            # Interior snapshot. build_dream_view() dereferences f.dream.frames
+            # immediately, so fall back to the ordinary Inspector rather than
+            # crash on a None dream (the fish is awake now anyway).
+            _open_inspector(f)
+            return
         app.open_overlay(
             build_dream_view(app, f, _open_inspector), close_on_click_outside=True
         )
@@ -588,10 +641,19 @@ def main() -> None:
         app.toast(f"Sold {f.display_name} for ${f.sell_value}.", level="success")
         _unlock_achievement("first_sale")
 
+    def _open_fish_history(f: Fish) -> None:
+        app.open_overlay(_build_fish_history(app, f), close_on_click_outside=True)
+
     def _open_inspector(f: Fish) -> None:
         app.open_overlay(
             _build_inspector(
-                app, f, _rename_fish, _sell_fish, state["treats"], _feed_treat
+                app,
+                f,
+                _rename_fish,
+                _sell_fish,
+                state["treats"],
+                _feed_treat,
+                _open_fish_history,
             ),
             close_on_click_outside=True,
         )
@@ -876,6 +938,7 @@ def main() -> None:
                     "personality": f.personality,
                     "is_sleepy": f.is_sleepy,
                     "memory_log": list(f.memory_log),
+                    "full_memory_log": list(f.full_memory_log),
                     "age_seconds": max(0.0, time.monotonic() - f.birth_time),
                     "favorite": decoration_index.get(id(f.favorite_decoration)),
                 }
@@ -1000,9 +1063,17 @@ def main() -> None:
                 "personality",
                 "is_sleepy",
                 "memory_log",
+                "full_memory_log",
             ):
                 if attr in saved:
                     setattr(f, attr, saved[attr])
+            if "full_memory_log" not in saved:
+                # A save from before "See All History" existed -- there's no
+                # uncapped archive to restore, so seed it from whatever the
+                # capped memory_log still has rather than starting completely
+                # blank. Everything memory_log had already aged out by then is
+                # genuinely gone; nothing to do about that retroactively.
+                f.full_memory_log = list(f.memory_log)
             f.birth_time = time.monotonic() - max(0.0, saved.get("age_seconds", 0.0))
             fish.append(f)
             app.add(f)
@@ -2315,6 +2386,43 @@ def main() -> None:
                         icon="🥺",
                     )
 
+    def _process_relaxing() -> None:
+        # Consume each fish's one-shot(s) from the moment it settles (fish.py's
+        # relax/join branches). A *solo* settle surfaces as just the quiet 😌
+        # above the fish -- only a rare, tank-wide-rate-limited few earn an
+        # ambient toast, and rarer still a diary line, so it reads as noticing
+        # their little life rather than a notification stream. A friend
+        # actually swimming over to *join* one already relaxing is its own,
+        # separate, always-announced moment (see fish.py's join branch) --
+        # already rare simply because it needs two Friends' paths to cross,
+        # so it doesn't need the same chance-gating solo relaxing does.
+        now = time.monotonic()
+        for f in fish:
+            if f._joined_friend_relax:
+                f._joined_friend_relax = False
+                spot, host = f._relax_spot, f._relaxing_with
+                if spot is not None and host is not None:
+                    app.toast(
+                        _join_relax_toast_message(
+                            spot.kind, f.display_name, host.display_name
+                        ),
+                        level="info",
+                    )
+            if not f._relax_began:
+                continue
+            f._relax_began = False
+            spot = f.favorite_decoration
+            if spot is None:
+                continue
+            if random.random() < RELAX_MEMORY_CHANCE:
+                _log_memory(f, f"Spent a peaceful moment by the {spot.kind}.")
+            if (
+                random.random() < RELAX_TOAST_CHANCE
+                and now - relax_toast_at["t"] >= RELAX_TOAST_COOLDOWN
+            ):
+                relax_toast_at["t"] = now
+                app.toast(_relax_toast_message(spot.kind, f.display_name), level="info")
+
     def _assign_dreams() -> None:
         # Rolled once per fish, right as Night begins -- not every sleeper,
         # every night: "ooh, Steve is dreaming tonight" should read as a
@@ -2417,6 +2525,7 @@ def main() -> None:
         _process_sleepy_holds()
         _check_shark_scares()
         _process_nightmares()
+        _process_relaxing()
         _check_foraging()
         _check_forest_danger()
 

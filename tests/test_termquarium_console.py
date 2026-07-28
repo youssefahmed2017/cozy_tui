@@ -292,7 +292,9 @@ def test_give_nightmare_command_can_force_a_specific_variant():
 def test_give_nightmare_command_can_let_the_dream_linger():
     commands, _fish, _state, events = _build_registry()
     run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
-    result = run_console_command(commands, 'give_nightmare("Steve", "ice", scare=False)')
+    result = run_console_command(
+        commands, 'give_nightmare("Steve", "ice", scare=False)'
+    )
     assert ("give_nightmare", "Steve", "ice", False) in events
     assert "linger" in result.lower()
 

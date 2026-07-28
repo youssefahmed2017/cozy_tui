@@ -50,7 +50,10 @@ from .constants import (
     RELAX_CHECK_MIN,
     RELAX_DURATION_MAX,
     RELAX_DURATION_MIN,
+    RELAX_FLASH_SECONDS,
     RELAX_STEER_RATE,
+    RELAX_WIGGLE_DURATION,
+    RELAX_WIGGLE_INTERVAL,
     RIVAL_FLEE_RADIUS,
     RIVAL_FOOD_BOOST,
     SCHOOL_ALIGNMENT_WEIGHT,
@@ -202,8 +205,19 @@ class Fish(Widget):
         # This fish's own diary -- distinct from Relationship.memories
         # (relationships.py), which is a shared pair record. Populated by
         # aquarium.py's _log_memory() at real, already-tracked event sites;
-        # newest last, oldest dropped once it exceeds MEMORY_LOG_LIMIT.
+        # newest last, oldest dropped once it exceeds MEMORY_LOG_LIMIT. This
+        # is what the fish itself "remembers" -- dream selection and grief
+        # fading (a departed friend stops surfacing in dreams once their
+        # departure line ages out) both read this capped list, on purpose.
         self.memory_log: list[str] = []
+        # The same diary, never capped -- a player-facing "See All History"
+        # archive (inspectors.py's _build_fish_history) so a real moment isn't
+        # lost forever just because the fish itself has moved on. Deliberately
+        # a separate list rather than a bigger cap on memory_log: gameplay
+        # (what the fish "remembers") and the player's own record of what
+        # actually happened are different things, and the whole point here is
+        # letting them diverge -- the fish forgets, the player doesn't have to.
+        self.full_memory_log: list[str] = []
         # True while this (non-predator) fish is currently within
         # SHARK_SCARE_RADIUS of a Shark -- guards aquarium.py's
         # _check_shark_scares() against re-firing every tick for as long as
@@ -277,6 +291,22 @@ class Fish(Widget):
         self._next_relax_check = self._last + random.uniform(
             RELAX_CHECK_MIN, RELAX_CHECK_MAX
         )
+        # Surfacing state (see the relax branch in draw()): `relaxing` is True
+        # only once actually settled -- at its own favorite spot, or (see the
+        # join branch) beside a friend who's already relaxing at theirs.
+        # `_relax_spot` is *which* Decoration that is (may differ from
+        # favorite_decoration when joined), read by the Inspector and
+        # aquarium.py's _process_relaxing(); `_relaxing_with` is the friend,
+        # if this is a joined episode rather than a solo one. `_relax_flash_until`
+        # drives the brief 😌 above the fish; `_relax_began`/`_joined_friend_relax`
+        # are one-shots the per-second tick consumes to (rarely) toast / log a
+        # memory for a solo settle, or always toast for a join.
+        self.relaxing = False
+        self._relax_spot = None
+        self._relaxing_with = None
+        self._relax_flash_until = 0.0
+        self._relax_began = False
+        self._joined_friend_relax = False
 
     @property
     def age_days(self) -> float:
@@ -508,7 +538,19 @@ class Fish(Widget):
         # of its normal one, the one purely visual "idle animation" touch.
         if self.species_name == "Axolotl" and time.monotonic() < self._relaxing_until:
             return AXOLOTL_RESTING_GLYPH
-        return self.right_glyph if self.vx >= 0 else self.left_glyph
+        base = self.right_glyph if self.vx >= 0 else self.left_glyph
+        if self.relaxing:
+            # "Just enough to look comfortable" -- a brief tail-flick every
+            # RELAX_WIGGLE_INTERVAL seconds, not a real animation state.
+            # Phased by birth_time (unique per fish, already on hand) rather
+            # than a per-fish timer, so a tank full of relaxing fish doesn't
+            # wiggle in lockstep. Reached, for an Axolotl, only once its own
+            # closed-eyes window above has lapsed (e.g. mid-join, see the join
+            # branch in draw() -- _relaxing_until isn't set by joining).
+            phase = (time.monotonic() + self.birth_time) % RELAX_WIGGLE_INTERVAL
+            if phase < RELAX_WIGGLE_DURATION:
+                return f"{base}~" if self.vx >= 0 else f"~{base}"
+        return base
 
     def natural_width(self, scale) -> int:
         return text_width(self._glyph())
@@ -540,6 +582,18 @@ class Fish(Widget):
         now = time.monotonic()
         dt = now - self._last
         self._last = now  # updated every frame, paused or not (see below)
+
+        # `relaxing` is recomputed from scratch every frame: reset it here so
+        # every early return below (paused, travelling, in the Forest, housed)
+        # correctly reads as "not relaxing", and only a settle branch far
+        # below sets it back True. `was_relaxing` lets those branches fire the
+        # arrival flash / one-shot exactly once, on the frame they first
+        # settle -- including the transition from solo to joined (or back),
+        # which is deliberately treated as a fresh settle, not a continuation.
+        was_relaxing = self.relaxing
+        self.relaxing = False
+        self._relax_spot = None
+        self._relaxing_with = None
 
         if self.paused is not None and self.paused.get("value"):
             # Frozen solid -- no movement, no hunger-independent timers, no
@@ -923,6 +977,39 @@ class Fish(Widget):
                     self.vx, self.vy, _ = steer_toward_food(
                         self.vx, self.vy, self.fx, self.fy, (cx, cy), speed, blend
                     )
+                elif (
+                    self.friend is not None
+                    and self.friend.relaxing
+                    and self.friend._relax_spot is not None
+                ):
+                    # A friend is already settled somewhere -- swim over and
+                    # join them instead of just generically following their
+                    # live position (the plain friend-follow branch below).
+                    # Aimed at the friend's *spot* (a fixed Decoration), not
+                    # their fx/fy, so this fish actually arrives and settles
+                    # too rather than perpetually chasing a moving target.
+                    spot = self.friend._relax_spot
+                    arrive_radius = spot.radius + AVOID_MARGIN + RELAX_ARRIVE_MARGIN
+                    if math.hypot(self.fx - spot.fx, self.fy - spot.fy) > arrive_radius:
+                        blend = min(1.0, RELAX_STEER_RATE * dt)
+                        self.vx, self.vy, _ = steer_toward_food(
+                            self.vx,
+                            self.vy,
+                            self.fx,
+                            self.fy,
+                            (spot.fx, spot.fy),
+                            speed,
+                            blend,
+                        )
+                    else:
+                        self.vx *= IDLE_DAMPING
+                        self.vy *= IDLE_DAMPING
+                        self.relaxing = True
+                        self._relax_spot = spot
+                        self._relaxing_with = self.friend
+                        if not was_relaxing:
+                            self._relax_flash_until = now + RELAX_FLASH_SECONDS
+                            self._joined_friend_relax = True
                 elif self.friend is not None:
                     # "They often swim together" -- unlike Friendly's group pull,
                     # this is a specific bond, not personality-gated, and applies
@@ -959,6 +1046,14 @@ class Fish(Widget):
                         # actually overlapping the decoration it's next to.
                         self.vx *= IDLE_DAMPING
                         self.vy *= IDLE_DAMPING
+                        # Actually settled now -- this is the moment worth
+                        # surfacing (see draw()'s indicator chain and
+                        # aquarium.py's _process_relaxing()).
+                        self.relaxing = True
+                        self._relax_spot = spot
+                        if not was_relaxing:
+                            self._relax_flash_until = now + RELAX_FLASH_SECONDS
+                            self._relax_began = True
                 else:
                     # Schooling: the bottom of the priority chain, just above
                     # plain wandering -- a species-level ambient behavior
@@ -1002,10 +1097,25 @@ class Fish(Widget):
                 )
 
         if self._entered:
-            # Tucked inside a container -- frozen in place and invisible
-            # from the tank view, same as the player physically not being
-            # able to see through the Castle's walls. See
-            # _build_decoration_inspector() for how to peek inside.
+            # Tucked inside a container -- frozen in place and invisible from
+            # the tank view, same as not being able to see through the Castle's
+            # walls. See _build_decoration_inspector() for how to peek inside.
+            # The one exception is a live nightmare beat: a fish scared awake
+            # (😨) or being comforted beside a friend (🥺) surfaces that mood
+            # above the container even while housed. Both moments can happen
+            # entirely inside a container (the scare leaves the fish tucked in,
+            # and the comfort fires as it re-settles into a friend's bed), so
+            # without this they'd only ever show in the Castle Interior -- lost
+            # to a player watching the tank. The mood-only glyph mirrors the
+            # main indicator chain below; nothing else about being housed
+            # changes (no glyph, no steering, still frozen).
+            if self._just_scared_until is not None and now < self._just_scared_until:
+                canvas.write(self.abs_x, max(0, self.abs_y - 1), "😨", MUTED)
+            elif (
+                self._nightmare_comfort_until is not None
+                and now < self._nightmare_comfort_until
+            ):
+                canvas.write(self.abs_x, max(0, self.abs_y - 1), "🥺", MUTED)
             return
 
         self.fx, self.fy, self.vx, self.vy = steer(
@@ -1032,6 +1142,11 @@ class Fish(Widget):
             # something to click open (see aquarium.py's _open_dream()).
             glyph = "😴💭" if self.dream is not None else "😴"
             canvas.write(self.abs_x, max(0, self.abs_y - 1), glyph, MUTED)
+        elif self._relax_flash_until and now < self._relax_flash_until:
+            # A brief 😌 when a fish first settles by its favorite spot -- a
+            # glance-and-gone notice, not a permanent badge (it fades while the
+            # fish keeps relaxing). Awake, so it can't collide with 😴 above.
+            canvas.write(self.abs_x, max(0, self.abs_y - 1), "😌", MUTED)
         elif self.personality == "Friendly" and mouse_pos is not None:
             close = (
                 math.hypot(self.fx - mouse_pos[0], self.fy - mouse_pos[1])
