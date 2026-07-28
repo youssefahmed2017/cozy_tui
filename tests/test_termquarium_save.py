@@ -521,7 +521,7 @@ def test_safe_filename_on_windows_strips_the_full_reserved_character_set(monkeyp
 
     monkeypatch.setattr(sys, "platform", "win32")
 
-    assert safe_filename('my:file*is?very|strange<>') == "my_file_is_very_strange__"
+    assert safe_filename("my:file*is?very|strange<>") == "my_file_is_very_strange__"
     assert safe_filename("trailing dots...") == "trailing dots"
     assert safe_filename("a/b\\c") == "a_b_c"
 
@@ -536,7 +536,7 @@ def test_safe_filename_on_linux_only_forbids_slash_and_nul(monkeypatch):
 
     monkeypatch.setattr(sys, "platform", "linux")
 
-    assert safe_filename('my:file*is?very|strange<>') == 'my:file*is?very|strange<>'
+    assert safe_filename("my:file*is?very|strange<>") == "my:file*is?very|strange<>"
     assert safe_filename("CON") == "CON"  # not a reserved name outside Windows
     assert safe_filename("trailing dots...") == "trailing dots..."  # not stripped
     assert safe_filename("a/b") == "a_b"  # the path separator is still forbidden
@@ -550,6 +550,6 @@ def test_safe_filename_on_macos_only_forbids_slash_and_nul(monkeypatch):
 
     monkeypatch.setattr(sys, "platform", "darwin")
 
-    assert safe_filename('my:file*is?very|strange<>') == 'my:file*is?very|strange<>'
+    assert safe_filename("my:file*is?very|strange<>") == "my:file*is?very|strange<>"
     assert safe_filename("a/b") == "a_b"
     assert safe_filename("has\x00null") == "has_null"

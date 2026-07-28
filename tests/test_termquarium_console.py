@@ -139,6 +139,9 @@ def _build_registry():
         events.append(("give_dream", f.display_name, category))
         return "A Sunny Reef"
 
+    def advance_day():
+        events.append(("advance_day",))
+
     commands = build_console_commands(
         state=state,
         fish=fish,
@@ -152,6 +155,7 @@ def _build_registry():
         spawn_food=spawn_food,
         give_nightmare=give_nightmare,
         give_dream=give_dream,
+        advance_day=advance_day,
     )
     return commands, fish, state, events
 

@@ -104,14 +104,14 @@ DREAM_FRAMES = {
                 ("🌊    🌊    🌊", "      🐠", "〰️〰️〰️〰️〰️〰️"),
             ),
         ),
-    DreamVariant(
-        "A Moonlit Swim",
-        "Swimming under the calmest night sky.",
-        (
-            ("🌙 ⭐ ✨ ⭐", "    🐠", "🌊🌊🌊"),
-            (" ⭐ 🌙 ✨", "      🐠", "🌊🌊🌊"),
+        DreamVariant(
+            "A Moonlit Swim",
+            "Swimming under the calmest night sky.",
+            (
+                ("🌙 ⭐ ✨ ⭐", "    🐠", "🌊🌊🌊"),
+                (" ⭐ 🌙 ✨", "      🐠", "🌊🌊🌊"),
+            ),
         ),
-    )
     ],
     "food": [
         DreamVariant(
@@ -627,9 +627,13 @@ def choose_dream(f) -> Dream:
         preferred = _PERSONALITY_CATEGORY.get(f.personality, "happy")
         personality_chance = DREAM_PERSONALITY_CHANCE
         if feeling == "Very Happy":
-            personality_chance = min(1.0, personality_chance + DREAM_HAPPY_PERSONALITY_BONUS)
+            personality_chance = min(
+                1.0, personality_chance + DREAM_HAPPY_PERSONALITY_BONUS
+            )
         elif feeling == "Sad":
-            personality_chance = max(0.0, personality_chance - DREAM_SAD_PERSONALITY_PENALTY)
+            personality_chance = max(
+                0.0, personality_chance - DREAM_SAD_PERSONALITY_PENALTY
+            )
         if random.random() < personality_chance:
             category = preferred
         else:

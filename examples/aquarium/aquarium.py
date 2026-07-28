@@ -423,6 +423,7 @@ def main() -> None:
         "bubbles_enabled": True,
         "treats": {},
         "forest_unlocked": False,
+        "shop_out_of_stock": [],
     }
     hungry_warning_active = {"value": False}
     day_count = {"n": 0}
@@ -737,12 +738,16 @@ def main() -> None:
             app.cancel(timer)
 
         def _signature():
-            # Identity, mood, *and* boop/zzz-flash state -- a fish waking but
-            # lingering (still occupants_of()-eligible, see fish.py's
-            # _awake_in_home), mid-attempt (_just_booped_until), or on the
-            # receiving end of a resisted one (_just_resisted_wake_until)
-            # needs to trigger a redraw too, not just someone actually
-            # arriving or leaving.
+            # Identity, mood, *and* every flash-state flag _build_castle_interior
+            # reads for its mood glyph -- a fish waking but lingering (still
+            # occupants_of()-eligible, see fish.py's _awake_in_home), mid-
+            # attempt (_just_booped_until), on the receiving end of a resisted
+            # one (_just_resisted_wake_until), mid-nightmare-scare
+            # (_just_scared_until), or settling in beside a Friend after one
+            # (_nightmare_comfort_until) all need to trigger a redraw too, not
+            # just someone actually arriving or leaving -- missing any one of
+            # these means that mood's glyph silently never appears in an
+            # already-open Interior view.
             now = time.monotonic()
             return [
                 (
@@ -751,6 +756,9 @@ def main() -> None:
                     o._just_booped_until is not None and now < o._just_booped_until,
                     o._just_resisted_wake_until is not None
                     and now < o._just_resisted_wake_until,
+                    o._just_scared_until is not None and now < o._just_scared_until,
+                    o._nightmare_comfort_until is not None
+                    and now < o._nightmare_comfort_until,
                 )
                 for o in occupants_of(d, fish)
             ]
@@ -808,6 +816,16 @@ def main() -> None:
         _check_new_fish_achievements(f)
         return f
 
+    def _refresh_shop_stock() -> None:
+        # Shop update (updates.md): rotates which species are "Out of
+        # Stock" today -- called once for a brand-new aquarium (below) and
+        # again every day from _daily_tick(); _load_snapshot() restores a
+        # save's own rotation instead of calling this, so Load never
+        # silently reshuffles what a save had.
+        names = [s.name for s in SHOP_ITEMS]
+        count = min(SHOP_DAILY_OUT_OF_STOCK_COUNT, len(names))
+        state["shop_out_of_stock"] = random.sample(names, count)
+
     def _seed_starter_aquarium() -> None:
         """Everything a brand-new aquarium starts with -- the same starter
         decorations/fish boot has always created, factored out so
@@ -824,6 +842,7 @@ def main() -> None:
             app.add(d)
         for _ in range(3):
             _add_fish(random.choice(STARTER_SPECIES))
+        _refresh_shop_stock()
         _refresh_stats()
 
     _seed_starter_aquarium()
@@ -1049,6 +1068,7 @@ def main() -> None:
                 "bubbles_enabled": True,
                 "treats": {},
                 "forest_unlocked": False,
+                "shop_out_of_stock": [],
             }
         )
         day_count["n"] = 0
@@ -1064,6 +1084,11 @@ def main() -> None:
         other state flag) survives."""
         _clear_tank()
         state.update(snapshot.get("state", {}))
+        if "shop_out_of_stock" not in snapshot.get("state", {}):
+            # A save from before the Shop's daily rotation existed -- there's
+            # no rotation to restore, so give it one rather than leaving
+            # every species buyable until the next day rolls over.
+            _refresh_shop_stock()
         if state.get("forest_unlocked") and forest_button not in aquarium_widgets:
             aquarium_widgets.append(forest_button)
         day_count["n"] = int(snapshot.get("day", 0))
@@ -1470,6 +1495,7 @@ def main() -> None:
             spawn_food=_console_spawn_food,
             give_nightmare=_give_nightmare,
             give_dream=_give_dream,
+            advance_day=_daily_tick,
         )
         console = CheatConsole(
             lambda text: run_console_command(commands, text), style=app.style
@@ -2168,6 +2194,24 @@ def main() -> None:
                         level="success",
                         icon="🪵",
                     )
+                # Hunger update (updates.md): the "welcome back" moment this
+                # replaced "while you were away, X died" with -- a warm
+                # nudge only for a fish that's actually hungry right now,
+                # not a scare. Being away in the Forest never starves a
+                # fish (see _per_second_tick()'s starve_loss=0.0 while
+                # away), so this is purely a "go feed them" callout.
+                if f.hunger_feeling == "Hungry":
+                    app.toast(
+                        f"🏠 Welcome back! {f.display_name} looks a little hungry.",
+                        level="info",
+                        icon="🦐",
+                    )
+                elif f.hunger_feeling == "Low energy":
+                    app.toast(
+                        f"🏠 Welcome back! {f.display_name} looks low on energy.",
+                        level="info",
+                        icon="🦐",
+                    )
 
         # 3. Forage once actually in the Forest with nothing to carry yet.
         # The dwell-time gate keeps a fish visibly present for a beat
@@ -2527,7 +2571,9 @@ def main() -> None:
                         and companion.display_name in f.parent_names
                     )
                     if is_parent:
-                        _log_memory(f, f"I was scared. I found {companion.display_name}. 😭")
+                        _log_memory(
+                            f, f"I was scared. I found {companion.display_name}."
+                        )
                         _log_memory(
                             companion,
                             f"{f.display_name} came to me after a nightmare 🥺",
@@ -2602,10 +2648,16 @@ def main() -> None:
 
             if feeling in ("Happy", "Very Happy") and now >= f._wiggle_next_check:
                 f._wiggle_next_check = now + cosmetic_rng.uniform(
-                    HAPPINESS_EXCITED_WIGGLE_CHECK_MIN, HAPPINESS_EXCITED_WIGGLE_CHECK_MAX
+                    HAPPINESS_EXCITED_WIGGLE_CHECK_MIN,
+                    HAPPINESS_EXCITED_WIGGLE_CHECK_MAX,
                 )
-                if not f.relaxing and cosmetic_rng.random() < HAPPINESS_EXCITED_WIGGLE_CHANCE:
-                    f._excited_wiggle_until = now + HAPPINESS_EXCITED_WIGGLE_FLASH_SECONDS
+                if (
+                    not f.relaxing
+                    and cosmetic_rng.random() < HAPPINESS_EXCITED_WIGGLE_CHANCE
+                ):
+                    f._excited_wiggle_until = (
+                        now + HAPPINESS_EXCITED_WIGGLE_FLASH_SECONDS
+                    )
 
             if feeling == "Very Happy" and now >= f._circle_next_check:
                 f._circle_next_check = now + cosmetic_rng.uniform(
@@ -2616,7 +2668,10 @@ def main() -> None:
                     f._circle_pivot = (f.fx, f.fy)
                     f._circle_start = now
                     f._circle_began = True
-                    if now - flourish_toast_at["t"] >= HAPPINESS_FLOURISH_TOAST_COOLDOWN:
+                    if (
+                        now - flourish_toast_at["t"]
+                        >= HAPPINESS_FLOURISH_TOAST_COOLDOWN
+                    ):
                         flourish_toast_at["t"] = now
                         app.toast(
                             f"❤️ {f.display_name} is swimming in happy circles!",
@@ -2634,7 +2689,10 @@ def main() -> None:
                 if cosmetic_rng.random() < HAPPINESS_FOLLOW_CHANCE:
                     f._following_until = now + HAPPINESS_FOLLOW_DURATION_SECONDS
                     f._follow_began = True
-                    if now - flourish_toast_at["t"] >= HAPPINESS_FLOURISH_TOAST_COOLDOWN:
+                    if (
+                        now - flourish_toast_at["t"]
+                        >= HAPPINESS_FLOURISH_TOAST_COOLDOWN
+                    ):
                         flourish_toast_at["t"] = now
                         app.toast(
                             f"🐟 {f.display_name} is happily following "
@@ -2740,7 +2798,9 @@ def main() -> None:
             # of the nightmare, and still gets credit for surviving the night.
             for f in fish:
                 if not f.is_predator:
-                    f.happiness = adjust_happiness(f.happiness, HAPPINESS_GOOD_SLEEP_GAIN)
+                    f.happiness = adjust_happiness(
+                        f.happiness, HAPPINESS_GOOD_SLEEP_GAIN
+                    )
             _check_night_events()
             _fire_morning_vignette()
             _start_sleepy_holds()
@@ -2765,8 +2825,20 @@ def main() -> None:
         hunger_step = _hunger_step()
         dead = []
         for f in fish:
+            # Hunger update (updates.md): starvation is still real for a
+            # fish actually in the main tank, unchanged -- but a fish away
+            # doing Forest/fishing-style biome mechanics (biome == "forest",
+            # or mid-travel there either direction) is somewhere the player
+            # can't see or feed it, so hunger still climbs and caps at 100
+            # ("Low energy" -- see Fish.hunger_feeling), it just never
+            # starts draining health while away. This is the fix for "I was
+            # gone fishing for 3 minutes and Steve just died."
+            away = f.biome == "forest" or f._travel_until is not None
             f.hunger, f.health = decay_hunger(
-                f.hunger, f.health, hunger_step=hunger_step
+                f.hunger,
+                f.health,
+                hunger_step=hunger_step,
+                starve_loss=0.0 if away else STARVE_HEALTH_LOSS,
             )
             if f.health <= 0:
                 dead.append(f)
@@ -2954,6 +3026,7 @@ def main() -> None:
             return
         day_count["n"] += 1
         decay_relationships(fish)
+        _refresh_shop_stock()
         _check_milestone_achievements()
         _check_natural_deaths()
         _try_breeding()

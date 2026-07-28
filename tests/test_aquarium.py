@@ -781,6 +781,30 @@ def test_fish_feeling_bands_match_happiness():
     assert f.feeling == "Very Happy"
 
 
+def test_fish_hunger_feeling_bands_match_hunger():
+    f = _neutral_fish(5.0, 5.0)
+    f.hunger = 0.0
+    assert f.hunger_feeling == "Full"
+    f.hunger = aq.HUNGER_CONTENT_THRESHOLD - 0.1
+    assert f.hunger_feeling == "Full"
+    f.hunger = aq.HUNGER_CONTENT_THRESHOLD
+    assert f.hunger_feeling == "Content"
+    f.hunger = aq.HUNGER_A_LITTLE_HUNGRY_THRESHOLD - 0.1
+    assert f.hunger_feeling == "Content"
+    f.hunger = aq.HUNGER_A_LITTLE_HUNGRY_THRESHOLD
+    assert f.hunger_feeling == "A little hungry"
+    f.hunger = aq.HUNGER_WARNING_THRESHOLD - 0.1
+    assert f.hunger_feeling == "A little hungry"
+    f.hunger = aq.HUNGER_WARNING_THRESHOLD
+    assert f.hunger_feeling == "Hungry"
+    f.hunger = aq.HUNGER_LOW_ENERGY_THRESHOLD - 0.1
+    assert f.hunger_feeling == "Hungry"
+    f.hunger = aq.HUNGER_LOW_ENERGY_THRESHOLD
+    assert f.hunger_feeling == "Low energy"
+    f.hunger = 100.0
+    assert f.hunger_feeling == "Low energy"
+
+
 def test_eating_regular_food_gives_the_fed_happiness_gain():
     bounds = (0.0, 0.0, 50.0, 50.0)
     foods = [aq.Food(5.0, 5.0)]  # exactly at the fish -- guaranteed within EAT_RADIUS
@@ -1285,7 +1309,9 @@ def test_relax_status_appears_in_the_inspector_while_relaxing():
     app = App(full=False, size="380x520")
     f, spot = _relaxed_fish()
 
-    box = aq._build_inspector(app, f, lambda f: None, lambda f: None, {}, lambda f, k: None)
+    box = aq._build_inspector(
+        app, f, lambda f: None, lambda f: None, {}, lambda f, k: None
+    )
     labels = [c.text for c in box.children if c.__class__.__name__ == "Label"]
 
     assert any("Relaxing" in t and spot.kind in t for t in labels)
@@ -1300,7 +1326,9 @@ def test_relax_status_absent_from_the_inspector_when_not_relaxing():
         6.0, 5.0, aq.ROCK_ART, aq.ROCK_COLORS, kind="Rock"
     )
 
-    box = aq._build_inspector(app, f, lambda f: None, lambda f: None, {}, lambda f, k: None)
+    box = aq._build_inspector(
+        app, f, lambda f: None, lambda f: None, {}, lambda f, k: None
+    )
     labels = [c.text for c in box.children if c.__class__.__name__ == "Label"]
 
     assert not any("Relaxing" in t for t in labels)
@@ -1487,9 +1515,7 @@ def test_process_relaxing_fires_the_join_toast(tmp_path, monkeypatch):
     second_timer.callback()
 
     assert joiner._joined_friend_relax is False
-    assert (
-        "🪨 Alex joined Steve. Both of them happily relaxed together." in toasts
-    )
+    assert "🪨 Alex joined Steve. Both of them happily relaxed together." in toasts
 
 
 # ── The tiny relax wiggle ────────────────────────────────────────────────────
@@ -1562,7 +1588,9 @@ def test_happiness_decays_toward_the_floor_and_stops_there(tmp_path, monkeypatch
         second_timer.callback()
 
     assert f.happiness < 90.0
-    assert f.happiness >= aq.HAPPINESS_DECAY_FLOOR - 0.5  # decay alone doesn't dip below it
+    assert (
+        f.happiness >= aq.HAPPINESS_DECAY_FLOOR - 0.5
+    )  # decay alone doesn't dip below it
 
 
 def test_happiness_does_not_decay_below_the_floor_on_its_own(tmp_path, monkeypatch):
@@ -1596,7 +1624,9 @@ def test_serious_event_suppresses_happiness_flourishes_tank_wide(tmp_path, monke
     bystander.happiness = 100.0  # Very Happy, and due for a circle check
     bystander._circle_next_check = time.monotonic()
     bystander.fx, bystander.fy = victim.fx + 30.0, victim.fy  # elsewhere, uninvolved
-    _add_real_fish(app, victim.fx + 1.0, victim.fy, is_predator=True, species_name="Shark")
+    _add_real_fish(
+        app, victim.fx + 1.0, victim.fy, is_predator=True, species_name="Shark"
+    )
 
     second_timer = next(t for t in app._timers if t.interval == 1.0)
     second_timer.callback()  # triggers the scare -> serious_event_at set
@@ -2950,7 +2980,10 @@ def test_feeding_a_favorite_treat_gives_both_the_fed_and_favorite_happiness_gain
     )
     feed_btn.on_mouse_click()
 
-    assert axolotl.happiness == 50.0 + aq.HAPPINESS_FED_GAIN + aq.HAPPINESS_FAVORITE_TREAT_GAIN
+    assert (
+        axolotl.happiness
+        == 50.0 + aq.HAPPINESS_FED_GAIN + aq.HAPPINESS_FAVORITE_TREAT_GAIN
+    )
 
 
 def test_feeding_a_non_favorite_treat_gives_only_the_fed_happiness_gain(
@@ -3670,6 +3703,55 @@ def test_starving_to_death_logs_a_departure_memory_for_its_friend(
     )
 
 
+def test_a_fish_in_the_main_tank_can_still_starve_to_death(tmp_path, monkeypatch):
+    # Hunger update (updates.md): starvation is unchanged for a fish
+    # actually in the main tank -- only a fish away doing Forest/fishing
+    # mechanics is exempt (see the test below).
+    app = _headless_app(tmp_path, monkeypatch)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.hunger = 100.0
+    f.health = aq.STARVE_HEALTH_LOSS  # one more tick's worth of decay kills it
+    assert f.biome == "aquarium" and f._travel_until is None
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert f not in [w for w in app.widgets if isinstance(w, aq.Fish)]
+
+
+def test_a_fish_away_in_the_forest_never_starves_to_death(tmp_path, monkeypatch):
+    # The actual bug this fixes: going away (Forest today, fishing once
+    # that exists) must never come back to "while you were away, X died" --
+    # hunger still climbs and caps at "Low energy", it just never drains
+    # health while the fish is somewhere the player can't see or feed it.
+    app = _headless_app(tmp_path, monkeypatch)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.biome = "forest"
+    f.hunger = 100.0
+    f.health = aq.STARVE_HEALTH_LOSS  # would die next tick if not exempted
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    for _ in range(5):
+        second_timer.callback()
+
+    assert f.health == aq.STARVE_HEALTH_LOSS  # untouched the whole time -- never died
+    assert f.hunger == 100.0  # capped, not climbing forever
+
+
+def test_a_fish_mid_travel_to_the_forest_never_starves_to_death(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f._travel_until = time.monotonic() + 999.0  # still mid-trip, far from due
+    f._travel_target = "forest"
+    f.hunger = 100.0
+    f.health = aq.STARVE_HEALTH_LOSS
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert f.health == aq.STARVE_HEALTH_LOSS
+
+
 def test_memory_log_is_capped_at_the_limit(tmp_path, monkeypatch):
     # Real repeated hook firing (not a hand-rolled duplicate of the cap
     # arithmetic) -- the same "showing_off" event, forced every day,
@@ -3722,7 +3804,7 @@ def test_full_memory_log_never_caps_while_memory_log_does(tmp_path, monkeypatch)
     assert len(target_fish.full_memory_log) == rounds
     # The capped log is exactly the uncapped log's tail -- same entries,
     # same order, just windowed.
-    assert target_fish.memory_log == target_fish.full_memory_log[-aq.MEMORY_LOG_LIMIT:]
+    assert target_fish.memory_log == target_fish.full_memory_log[-aq.MEMORY_LOG_LIMIT :]
 
 
 def test_memory_log_round_trips_through_save_and_load(tmp_path, monkeypatch):
@@ -4822,6 +4904,35 @@ def test_scared_mood_surfaces_above_a_housed_fish_even_while_tucked_in():
     assert any(text == "😨" for _x, _y, text in writes)
 
 
+def test_housed_mood_glyph_anchors_to_the_container_not_the_fishs_own_position():
+    # Regression: a housed fish's fx/fy is wherever it happened to cross
+    # arrive_radius (up to a container-radius-plus-margin away from the
+    # container's own glyph) -- anchoring the mood glyph to self, as it
+    # used to, could float it out over open water with nothing nearby to
+    # explain it (reported as a "stray" floating emoji). It must appear at
+    # the container's own position instead.
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    castle = _castle(x=30.0, y=20.0)
+    f = _sleepy_fish(5.0, 5.0, bounds)  # far from the castle
+    f.fish_list = [f]
+    f.sleeping_in = castle
+    f._entered = True
+    f._just_scared_until = time.monotonic() + 10.0
+
+    writes = []
+    canvas = _FakeCanvas()
+    canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
+    _age(f)
+    f.draw(canvas)
+
+    scare_writes = [(x, y) for x, y, text in writes if text == "😨"]
+    assert scare_writes
+    x, y = scare_writes[0]
+    assert x == castle.abs_x
+    assert y == max(0, castle.abs_y - 1)
+    assert (x, y) != (f.abs_x, max(0, f.abs_y - 1))
+
+
 def test_comfort_mood_surfaces_above_a_housed_fish_even_while_tucked_in():
     bounds = (0.0, 0.0, 50.0, 50.0)
     f = _sleepy_fish(5.0, 5.0, bounds)
@@ -4853,9 +4964,7 @@ def test_opening_a_dream_that_vanished_since_the_panel_was_drawn_falls_back_to_t
     app = _headless_app(tmp_path, monkeypatch)
     fish_list = [w for w in app.widgets if isinstance(w, aq.Fish)]
     castle = next(
-        w
-        for w in app.widgets
-        if isinstance(w, aq.Decoration) and w.kind == "Castle"
+        w for w in app.widgets if isinstance(w, aq.Decoration) and w.kind == "Castle"
     )
     guest = fish_list[0]
     guest.display_name = "Steve"
@@ -4886,6 +4995,57 @@ def test_opening_a_dream_that_vanished_since_the_panel_was_drawn_falls_back_to_t
 
     opened = app._overlays[-1].widget
     assert opened.title == "Steve"  # the ordinary Inspector, not a dream view
+
+
+def test_open_castle_interior_refreshes_to_show_a_nightmare_scare(
+    tmp_path, monkeypatch
+):
+    # The bug: _enter_decoration()'s live-refresh poll (_signature()) tracked
+    # _awake_in_home/_just_booped_until/_just_resisted_wake_until but not
+    # _just_scared_until/_nightmare_comfort_until -- so a fish scared by a
+    # nightmare while its Interior panel was already open never got its 😨
+    # shown, even though _build_castle_interior itself renders it correctly
+    # when built fresh (see test_castle_interior_shows_scared_and_comfort_moods).
+    app = _headless_app(tmp_path, monkeypatch)
+    fish_list = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    castle = next(
+        w for w in app.widgets if isinstance(w, aq.Decoration) and w.kind == "Castle"
+    )
+    guest = fish_list[0]
+    guest.display_name = "Kitty"
+    guest.sleeping_in = castle
+    guest._entered = True
+
+    app._mouse_handler(aq.MouseClick(castle.x, castle.y, 0))
+    decoration_box = app._overlays[-1].widget
+    enter_btn = next(
+        c
+        for c in decoration_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip().startswith("Enter")
+    )
+    enter_btn.on_mouse_click()
+    interior_before = app._overlays[-1].widget
+    labels_before = [
+        c.text for c in interior_before.children if c.__class__.__name__ == "Label"
+    ]
+    assert not any("😨" in t for t in labels_before)
+
+    # The nightmare scare fires while the panel is still open, unrelated to
+    # any occupant arriving/leaving/waking.
+    guest._just_scared_until = time.monotonic() + 10.0
+
+    # _per_second_tick's own timer is also interval==1.0 and was registered
+    # first at boot -- the Interior panel's own poll (_enter_decoration's
+    # app.every(1.0, _refresh)) is the one registered after Enter was
+    # clicked, i.e. the last one.
+    refresh_timer = [t for t in app._timers if t.interval == 1.0][-1]
+    refresh_timer.callback()
+
+    interior_after = app._overlays[-1].widget
+    labels_after = [
+        c.text for c in interior_after.children if c.__class__.__name__ == "Label"
+    ]
+    assert any("Kitty" in t and "😨" in t for t in labels_after)
 
 
 def test_housed_fish_with_no_active_nightmare_mood_stays_invisible():
@@ -5207,6 +5367,38 @@ def test_give_dream_command_sets_a_viewable_dream(tmp_path, monkeypatch):
     assert steve.dream is not None
     assert steve.dream.category != "bad"
     assert any("I dreamed about" in m for m in steve.memory_log)
+
+
+def test_advance_day_command_runs_the_real_daily_tick(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+
+    _type_into_console(console, "advance_day()")
+
+    assert any("Advanced 1 day." in text for text, _err in console.lines)
+
+
+def test_advance_day_command_accepts_an_amount_and_advances_the_shop_stock(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+
+    _type_into_console(console, "advance_day(amount=5)")
+
+    assert any("Advanced 5 day(s)." in text for text, _err in console.lines)
+
+
+def test_advance_day_command_rejects_a_non_positive_amount(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+
+    _type_into_console(console, "advance_day(amount=0)")
+
+    assert any(is_err for _text, is_err in console.lines)
 
 
 def test_give_nightmare_command_shows_the_dream_then_scares(tmp_path, monkeypatch):
@@ -8031,6 +8223,70 @@ def test_leaf_field_freezes_while_paused():
     assert field._leaves == []  # never spawns while paused
 
 
+def test_welcome_back_toast_when_a_hungry_fish_returns_from_the_forest(
+    tmp_path, monkeypatch
+):
+    # Hunger update (updates.md): "returned from the Forest, looks hungry"
+    # replaces "while you were away, X died" -- a warm nudge, not a scare.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.biome = "forest"
+    f._travel_until = time.monotonic() - 1.0  # about to arrive home
+    f._travel_target = "aquarium"
+    f.hunger = aq.HUNGER_WARNING_THRESHOLD  # "Hungry" band
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert f.biome == "aquarium"
+    assert any(
+        "Welcome back" in t and f.display_name in t and "a little hungry" in t
+        for t in toasts
+    )
+
+
+def test_welcome_back_toast_wording_for_a_low_energy_fish(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.biome = "forest"
+    f._travel_until = time.monotonic() - 1.0
+    f._travel_target = "aquarium"
+    f.hunger = aq.HUNGER_LOW_ENERGY_THRESHOLD
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert any(
+        "Welcome back" in t and f.display_name in t and "low on energy" in t
+        for t in toasts
+    )
+
+
+def test_no_welcome_back_toast_for_a_well_fed_fish_returning_from_the_forest(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.biome = "forest"
+    f._travel_until = time.monotonic() - 1.0
+    f._travel_target = "aquarium"
+    f.hunger = 0.0  # Full
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert not any("Welcome back" in t for t in toasts)
+
+
 def test_entering_the_forest_with_leaves_enabled_does_not_crash(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     _unlock_forest(app)
@@ -8246,7 +8502,9 @@ def test_tiger_shark_leaves_after_its_visit(tmp_path, monkeypatch):
     assert not any(isinstance(w, aq.TigerShark) for w in app.widgets)
 
 
-def test_tiger_shark_will_not_reappear_immediately_after_a_visit_ends(tmp_path, monkeypatch):
+def test_tiger_shark_will_not_reappear_immediately_after_a_visit_ends(
+    tmp_path, monkeypatch
+):
     """A busy Forest shouldn't stack visits back-to-back -- see
     TIGER_SHARK_COOLDOWN_SECONDS's own comment for why an unrestrained
     per-second roll made the shark feel like it "always" showed up."""

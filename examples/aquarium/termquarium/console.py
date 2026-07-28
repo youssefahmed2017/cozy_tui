@@ -89,6 +89,7 @@ def build_console_commands(
     spawn_food,
     give_nightmare,
     give_dream,
+    advance_day,
 ) -> dict:
     """The command registry, closing over the same real state/mutators the
     Shop/Inspector already use (see aquarium.py's main()) -- every command
@@ -264,6 +265,15 @@ def build_console_commands(
             raise ConsoleError(str(error))
         return f"Gave {target.display_name} a dream about {title}."
 
+    def cmd_advance_day(args, kwargs):
+        amount = kwargs.get("amount", args[0] if args else 1)
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount < 1:
+            raise ConsoleError("amount must be a positive whole number.")
+        amount = min(amount, 100)  # a fat-fingered amount=99999 stays harmless
+        for _ in range(amount):
+            advance_day()
+        return f"Advanced {amount} day(s)." if amount > 1 else "Advanced 1 day."
+
     def cmd_help(_args, _kwargs):
         return "\n".join(f"{name}: {cmd.usage}" for name, cmd in commands.items())
 
@@ -317,6 +327,14 @@ def build_console_commands(
             "give_dream(fish_name: the fish, category: happy/food/friendship/"
             "home/fantasy (optional)) -- gives it a nice dream to view",
             cmd_give_dream,
+        ),
+        "advance_day": Command(
+            "advance_day(amount: how many in-game days to fast-forward "
+            "through, optional, default 1) -- runs the real daily tick "
+            "(breeding, natural deaths, the Shop's stock rotation, and the "
+            "random-event roll) exactly as if that many real days had "
+            "passed, so you don't have to wait 6 real minutes per day",
+            cmd_advance_day,
         ),
     }
     return commands

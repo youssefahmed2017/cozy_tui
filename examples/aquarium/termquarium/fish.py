@@ -30,6 +30,10 @@ from .constants import (
     HAPPINESS_FED_GAIN,
     HAPPINESS_FOLLOW_STEER_MULT,
     HAPPINESS_HAPPY_THRESHOLD,
+    HUNGER_A_LITTLE_HUNGRY_THRESHOLD,
+    HUNGER_CONTENT_THRESHOLD,
+    HUNGER_LOW_ENERGY_THRESHOLD,
+    HUNGER_WARNING_THRESHOLD,
     HAPPINESS_MAX,
     HAPPINESS_MIN,
     HAPPINESS_PERSONALITY_START_BONUS,
@@ -432,7 +436,7 @@ class Fish(Widget):
 
     @property
     def feeling(self) -> str:
-        """"Sad" / "Neutral" / "Happy" / "Very Happy" -- the band `self.happiness`
+        """ "Sad" / "Neutral" / "Happy" / "Very Happy" -- the band `self.happiness`
         falls into, read by the Inspector and every ambient Happiness nudge
         (the relax-chance multiplier, choose_dream()'s lean, the sparkle/
         excited-wiggle flourishes). Every effect reads this band, never the
@@ -445,6 +449,24 @@ class Fish(Widget):
         if self.happiness >= HAPPINESS_HAPPY_THRESHOLD:
             return "Happy"
         return "Neutral"
+
+    @property
+    def hunger_feeling(self) -> str:
+        """ "Full" / "Content" / "A little hungry" / "Hungry" / "Low energy"
+        -- the band `self.hunger` falls into (Hunger update, updates.md).
+        "Low energy" is hunger's own ceiling, not a step toward anything
+        worse: staying hungry a while is a mood to notice and fix by
+        feeding, never a countdown. Mirrors Fish.feeling's own
+        banded-property shape exactly."""
+        if self.hunger < HUNGER_CONTENT_THRESHOLD:
+            return "Full"
+        if self.hunger < HUNGER_A_LITTLE_HUNGRY_THRESHOLD:
+            return "Content"
+        if self.hunger < HUNGER_WARNING_THRESHOLD:
+            return "A little hungry"
+        if self.hunger < HUNGER_LOW_ENERGY_THRESHOLD:
+            return "Hungry"
+        return "Low energy"
 
     @property
     def friend(self):
@@ -1284,20 +1306,31 @@ class Fish(Widget):
             # _build_castle_interior()'s own mood chain (boop first). The
             # mood-only glyph mirrors the main indicator chain below; nothing
             # else about being housed changes (no glyph, no steering, frozen).
+            # Anchored to the container's own position, not this fish's --
+            # a housed fish's fx/fy is wherever it happened to be when it
+            # crossed arrive_radius (up to a container-radius-plus-margin
+            # away from the container's actual glyph), so anchoring to self
+            # could float the glyph out over open, unrelated water with
+            # nothing nearby to explain it. Anchoring to the container
+            # itself means it always appears right at the furniture the
+            # player would otherwise have to open the Inspector to check.
+            home = self.sleeping_in or self._hiding_in
+            mood_x = home.abs_x if home is not None else self.abs_x
+            mood_y = max(0, (home.abs_y if home is not None else self.abs_y) - 1)
             if self._just_booped_until is not None and now < self._just_booped_until:
-                canvas.write(self.abs_x, max(0, self.abs_y - 1), "*boop*", MUTED)
+                canvas.write(mood_x, mood_y, "*boop*", MUTED)
             elif self._just_scared_until is not None and now < self._just_scared_until:
-                canvas.write(self.abs_x, max(0, self.abs_y - 1), "😨", MUTED)
+                canvas.write(mood_x, mood_y, "😨", MUTED)
             elif (
                 self._nightmare_comfort_until is not None
                 and now < self._nightmare_comfort_until
             ):
-                canvas.write(self.abs_x, max(0, self.abs_y - 1), "🥺", MUTED)
+                canvas.write(mood_x, mood_y, "🥺", MUTED)
             elif (
                 self._just_resisted_wake_until is not None
                 and now < self._just_resisted_wake_until
             ):
-                canvas.write(self.abs_x, max(0, self.abs_y - 1), "*...zzz*", MUTED)
+                canvas.write(mood_x, mood_y, "*...zzz*", MUTED)
             return
 
         self.fx, self.fy, self.vx, self.vy = steer(

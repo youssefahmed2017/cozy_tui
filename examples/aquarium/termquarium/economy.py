@@ -33,9 +33,14 @@ def decay_hunger(
     hunger, health, hunger_step=HUNGER_STEP, starve_loss=STARVE_HEALTH_LOSS
 ):
     """One tick of a fish going hungrier; once hunger maxes out, health
-    starts draining too. Called on its own periodic clock (app.every), not
-    every frame -- hunger/health are a slow background process, unlike the
-    continuous position update."""
+    starts draining too -- unchanged, still real, for a fish in the main
+    tank. `starve_loss=0.0` is how aquarium.py's _per_second_tick() exempts
+    a fish that's currently away doing Forest/fishing-style biome mechanics
+    (see constants.py's Hunger update comment): hunger still climbs and
+    caps at 100 ("Low energy"), it just never starts draining health while
+    the player has no way to see or feed that fish. Called on its own
+    periodic clock (app.every), not every frame -- hunger/health are a slow
+    background process, unlike the continuous position update."""
     hunger = min(100.0, hunger + hunger_step)
     if hunger >= 100.0:
         health = max(0.0, health - starve_loss)

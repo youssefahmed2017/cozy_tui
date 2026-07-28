@@ -11,7 +11,19 @@ GAME_VERSION = "1.4.0"
 
 # A single tank-level toast is shown when one or more fish cross this level.
 # It is intentionally below starvation (100) so the player has time to act.
+# Also the "Hungry" band's start in Fish.hunger_feeling's ladder below, and
+# gates the existing happiness penalty and the Forest-foraging trigger.
+HUNGER_CONTENT_THRESHOLD = 20.0
+HUNGER_A_LITTLE_HUNGRY_THRESHOLD = 35.0
 HUNGER_WARNING_THRESHOLD = 50.0
+HUNGER_LOW_ENERGY_THRESHOLD = 80.0
+# Hunger update (updates.md): starvation death is still real for a fish in
+# the main tank -- unchanged, the same tension as always. It's specifically
+# a fish away doing Forest/fishing-style biome mechanics that must never die
+# off-screen while the player can't even see or feed it (the "I was gone
+# fishing for 3 minutes and Steve just died" problem) -- see aquarium.py's
+# _per_second_tick(), which zeroes out the starve loss only while a fish's
+# biome/travel state says it's away.
 # name, right-facing glyph, left-facing glyph (hand-mirrored rather than
 # auto-flipped so each species still looks recognizable facing the other
 # way, not just a reversed string), color, shop price, predator flag,
@@ -44,6 +56,15 @@ SHOP_ITEMS = [
     ),
 ]
 STARTER_SPECIES = [s for s in SHOP_ITEMS if not s.predator]
+
+# Shop update (updates.md): "Today's Stock" rotates once a day instead of
+# every species always being buyable -- something worth checking back for,
+# not a static catalog page. See aquarium.py's _refresh_shop_stock()
+# (called once at the start of a new aquarium, and again every day from
+# _daily_tick()) and state["shop_out_of_stock"], a plain list of species
+# names (not a set -- state is saved as raw JSON) so a save/load round-trip
+# doesn't need any special handling for it.
+SHOP_DAILY_OUT_OF_STOCK_COUNT = 1
 
 FOOD_PACK_SIZE = 20
 FOOD_PACK_PRICE = 5
@@ -318,7 +339,9 @@ HAPPINESS_SPARKLE_FLASH_SECONDS = 2.0
 
 HAPPINESS_EXCITED_WIGGLE_CHECK_MIN = 25.0
 HAPPINESS_EXCITED_WIGGLE_CHECK_MAX = 60.0
-HAPPINESS_EXCITED_WIGGLE_CHANCE = 0.35  # at each check, Happy or better, while not relaxing
+HAPPINESS_EXCITED_WIGGLE_CHANCE = (
+    0.35  # at each check, Happy or better, while not relaxing
+)
 HAPPINESS_EXCITED_WIGGLE_FLASH_SECONDS = 1.0
 
 # "Swims in circles" (❤️, Very Happy) -- a real, brief steering flourish, not

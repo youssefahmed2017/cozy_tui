@@ -24,6 +24,17 @@ _FEELING_EMOJI = {
     "Very Happy": "😄",
 }
 
+# Hunger update's five hunger bands (Fish.hunger_feeling), same reasoning as
+# _FEELING_EMOJI above -- Fish.hunger_feeling is the plain band string, this
+# is purely the Inspector's display of it.
+_HUNGER_EMOJI = {
+    "Full": "🙂",
+    "Content": "😊",
+    "A little hungry": "😐",
+    "Hungry": "🙁",
+    "Low energy": "😴",
+}
+
 
 def _build_inspector(
     app, f: Fish, on_rename, on_sell, treats, on_feed_treat, on_view_history=None
@@ -63,21 +74,25 @@ def _build_inspector(
     box.add(Label(2, 1, f"Species: {f.species_name}"))
     box.add(Label(2, 2, f"Age: {f.age_days:.1f} days ({f.growth_stage})"))
     box.add(Label(2, 3, f"Health: {f.health:.0f}%"))
-    box.add(Label(2, 4, f"Hunger: {f.hunger:.0f}%"))
+    box.add(
+        Label(
+            2,
+            4,
+            f"Hunger: {f.hunger:.0f}% {_HUNGER_EMOJI[f.hunger_feeling]} {f.hunger_feeling}",
+        )
+    )
     # Update 1: happiness as a "personality amplifier," shown as a bar (not
     # just a number) since it's the one stat here meant to be glanced at,
     # not managed -- the Feeling line underneath is the part that actually
     # matters to a player, the bar is just the at-a-glance version of it.
-    box.add(
-        ProgressBar(2, 5, "█", " ", int(f.happiness), width=30, style=app.style)
-    )
-    box.add(Label(2, 6, f"Feeling: {f.feeling} {_FEELING_EMOJI[f.feeling]}"))
+    box.add(ProgressBar(2, 6, "█", " ", int(f.happiness), width=30, style=app.style))
+    box.add(Label(2, 7, f"Feeling: {f.feeling} {_FEELING_EMOJI[f.feeling]}"))
     personality_line = f"Personality: {f.personality}"
     if f.is_sleepy:
         personality_line += " (also Sleepy 😴)"
-    box.add(Label(2, 7, personality_line))
-    box.add(Label(2, 8, f"Favorite spot: {spot}"))
-    y = 9
+    box.add(Label(2, 8, personality_line))
+    box.add(Label(2, 9, f"Favorite spot: {spot}"))
+    y = 10
     if f.relaxing and f._relax_spot is not None:
         # Surfaces the relax mechanic in the one place a player is already
         # looking at this fish -- a snapshot of "what are you up to right now",
@@ -90,7 +105,9 @@ def _build_inspector(
             if f._relaxing_with is not None
             else ""
         )
-        box.add(Label(2, y, f"Status: 😌 Relaxing near the {f._relax_spot.kind}{companion}"))
+        box.add(
+            Label(2, y, f"Status: 😌 Relaxing near the {f._relax_spot.kind}{companion}")
+        )
         y += 1
     if f.favorite_foods:
         emojis = " ".join(
@@ -131,9 +148,7 @@ def _build_inspector(
         y += 1
         if on_view_history is not None:
             box.add(
-                Button(2, y, "See All History").on_click(
-                    lambda _w: on_view_history(f)
-                )
+                Button(2, y, "See All History").on_click(lambda _w: on_view_history(f))
             )
             y += 2
 

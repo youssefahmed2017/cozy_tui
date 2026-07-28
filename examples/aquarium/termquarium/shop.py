@@ -48,7 +48,23 @@ def build_shop(
         Button(32, row, "Buy").on_click(lambda _w: purchase(FOOD_PACK_PRICE, buy_food))
     )
     row += 2
+    out_of_stock = state.get("shop_out_of_stock", [])
     for species in SHOP_ITEMS:
+        if species.name in out_of_stock:
+            # Shop update (updates.md): "Today's Stock" rotates daily
+            # (see aquarium.py's _refresh_shop_stock()) -- no Buy button at
+            # all while sold out, rather than a disabled one, so there's
+            # nothing to click and immediately bounce off of.
+            box.add(
+                Label(
+                    2,
+                    row,
+                    f"{species.name:<10} Out of Stock",
+                    Style(fg="bright_black"),
+                )
+            )
+            row += 2
+            continue
         tag = " (predator!)" if species.predator else ""
         box.add(
             Label(
