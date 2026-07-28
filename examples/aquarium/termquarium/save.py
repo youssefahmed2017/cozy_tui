@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -82,7 +83,8 @@ def format_relative_time(iso_timestamp: str, now: datetime | None = None) -> str
 
 # Windows reserves these device names -- a file called CON.json is still
 # illegal there even with the extension, so a save named after one must be
-# nudged aside rather than left to raise OSError on write.
+# nudged aside rather than left to raise OSError on write. Meaningless on
+# Linux/macOS (see safe_filename()), so only ever checked on win32.
 _WIN_RESERVED = {
     "CON",
     "PRN",
@@ -92,12 +94,34 @@ _WIN_RESERVED = {
     *(f"LPT{i}" for i in range(1, 10)),
 }
 
+# What a filename actually can't contain differs a lot by platform, and this
+# used to apply Windows' full strictness everywhere -- needlessly mangling a
+# save like "my:file*is?very|strange<>" into underscores on Linux/macOS,
+# where every one of those characters is perfectly legal. The filesystem
+# itself only ever forbids:
+#   Windows        -- <>:"/\|?*, every C0 control char, and (separately,
+#                      see _WIN_RESERVED) a handful of reserved device names.
+#   Linux / macOS  -- "/" (the path separator) and NUL. That's the whole
+#                      list; even a name made entirely of ?*<>|"/... quirky
+#                      punctuation is legal there, just unusual to look at.
+_FORBIDDEN_CHARS_WINDOWS = r'[<>:"/\\|?*\x00-\x1f]'
+_FORBIDDEN_CHARS_POSIX = r"[/\x00]"
+
 
 def safe_filename(name: str) -> str:
-    """Make a friendly save name safe on every supported filesystem."""
-    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip().rstrip(".")
-    if cleaned.upper() in _WIN_RESERVED:
-        cleaned = f"{cleaned}_"
+    """Make a friendly save name safe on *this* platform's filesystem --
+    strict on Windows, permissive on Linux/macOS (see the module-level
+    comment above for exactly what each actually forbids)."""
+    on_windows = sys.platform == "win32"
+    pattern = _FORBIDDEN_CHARS_WINDOWS if on_windows else _FORBIDDEN_CHARS_POSIX
+    cleaned = re.sub(pattern, "_", name).strip()
+    if on_windows:
+        # Trailing dots/spaces and the reserved device names are a Windows-
+        # only quirk -- a save literally named "NUL" or ending in "..." is
+        # fine on Linux/macOS.
+        cleaned = cleaned.rstrip(".")
+        if cleaned.upper() in _WIN_RESERVED:
+            cleaned = f"{cleaned}_"
     return cleaned or "Untitled Aquarium"
 
 

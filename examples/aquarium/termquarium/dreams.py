@@ -24,11 +24,15 @@ from cozy_tui.widget import Widget
 
 from .constants import (
     DREAM_FRAME_SECONDS,
+    DREAM_HAPPY_PERSONALITY_BONUS,
     DREAM_NIGHTMARE_CHANCE,
     DREAM_PERSONALITY_CHANCE,
     DREAM_REUNION_CHANCE,
+    DREAM_SAD_BAD_NUDGE_CHANCE,
+    DREAM_SAD_PERSONALITY_PENALTY,
     DREAM_SHARK_NIGHTMARE_CHANCE,
     MEMORY_DREAM_LOOKBACK,
+    DREAM_FUNNY_CHANCE,
 )
 
 Dream = namedtuple("Dream", "category icon title description frames")
@@ -188,10 +192,10 @@ DREAM_FRAMES = {
             "A Sleepy Aquarium",
             "Everyone was resting together peacefully, and I slept beside {friend}.",
             (
-                ("🐠😴 zzz   🐡 zzz", "🪨 ✨"),
-                ("🐠😴🐡", "   zzz"),
+                ("🐠😴 zzz   🐡 zzz", "🪨 ✨", "with {friend}"),
+                ("🐠😴🐡", "   zzz", "with {friend}"),
             ),
-        )
+        ),
     ],
     "home": [
         DreamVariant(
@@ -300,11 +304,100 @@ DREAM_FRAMES = {
             ),
         ),
     ],
+    # "Funny dreams" (💭, Very Happy only -- see DREAM_FUNNY_CHANCE in
+    # choose_dream()) -- deliberately never a personality's own preferred
+    # category (same rule "reunion" follows, see _PERSONALITY_CATEGORY),
+    # only ever reached through that one explicit roll. `{friend}` is
+    # optional here, unlike the "friendship" category: choose_dream() always
+    # supplies it (falling back to "a friend" with no current bond) so any
+    # variant can reference one without every variant needing to.
+    "funny": [
+        DreamVariant(
+            "The Hug-Hungry Shrimp",
+            "The shrimp were chasing me... because they wanted hugs.",
+            (
+                ("🦐 🦐 🦐 →", "     🐠", "😊"),
+                (" 🦐 🦐 🦐 →", "    🐠", "🥺"),
+            ),
+        ),
+        DreamVariant(
+            "The Biggest Bubble Ever",
+            "Found it with {friend}. It carried us all the way to the castle.",
+            (
+                ("⭕", "🐠🐡", "🏰"),
+                ("⭕✨", " 🐠🐡", "🏰"),
+            ),
+        ),
+        DreamVariant(
+            "Coral Cake",
+            "Every decoration in the tank was made of cake. I took one bite before I woke up.",
+            (
+                ("🎂 🎂 🎂", "  🐠"),
+                (" 🎂 🎂 🎂", " 🐠"),
+            ),
+        ),
+        DreamVariant(
+            "The Secret Cave",
+            "{friend} said they found a secret cave. It was behind a tiny shell. We laughed all day.",
+            (
+                ("🪨", "🐠🐡", "👀"),
+                ("🐚✨ ", " 🐠🐡", "(just a shell) 😂"),
+            ),
+        ),
+        DreamVariant(
+            "Food From the Sky",
+            "Food was falling from the sky. I tried to eat every single piece. I almost did.",
+            (
+                ("🍤  🍤  🍤", "    🐠"),
+                (" 🍤  🍤  🍤", "  🐠"),
+            ),
+        ),
+        DreamVariant(
+            "Faster Than My Shadow",
+            "I swam so fast, I accidentally outran my own shadow.",
+            (
+                ("🐠💨", ""),
+                ("  🐠 💨", ""),
+            ),
+        ),
+        DreamVariant(
+            "The Copycat Fish",
+            "I found another fish that looked exactly like me. We spent all day wondering who copied who.",
+            (
+                ("🐠     🐠", "  🤔"),
+                (" 🐠   🐠", "   🤔"),
+            ),
+        ),
+        DreamVariant(
+            "King of the Bubbles",
+            "Everyone agreed I was the King of the Bubbles. Until I woke up.",
+            (
+                ("👑", "🫧 🫧 🫧"),
+                ("👑✨", " 🫧 🫧 🫧"),
+            ),
+        ),
+        DreamVariant(
+            "Counting Every Grain",
+            "I counted every grain of sand. I forgot the number.",
+            (
+                ("· · · · ·", "🐠"),
+                (" · · · · ·", " 🐠"),
+            ),
+        ),
+        DreamVariant(
+            "The Tunnel of Bubbles",
+            "I swam through a tunnel made of bubbles. Every one popped into tiny stars.",
+            (
+                ("🫧 🫧 🫧", "  🐠"),
+                ("✨ ✨ ✨", "   🐠"),
+            ),
+        ),
+    ],
     "bad": [
         DreamVariant(
             "A Shark in the Dark Water",
             "Getting closer. Too close.",
-            (("🦈", "     🐠", "🌊🌊🌊🌊🌊🌊"), ("   🦈", "  🐠", "🌊🌊🌊🌊🌊🌊")),
+            (("🦈", "     🐠", "🌊🌊🌊🌊🌊🌊"), ("   🦈", "  🐠😨", "🌊🌊🌊🌊🌊🌊")),
         ),
         DreamVariant(
             "Lost in the Dark",
@@ -369,6 +462,7 @@ _CATEGORY_ICON = {
     "friendship": "❤️",
     "home": "🏠",
     "fantasy": "🌌",
+    "funny": "😂",
     "bad": "😨",
     "reunion": "🥹",
 }
@@ -466,6 +560,9 @@ def make_dream(
     if category == "reunion":
         name = _departed_friend_name(f.memory_log) or "an old friend"
         return _build_dream(category, variant, name=name)
+    if category == "funny":
+        friend_name = f.friend.display_name if f.friend is not None else "a friend"
+        return _build_dream(category, variant, friend=friend_name)
     return _build_dream(category, variant)
 
 
@@ -490,6 +587,19 @@ def choose_dream(f) -> Dream:
        just for a quieter kind of memory. Friendship still wins if both
        apply; this is a lean on top of the personality weighting, not a
        separate roll, so it never doubles a fish's total dream chance.
+
+    Happiness (Update 1, f.feeling) leans the personality-weighted roll in
+    step 4 rather than adding a new one: Very Happy raises the odds of
+    landing on the fish's own preferred category (DREAM_HAPPY_PERSONALITY_
+    BONUS); Sad lowers them (DREAM_SAD_PERSONALITY_PENALTY) and, separately,
+    gets one extra small chance (DREAM_SAD_BAD_NUDGE_CHANCE) to lean toward a
+    gloomier "bad"-category dream specifically -- checked last, so a real
+    memory (friendship/peaceful-moment) still wins over a fish's mood.
+
+    A Very Happy fish also gets one independent shot (DREAM_FUNNY_CHANCE,
+    checked before step 4) at a "funny" dream -- its own category, never a
+    personality's plain default, decisive once rolled (skips the friendship/
+    peaceful-moment nudges entirely, unlike the personality-weighted pick).
     """
     recent = f.memory_log[-MEMORY_DREAM_LOOKBACK:]
 
@@ -505,11 +615,22 @@ def choose_dream(f) -> Dream:
         )
         return _build_dream("bad", variant)
 
+    feeling = getattr(f, "feeling", "Neutral")
     if random.random() < DREAM_NIGHTMARE_CHANCE:
         category = "bad"
+    elif feeling == "Very Happy" and random.random() < DREAM_FUNNY_CHANCE:
+        # "Funny dreams" -- its own independent chance, not a lean on top of
+        # personality weighting, and decisive once rolled: skips the real-
+        # memory nudges below entirely, unlike the personality-weighted pick.
+        category = "funny"
     else:
         preferred = _PERSONALITY_CATEGORY.get(f.personality, "happy")
-        if random.random() < DREAM_PERSONALITY_CHANCE:
+        personality_chance = DREAM_PERSONALITY_CHANCE
+        if feeling == "Very Happy":
+            personality_chance = min(1.0, personality_chance + DREAM_HAPPY_PERSONALITY_BONUS)
+        elif feeling == "Sad":
+            personality_chance = max(0.0, personality_chance - DREAM_SAD_PERSONALITY_PENALTY)
+        if random.random() < personality_chance:
             category = preferred
         else:
             # A lean, not a lock -- spread the rest across the other
@@ -532,6 +653,14 @@ def choose_dream(f) -> Dream:
             # A recent relax memory -- lean toward a "home" dream tonight
             # (the category already themed around a fish's own cozy spots).
             category = "home"
+        elif (
+            feeling == "Sad"
+            and category not in ("bad", "reunion")
+            and random.random() < DREAM_SAD_BAD_NUDGE_CHANCE
+        ):
+            # "Sad fish -> more lonely dreams" -- checked last, so a real
+            # memory above still takes priority over a fish's general mood.
+            category = "bad"
 
     variant = random.choice(DREAM_FRAMES[category])
     if category == "friendship":

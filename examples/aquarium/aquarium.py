@@ -197,6 +197,7 @@ from examples.aquarium.termquarium.console import (
 from examples.aquarium.termquarium.constants import *
 from examples.aquarium.termquarium.dreams import choose_dream, make_dream
 from examples.aquarium.termquarium.economy import (
+    adjust_happiness,
     compute_attractiveness,
     compute_visitor_income,
     decay_hunger,
@@ -380,6 +381,18 @@ def main() -> None:
     )
     foods = []
     fish = []
+    # A dedicated PRNG stream for Update 1's purely-cosmetic ambient rolls
+    # (the sparkle/excited-wiggle chance checks in _process_happiness()) --
+    # deliberately *not* the shared `random` module every gameplay roll in
+    # this file uses. Those rolls fire every second for every Happy-or-
+    # better fish (most fish, most of the time, since the default starting
+    # range already lands in "Happy") -- sharing the module-level stream
+    # would silently change how many random.random() calls every *other*
+    # system consumes per tick, which is exactly the kind of thing a test
+    # stubbing a fixed sequence (`iter([0.9, 0.2, ...])`) can't see coming.
+    # Isolating it here means these two flourishes can be added or removed
+    # without perturbing anything else's randomness, ever.
+    cosmetic_rng = random.Random()
     # Exploration Update Slice 1: live Wood items currently sitting in the
     # Forest, regardless of whether that scene is the one currently shown
     # -- mirrors `foods`' own shape. `in_forest` mirrors `paused`'s shared-
@@ -391,7 +404,7 @@ def main() -> None:
     # at a time, and never persisted (a save mid-visit just resets like a
     # fish mid-forage-trip does). Same shared-mutable-dict shape as
     # `in_forest`, so the per-second check can carry it across ticks.
-    forest_shark = {"widget": None, "until": None}
+    forest_shark = {"widget": None, "until": None, "cooldown_until": 0.0}
     # Built once, at boot -- see build_forest_scene()'s own docstring for
     # why fish/wood don't need to be part of this initial construction.
     # `forest_button` is a real Button from the start too, just not
@@ -415,6 +428,13 @@ def main() -> None:
     day_count = {"n": 0}
     # Tank-wide cooldown so ambient relax toasts stay rare (see _process_relaxing).
     relax_toast_at = {"t": 0.0}
+    # Tank-wide cooldown so the circle/follow Happiness flourishes don't both
+    # toast in quick succession when several fish roll close together.
+    flourish_toast_at = {"t": 0.0}
+    # Tank-wide: when something genuinely serious last happened (a Shark
+    # catching a fish, a death, a Shark scare) -- see _process_happiness(),
+    # which suppresses every Very-Happy flourish roll for a while after.
+    serious_event_at = {"t": 0.0}
     # Which tier ("rival"/"neutral"/"friend") each pair was in as of the
     # last daily scan (see _check_milestone_achievements()) -- lets a real
     # tier *crossing* get its own one-shot memory-log line ("I became
@@ -555,6 +575,15 @@ def main() -> None:
         # reads identically to the capped Memory Log section above it.
         f.full_memory_log.append(entry)
 
+    def _bond_happiness(a: Fish, b: Fish) -> None:
+        # A real bonding moment for both fish involved (Update 1's "Friend
+        # interactions" gain) -- called alongside every relationships.py
+        # record_*() bonding call site (a wake-up, sleeping together, a
+        # shark rescue) and the relax "join" event, each an already-real,
+        # already-firing interaction, same rule Fish Memory Log follows.
+        a.happiness = adjust_happiness(a.happiness, HAPPINESS_FRIEND_INTERACTION_GAIN)
+        b.happiness = adjust_happiness(b.happiness, HAPPINESS_FRIEND_INTERACTION_GAIN)
+
     def _log_departure(departed: Fish, cause: str | None = None) -> None:
         # Must run before clear_relationships(departed, fish) -- that's what
         # erases the bond info this reads. A deliberately simpler version of
@@ -569,6 +598,16 @@ def main() -> None:
                 _log_memory(other, f"{departed.display_name} isn't around anymore.")
                 if cause:
                     _log_memory(other, cause.format(name=departed.display_name))
+                if (
+                    get_relationship(other, departed).score
+                    >= RELATIONSHIP_FRIEND_THRESHOLD
+                ):
+                    # "Friend died" -- real grief, only for a bond that was
+                    # actually Friend-tier or better; a Rival's departure (or
+                    # any weaker bond) isn't a loss worth this.
+                    other.happiness = adjust_happiness(
+                        other.happiness, -HAPPINESS_FRIEND_DIED_PENALTY
+                    )
 
     def _open_dream(f: Fish) -> None:
         if f.dream is None:
@@ -698,17 +737,20 @@ def main() -> None:
             app.cancel(timer)
 
         def _signature():
-            # Identity, mood, *and* boop-flash state -- a fish waking but
+            # Identity, mood, *and* boop/zzz-flash state -- a fish waking but
             # lingering (still occupants_of()-eligible, see fish.py's
-            # _awake_in_home) or mid-attempt (_just_booped_until) needs to
-            # trigger a redraw too, not just someone actually arriving or
-            # leaving.
+            # _awake_in_home), mid-attempt (_just_booped_until), or on the
+            # receiving end of a resisted one (_just_resisted_wake_until)
+            # needs to trigger a redraw too, not just someone actually
+            # arriving or leaving.
             now = time.monotonic()
             return [
                 (
                     o,
                     o._awake_in_home,
                     o._just_booped_until is not None and now < o._just_booped_until,
+                    o._just_resisted_wake_until is not None
+                    and now < o._just_resisted_wake_until,
                 )
                 for o in occupants_of(d, fish)
             ]
@@ -743,6 +785,7 @@ def main() -> None:
         app.widgets.remove(eaten)
         _log_departure(eaten)
         clear_relationships(eaten, fish)
+        serious_event_at["t"] = time.monotonic()
         app.toast(f"The shark ate {eaten.display_name}!", level="warning", icon="🦈")
         _refresh_stats()
 
@@ -840,6 +883,8 @@ def main() -> None:
             # Universal delight, regardless of species or favorite --
             # matching Pizza's flavor text (see constants.TREAT_SHOP_ITEMS):
             # nobody has it as a declared favorite, everyone loves it anyway.
+            # Same Happiness bonus as an actual favorite (below) for the same
+            # reason -- the reaction is identical, just not species-specific.
             app.toast(
                 f"{f.display_name} devoured an entire {kind}. Nobody knows why.",
                 level="success",
@@ -847,6 +892,7 @@ def main() -> None:
             )
             _unlock_achievement("mystery_craving")
             _log_memory(f, "I ate pizza 🍕. It was delicious!")
+            f.happiness = adjust_happiness(f.happiness, HAPPINESS_FAVORITE_TREAT_GAIN)
         elif kind in f.favorite_foods:
             # Flavor only -- same feed() relief as any other treat, just a
             # nicer reaction. Personality, not a better stat stick.
@@ -858,12 +904,18 @@ def main() -> None:
             )
             _unlock_achievement("their_favorite")
             _log_memory(f, f"Ate my favorite: {kind} {item.emoji}.")
+            f.happiness = adjust_happiness(f.happiness, HAPPINESS_FAVORITE_TREAT_GAIN)
         else:
             app.toast(f"Fed {f.display_name} some {kind}.", level="success")
 
     def _feed_treat(f: Fish, kind: str) -> None:
         state["treats"][kind] -= 1
         f.hunger, f.health = feed(f.hunger, f.health)
+        # Fed directly here rather than through Fish.draw()'s own food-eating
+        # branch (which already applies HAPPINESS_FED_GAIN for a treat
+        # dropped in the tank and reached normally) -- this path bypasses
+        # that entirely, so the base "being fed" gain needs its own line.
+        f.happiness = adjust_happiness(f.happiness, HAPPINESS_FED_GAIN)
         _treat_reaction(f, kind)
         _refresh_stats()
 
@@ -935,10 +987,12 @@ def main() -> None:
                     "speed": f.speed,
                     "hunger": f.hunger,
                     "health": f.health,
+                    "happiness": f.happiness,
                     "personality": f.personality,
                     "is_sleepy": f.is_sleepy,
                     "memory_log": list(f.memory_log),
                     "full_memory_log": list(f.full_memory_log),
+                    "parent_names": list(f.parent_names) if f.parent_names else None,
                     "age_seconds": max(0.0, time.monotonic() - f.birth_time),
                     "favorite": decoration_index.get(id(f.favorite_decoration)),
                 }
@@ -1060,6 +1114,7 @@ def main() -> None:
                 "speed",
                 "hunger",
                 "health",
+                "happiness",
                 "personality",
                 "is_sleepy",
                 "memory_log",
@@ -1067,6 +1122,8 @@ def main() -> None:
             ):
                 if attr in saved:
                     setattr(f, attr, saved[attr])
+            if saved.get("parent_names"):
+                f.parent_names = tuple(saved["parent_names"])
             if "full_memory_log" not in saved:
                 # A save from before "See All History" existed -- there's no
                 # uncapped archive to restore, so seed it from whatever the
@@ -1696,7 +1753,19 @@ def main() -> None:
         # texture, not a real per-fish wake-time simulation. "wake"/"resist"
         # also get a short in-tank caption right where the pair actually
         # are -- the toast is the headline, this is the cute moment.
-        result = choose_morning_vignette(find_mutual_friend_pairs(fish))
+        #
+        # "Morning vignettes more common" (Happy): the *tank's* average
+        # happiness nudges the chance a vignette fires at all this morning --
+        # computed here, passed in, so choose_morning_vignette() itself stays
+        # the same small, pure, already-tested function it always was.
+        chance = MORNING_VIGNETTE_CHANCE
+        if fish:
+            avg_happiness = sum(f.happiness for f in fish) / len(fish)
+            if avg_happiness >= HAPPINESS_HAPPY_THRESHOLD:
+                chance = min(1.0, chance + MORNING_VIGNETTE_HAPPY_BONUS)
+            elif avg_happiness < HAPPINESS_SAD_THRESHOLD:
+                chance = max(0.0, chance - MORNING_VIGNETTE_SAD_PENALTY)
+        result = choose_morning_vignette(find_mutual_friend_pairs(fish), chance)
         if result is None:
             return
         waker, sleeper, flavor = result
@@ -1725,6 +1794,7 @@ def main() -> None:
                 level="info",
             )
             record_wake_up(waker, sleeper)
+            _bond_happiness(waker, sleeper)
             _log_memory(sleeper, f"{waker.display_name} woke me up.")
             _log_memory(waker, f"I woke up {sleeper.display_name}.")
             _add_vignette(wakes=True)
@@ -1796,6 +1866,7 @@ def main() -> None:
                     )
                 else:
                     record_slept_together(a, b)
+                    _bond_happiness(a, b)
                     if floor_close:
                         _log_memory(
                             a,
@@ -1904,10 +1975,24 @@ def main() -> None:
             if waker is None or waker not in fish or now < f._wake_next_attempt:
                 continue
             # Every attempt actually happens visibly -- see BOOP_FLASH_SECONDS
-            # -- resisted or not, not just the one that finally succeeds.
+            # -- resisted or not, not just the one that finally succeeds. Both
+            # halves flash together: the waker shows *boop*, the sleeper shows
+            # *...zzz* if it resists (see fish.py's draw() and
+            # _build_castle_interior() for where each is read).
             waker._just_booped_until = now + BOOP_FLASH_SECONDS
             if resolve_wake_attempt(f._wake_attempts_used, f._wake_threshold):
                 record_wake_up(waker, f)
+                _bond_happiness(waker, f)
+                # A real interaction, but also a genuine interruption -- `f`
+                # nets slightly negative overall (the "sleeping interrupted"
+                # loss outweighs its half of the bonding gain just above),
+                # which is the one place these two Happiness effects overlap
+                # on purpose: being woken against your will by a friend is
+                # still mildly unwelcome, even if it's also a real moment
+                # together. Nothing close to "harsh" either way.
+                f.happiness = adjust_happiness(
+                    f.happiness, -HAPPINESS_SLEEP_INTERRUPTED_PENALTY
+                )
                 _log_memory(f, f"{waker.display_name} woke me up.")
                 _log_memory(waker, f"I woke up {f.display_name}.")
                 app.toast(
@@ -1917,6 +2002,24 @@ def main() -> None:
                 )
                 f._holding_asleep = False
             else:
+                f._just_resisted_wake_until = now + BOOP_FLASH_SECONDS
+                if f._wake_attempts_used == 0:
+                    # Toast only the *first* resisted attempt, not every retry
+                    # -- a Sleepy hold can run up to SLEEPY_HOLD_MAX_SECONDS at
+                    # WAKE_ATTEMPT_INTERVAL_SECONDS apart (up to ~15 tries), and
+                    # a toast per attempt would drown everything else out. The
+                    # *boop*/*...zzz* flashes above already carry the ongoing
+                    # moment-to-moment feedback for anyone actually watching.
+                    _log_memory(
+                        waker,
+                        f"I tried to wake {f.display_name} up, but they were "
+                        "too sleepy to notice.",
+                    )
+                    app.toast(
+                        f"{waker.display_name} tries to boop {f.display_name} "
+                        f"awake... but {f.display_name} is too sleepy to notice!",
+                        level="info",
+                    )
                 f._wake_attempts_used += 1
                 f._wake_next_attempt = now + WAKE_ATTEMPT_INTERVAL_SECONDS
 
@@ -2205,6 +2308,8 @@ def main() -> None:
             ]
             if not present:
                 return
+            if now < forest_shark["cooldown_until"]:
+                return
             if random.random() >= TIGER_SHARK_APPEAR_CHANCE_PER_CHECK:
                 return
             fx0, fy0, fx1, fy1 = forest_bounds
@@ -2224,6 +2329,7 @@ def main() -> None:
                 forest_widgets.remove(forest_shark["widget"])
             forest_shark["widget"] = None
             forest_shark["until"] = None
+            forest_shark["cooldown_until"] = now + TIGER_SHARK_COOLDOWN_SECONDS
             return
 
         # While the shark is present nobody just stands there -- flee the
@@ -2267,12 +2373,25 @@ def main() -> None:
             if f._shark_scare_active:
                 continue
             f._shark_scare_active = True
+            serious_event_at["t"] = time.monotonic()
+            # Cut short any in-progress Happiness flourish for this specific
+            # fish -- the priority chain already keeps circling/following
+            # from starting mid-flee, but a currently-active one wouldn't
+            # otherwise stop just because a Shark showed up.
+            f._circling_until = 0.0
+            f._sparkle_until = 0.0
+            f._following_until = 0.0
             asleep = (
                 environment["phase"] == "Night" and f.hunger <= SLEEP_HUNGER_THRESHOLD
             )
             if asleep:
                 _log_memory(f, "Slept through a shark getting close. Impressive.")
                 continue
+            # Genuinely scared awake -- a real fright, whether or not it ends
+            # in hiding or a rescue below (Update 1's "Predator attack" loss).
+            f.happiness = adjust_happiness(
+                f.happiness, -HAPPINESS_PREDATOR_SCARE_PENALTY
+            )
             shelter = f._nearest_container_with_room()
             if shelter is not None:
                 # Hiding beats a rescue -- draw()'s new _hiding_in branch
@@ -2295,6 +2414,7 @@ def main() -> None:
             )
             if rescuer is not None:
                 record_saved_from_shark(rescuer, f)
+                _bond_happiness(rescuer, f)
                 _log_memory(f, f"{rescuer.display_name} saved me from a shark!")
                 _log_memory(rescuer, f"I saved {f.display_name} from a shark!")
             else:
@@ -2309,6 +2429,21 @@ def main() -> None:
                         ]
                     ),
                 )
+
+    def _find_living_parent(f: Fish) -> Fish | None:
+        # Resolves f.parent_names (a name snapshot frozen at birth, see
+        # fish.py) back to a live Fish still in the tank, or None if both
+        # parents are gone (sold/died) or f wasn't born in-tank at all.
+        # Matches by display_name, the same "search memory_log text" spirit
+        # dreams.py's _departed_friend_name() uses instead of a live pointer
+        # -- so a parent renamed since the birth is one edge case this
+        # doesn't chase, same tradeoff already accepted there.
+        if not f.parent_names:
+            return None
+        for other in fish:
+            if other is not f and other.display_name in f.parent_names:
+                return other
+        return None
 
     def _trigger_nightmare_scare(f: Fish) -> None:
         # Phase 1: the scare itself. The fish stays exactly where it is
@@ -2327,15 +2462,20 @@ def main() -> None:
             level="warning",
             icon="😨",
         )
+        f.happiness = adjust_happiness(f.happiness, -HAPPINESS_BAD_DREAM_PENALTY)
         f.dream = None
 
     def _trigger_nightmare_relocation(f: Fish) -> None:
         # Phase 2, NIGHTMARE_SCARE_FLASH_SECONDS after the scare: the
-        # actual early, solo wake and (if there's a Friend) the quiet
-        # relocation to sleep beside them. Reuses Fish.draw()'s existing
+        # actual early, solo wake and (if there's someone to seek out) the
+        # quiet relocation to sleep beside them. Reuses Fish.draw()'s existing
         # housing/floor-settle steering entirely unchanged -- setting
-        # sleeping_in (or leaving it None with a Friend present) is all
+        # sleeping_in (or leaving it None with a companion present) is all
         # that's needed; no new movement code.
+        # A living parent is always sought first, blood bond overriding the
+        # ordinary Friend-threshold relationship system entirely (see
+        # _find_living_parent()) -- only once no parent is left does this
+        # fall back to the ordinary best-bond Friend.
         f._nightmare_relocate_at = None
         old_home = f.sleeping_in
         if old_home is not None:
@@ -2343,17 +2483,18 @@ def main() -> None:
             f.sleeping_in = None
             f._entered = False
             f._awake_in_home = False
-        friend = f.friend
-        if friend is None:
+        companion = _find_living_parent(f) or f.friend
+        if companion is None:
             return  # simply settles back to sleep on its own, no relocation
-        friend_home = friend.sleeping_in
-        if friend_home is not None and len(occupants_of(friend_home, fish)) < (
-            friend_home.capacity
+        companion_home = companion.sleeping_in
+        if companion_home is not None and len(occupants_of(companion_home, fish)) < (
+            companion_home.capacity
         ):
-            f.sleeping_in = friend_home  # go straight there, room to spare
+            f.sleeping_in = companion_home  # go straight there, room to spare
         # else: leave sleeping_in None -- Fish.draw()'s own floor-settle
-        # logic already steers toward a Friend when unhoused, whether the
-        # friend is floor-sleeping or its container simply has no room left.
+        # logic steers toward this while unhoused (fish.py's
+        # _nightmare_seek_target, read ahead of the plain self.friend).
+        f._nightmare_seek_target = companion
         f._seeking_friend_after_nightmare = True
 
     def _process_nightmares() -> None:
@@ -2364,27 +2505,142 @@ def main() -> None:
             if f._nightmare_relocate_at is not None and now >= f._nightmare_relocate_at:
                 _trigger_nightmare_relocation(f)
             if f._seeking_friend_after_nightmare:
-                friend = f.friend
+                companion = f._nightmare_seek_target
                 arrived = f._entered or (
-                    friend is not None
+                    companion is not None
                     and f.sleeping_in is None
-                    and math.hypot(f.fx - friend.fx, f.fy - friend.fy)
+                    and math.hypot(f.fx - companion.fx, f.fy - companion.fy)
                     <= SLEEP_CLOSE_DISTANCE
                 )
                 if arrived:
                     f._seeking_friend_after_nightmare = False
+                    f._nightmare_seek_target = None
+                    if companion is None:
+                        # The target vanished mid-seek (sold/died) -- settles
+                        # quietly with nothing to log, same as never having
+                        # had anyone to seek out.
+                        continue
                     f._nightmare_comfort_until = now + NIGHTMARE_COMFORT_FLASH_SECONDS
-                    _log_memory(
-                        f,
-                        f"I quietly went to sleep beside {friend.display_name} "
-                        "after a bad dream.",
+                    is_parent = (
+                        f.parent_names is not None
+                        and companion is not None
+                        and companion.display_name in f.parent_names
                     )
-                    app.toast(
-                        f"{f.display_name} quietly went to sleep beside "
-                        f"{friend.display_name}.",
-                        level="info",
-                        icon="🥺",
-                    )
+                    if is_parent:
+                        _log_memory(f, f"I was scared. I found {companion.display_name}. 😭")
+                        _log_memory(
+                            companion,
+                            f"{f.display_name} came to me after a nightmare 🥺",
+                        )
+                        app.toast(
+                            f"{f.display_name} sought comfort from "
+                            f"{companion.display_name} after a nightmare.",
+                            level="info",
+                            icon="🥺",
+                        )
+                    else:
+                        _log_memory(
+                            f,
+                            f"I quietly went to sleep beside {companion.display_name} "
+                            "after a bad dream.",
+                        )
+                        app.toast(
+                            f"{f.display_name} quietly went to sleep beside "
+                            f"{companion.display_name}.",
+                            level="info",
+                            icon="🥺",
+                        )
+
+    def _process_happiness() -> None:
+        # The passive, per-second half of Update 1 -- everything here is a
+        # tiny, continuous nudge rather than a one-shot event (those live at
+        # their own real call sites: feeding, bonding, scares, departures).
+        # Decay keeps a fish's happiness settling toward HAPPINESS_DECAY_FLOOR
+        # at rest (see constants.py's Happiness block for why this replaced
+        # an earlier no-decay design) -- real events are what actually pushes
+        # it up toward Very Happy, not just letting time pass.
+        now = time.monotonic()
+        comfortable_temp = (
+            COLD_TEMP_THRESHOLD <= environment["temperature"] <= HOT_TEMP_THRESHOLD
+        )
+        clean_tank = not foods
+        # Nothing rolls for a while after something genuinely serious just
+        # happened, tank-wide -- see serious_event_at's own comment.
+        flourishes_suppressed = (
+            now - serious_event_at["t"] < HAPPINESS_SERIOUS_EVENT_SUPPRESS_SECONDS
+        )
+        for f in fish:
+            if f.hunger > HUNGER_WARNING_THRESHOLD:
+                f.happiness = adjust_happiness(f.happiness, -HAPPINESS_HUNGRY_PENALTY)
+            if comfortable_temp:
+                f.happiness = adjust_happiness(f.happiness, HAPPINESS_TEMP_COMFORT_GAIN)
+            if clean_tank:
+                f.happiness = adjust_happiness(f.happiness, HAPPINESS_CLEAN_TANK_GAIN)
+            if f.happiness > HAPPINESS_DECAY_FLOOR:
+                f.happiness = adjust_happiness(f.happiness, -HAPPINESS_DECAY_PER_SECOND)
+
+            # None of the four flourishes below are worth considering for a
+            # fish that's asleep, housed, foraging, mid-travel, or right after
+            # something serious happened -- a sleeping fish doesn't sparkle,
+            # and nobody should be swimming in happy circles moments after a
+            # tankmate died.
+            if f.is_asleep or f._entered or not _in_tank(f) or flourishes_suppressed:
+                continue
+            feeling = f.feeling
+
+            # Each flourish rolls on its own periodic check (like the relax
+            # mechanic's _next_relax_check) rather than a bare per-second
+            # chance -- see constants.py's Happiness block for why. cosmetic_rng,
+            # not the shared `random` module, so these never perturb any other
+            # system's own scripted randomness.
+            if feeling == "Very Happy" and now >= f._sparkle_next_check:
+                f._sparkle_next_check = now + cosmetic_rng.uniform(
+                    HAPPINESS_SPARKLE_CHECK_MIN, HAPPINESS_SPARKLE_CHECK_MAX
+                )
+                if cosmetic_rng.random() < HAPPINESS_SPARKLE_CHANCE:
+                    f._sparkle_until = now + HAPPINESS_SPARKLE_FLASH_SECONDS
+
+            if feeling in ("Happy", "Very Happy") and now >= f._wiggle_next_check:
+                f._wiggle_next_check = now + cosmetic_rng.uniform(
+                    HAPPINESS_EXCITED_WIGGLE_CHECK_MIN, HAPPINESS_EXCITED_WIGGLE_CHECK_MAX
+                )
+                if not f.relaxing and cosmetic_rng.random() < HAPPINESS_EXCITED_WIGGLE_CHANCE:
+                    f._excited_wiggle_until = now + HAPPINESS_EXCITED_WIGGLE_FLASH_SECONDS
+
+            if feeling == "Very Happy" and now >= f._circle_next_check:
+                f._circle_next_check = now + cosmetic_rng.uniform(
+                    HAPPINESS_CIRCLE_CHECK_MIN, HAPPINESS_CIRCLE_CHECK_MAX
+                )
+                if cosmetic_rng.random() < HAPPINESS_CIRCLE_CHANCE:
+                    f._circling_until = now + HAPPINESS_CIRCLE_DURATION_SECONDS
+                    f._circle_pivot = (f.fx, f.fy)
+                    f._circle_start = now
+                    f._circle_began = True
+                    if now - flourish_toast_at["t"] >= HAPPINESS_FLOURISH_TOAST_COOLDOWN:
+                        flourish_toast_at["t"] = now
+                        app.toast(
+                            f"❤️ {f.display_name} is swimming in happy circles!",
+                            level="info",
+                        )
+
+            if (
+                feeling == "Very Happy"
+                and f.friend is not None
+                and now >= f._follow_next_check
+            ):
+                f._follow_next_check = now + cosmetic_rng.uniform(
+                    HAPPINESS_FOLLOW_CHECK_MIN, HAPPINESS_FOLLOW_CHECK_MAX
+                )
+                if cosmetic_rng.random() < HAPPINESS_FOLLOW_CHANCE:
+                    f._following_until = now + HAPPINESS_FOLLOW_DURATION_SECONDS
+                    f._follow_began = True
+                    if now - flourish_toast_at["t"] >= HAPPINESS_FLOURISH_TOAST_COOLDOWN:
+                        flourish_toast_at["t"] = now
+                        app.toast(
+                            f"🐟 {f.display_name} is happily following "
+                            f"{f.friend.display_name} around!",
+                            level="info",
+                        )
 
     def _process_relaxing() -> None:
         # Consume each fish's one-shot(s) from the moment it settles (fish.py's
@@ -2398,10 +2654,15 @@ def main() -> None:
         # so it doesn't need the same chance-gating solo relaxing does.
         now = time.monotonic()
         for f in fish:
+            if f.relaxing:
+                # +1 Happiness per second actually relaxing -- solo or
+                # joined alike, both read the same `relaxing` flag.
+                f.happiness = adjust_happiness(f.happiness, HAPPINESS_RELAX_TICK_GAIN)
             if f._joined_friend_relax:
                 f._joined_friend_relax = False
                 spot, host = f._relax_spot, f._relaxing_with
                 if spot is not None and host is not None:
+                    _bond_happiness(f, host)
                     app.toast(
                         _join_relax_toast_message(
                             spot.kind, f.display_name, host.display_name
@@ -2452,6 +2713,16 @@ def main() -> None:
                     f._nightmare_wake_at = (
                         time.monotonic() + NIGHTMARE_WAKE_DELAY_SECONDS
                     )
+                elif f.dream.category == "funny":
+                    # The one non-nightmare category that gets a heads-up --
+                    # deliberately vague (no punchline) so clicking the 💭
+                    # itself is still the payoff, same reasoning a nightmare's
+                    # toast names the dream but never spoils the resolution.
+                    app.toast(
+                        f"{f.display_name} is having a hilarious dream tonight!",
+                        icon="😂",
+                        level="info",
+                    )
 
     def _update_environment():
         previous_phase = environment["phase"]
@@ -2462,6 +2733,14 @@ def main() -> None:
         environment["temperature"] = compute_water_temperature(fraction)
         app.style.bg = lerp_color(DAY_BG, NIGHT_BG, night_blend(fraction))
         if previous_phase == "Night" and environment["phase"] == "Morning":
+            # "Good sleep": +4 Happiness, once per fish, every peaceful night
+            # -- a Shark never sleeps at all (see fish.py's `sleeping`), so it
+            # never qualifies. Unconditional otherwise: a scared-awake fish
+            # already took its HAPPINESS_BAD_DREAM_PENALTY hit at the moment
+            # of the nightmare, and still gets credit for surviving the night.
+            for f in fish:
+                if not f.is_predator:
+                    f.happiness = adjust_happiness(f.happiness, HAPPINESS_GOOD_SLEEP_GAIN)
             _check_night_events()
             _fire_morning_vignette()
             _start_sleepy_holds()
@@ -2502,6 +2781,7 @@ def main() -> None:
                 forest_widgets.remove(f)
             _log_departure(f)
             clear_relationships(f, fish)
+            serious_event_at["t"] = time.monotonic()
             app.toast(f"{f.display_name} starved to death...", level="error", icon="💀")
         _refresh_stats()
         hungry_levels = [f.hunger for f in fish]
@@ -2526,6 +2806,7 @@ def main() -> None:
         _check_shark_scares()
         _process_nightmares()
         _process_relaxing()
+        _process_happiness()
         _check_foraging()
         _check_forest_danger()
 
@@ -2573,6 +2854,7 @@ def main() -> None:
                 paused=paused,
                 favorite_foods=species.favorite_foods,
             )
+            baby.parent_names = (parent_a.display_name, parent_b.display_name)
             fish.append(baby)
             app.add(baby)
             _wire_tooltip(baby)
@@ -2660,6 +2942,7 @@ def main() -> None:
                 forest_widgets.remove(f)
             _log_departure(f, cause="{name} passed peacefully in old age.")
             clear_relationships(f, fish)
+            serious_event_at["t"] = time.monotonic()
             app.toast(
                 f"{f.display_name} passed peacefully in old age.",
                 level="info",

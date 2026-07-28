@@ -24,6 +24,20 @@ from .constants import (
     GREEDY_RATE_MULT,
     GREEDY_SPEED_MULT,
     GROWTH_STAGES,
+    HAPPINESS_CIRCLE_ANGULAR_SPEED,
+    HAPPINESS_CIRCLE_RADIUS,
+    HAPPINESS_CIRCLE_STEER_RATE,
+    HAPPINESS_FED_GAIN,
+    HAPPINESS_FOLLOW_STEER_MULT,
+    HAPPINESS_HAPPY_THRESHOLD,
+    HAPPINESS_MAX,
+    HAPPINESS_MIN,
+    HAPPINESS_PERSONALITY_START_BONUS,
+    HAPPINESS_RELAX_CHANCE_MULT,
+    HAPPINESS_SAD_THRESHOLD,
+    HAPPINESS_START_MAX,
+    HAPPINESS_START_MIN,
+    HAPPINESS_VERY_HAPPY_THRESHOLD,
     HEART_RADIUS,
     HIDE_DURATION_SECONDS,
     HOME_ARRIVE_MARGIN,
@@ -71,8 +85,16 @@ from .constants import (
     AGE_SECONDS_PER_DAY,
     WAKE_LINGER_SECONDS,
     Species,
+    HAPPINESS_SPARKLE_CHECK_MAX,
+    HAPPINESS_SPARKLE_CHECK_MIN,
+    HAPPINESS_EXCITED_WIGGLE_CHECK_MAX,
+    HAPPINESS_EXCITED_WIGGLE_CHECK_MIN,
+    HAPPINESS_FOLLOW_CHECK_MAX,
+    HAPPINESS_FOLLOW_CHECK_MIN,
+    HAPPINESS_CIRCLE_CHECK_MAX,
+    HAPPINESS_CIRCLE_CHECK_MIN,
 )
-from .economy import feed
+from .economy import adjust_happiness, feed
 from .relationships import (
     best_bond,
     random_personality,
@@ -194,10 +216,65 @@ class Fish(Widget):
         # deadline the Castle Interior view shows "*boop*" until, in place
         # of this fish's normal mood emoji.
         self._just_booped_until = None
+        # The other half of that same moment, on the fish *being* booped --
+        # set alongside _just_booped_until, same deadline, so a resisted
+        # attempt visibly reads as "tried... and *...zzz*, still asleep"
+        # rather than only ever showing the waker's side of it.
+        self._just_resisted_wake_until = None
         self.speed = random.uniform(MIN_SPEED, MAX_SPEED)
         self.vx, self.vy = random_velocity(self._effective_speed())
         self.hunger = 0.0  # 0 = full, 100 = starving
         self.health = 100.0
+        # Update 1: a "personality amplifier," not a resource to babysit --
+        # see constants.py's Happiness block for the full philosophy. The
+        # starting roll leans a little per personality (flavor only; nothing
+        # downstream reads personality back off of it), then clamps like
+        # every other bounded stat here.
+        self.happiness = max(
+            HAPPINESS_MIN,
+            min(
+                HAPPINESS_MAX,
+                random.uniform(HAPPINESS_START_MIN, HAPPINESS_START_MAX)
+                + HAPPINESS_PERSONALITY_START_BONUS.get(self.personality, 0.0),
+            ),
+        )
+        # Cosmetic-only flourishes gated on the happiness band (see
+        # _process_happiness() in aquarium.py and _glyph() below) -- a brief
+        # ✨ for a Very Happy fish, and the same tail-flick wiggle relaxing
+        # already has, reused here for a Happy-or-better fish just swimming
+        # around ("occasionally wiggles excitedly"). Each rolls on its own
+        # periodic *check* (like the relax mechanic's own _next_relax_check),
+        # not a bare per-second chance -- see constants.py's Happiness block
+        # for why. Seeded to a random moment soon after construction, the
+        # same "don't all roll in lockstep" reasoning RELAX_CHECK_MIN/MAX use.
+        _now = time.monotonic()
+        self._sparkle_until = 0.0
+        self._sparkle_next_check = _now + random.uniform(
+            HAPPINESS_SPARKLE_CHECK_MIN, HAPPINESS_SPARKLE_CHECK_MAX
+        )
+        self._excited_wiggle_until = 0.0
+        self._wiggle_next_check = _now + random.uniform(
+            HAPPINESS_EXCITED_WIGGLE_CHECK_MIN, HAPPINESS_EXCITED_WIGGLE_CHECK_MAX
+        )
+        # "Swims in circles" (❤️, Very Happy) -- a real steering flourish, not
+        # just a glyph. `_circle_pivot`/`_circle_start` are only meaningful
+        # while `_circling_until` is in the future; `_circle_began` is the
+        # one-shot aquarium.py's _process_happiness() consumes for the toast.
+        self._circling_until = 0.0
+        self._circle_pivot = None
+        self._circle_start = 0.0
+        self._circle_began = False
+        self._circle_next_check = _now + random.uniform(
+            HAPPINESS_CIRCLE_CHECK_MIN, HAPPINESS_CIRCLE_CHECK_MAX
+        )
+        # "Follows friend around" (🐟, Very Happy) -- a temporary boost to the
+        # existing plain friend-follow blend rate, not a new behavior.
+        # `_follow_began` is the toast one-shot, same shape as `_circle_began`.
+        self._following_until = 0.0
+        self._follow_began = False
+        self._follow_next_check = _now + random.uniform(
+            HAPPINESS_FOLLOW_CHECK_MIN, HAPPINESS_FOLLOW_CHECK_MAX
+        )
         # Rolled fresh each night by aquarium.py's _assign_dreams(), cleared
         # the moment this fish wakes (see the wake-reset block below) --
         # None means "not dreaming tonight", not "hasn't been asked yet".
@@ -218,6 +295,16 @@ class Fish(Widget):
         # actually happened are different things, and the whole point here is
         # letting them diverge -- the fish forgets, the player doesn't have to.
         self.full_memory_log: list[str] = []
+        # Set once at birth (aquarium.py's _try_breeding) to the two parents'
+        # display_names at that moment, and never touched again -- a "blood
+        # bond" that must outlive either parent (sold, starved, eaten) or a
+        # save/load round-trip, so it's a plain name snapshot rather than a
+        # live Fish reference, the same reason dreams.py re-derives a departed
+        # friend's name from memory_log text instead of holding a pointer to
+        # it. None for any fish not born in-tank (shop-bought, or a save from
+        # before this existed). aquarium.py's _find_living_parent() resolves
+        # this back to a live Fish, when one still exists.
+        self.parent_names: tuple[str, str] | None = None
         # True while this (non-predator) fish is currently within
         # SHARK_SCARE_RADIUS of a Shark -- guards aquarium.py's
         # _check_shark_scares() against re-firing every tick for as long as
@@ -249,6 +336,15 @@ class Fish(Widget):
         # knows when it's arrived.
         self._nightmare_wake_at = None
         self._nightmare_relocate_at = None
+        # Set by aquarium.py's _trigger_nightmare_relocation() while actively
+        # relocating after a nightmare -- a living parent if one exists
+        # (blood bond, no Friend-threshold needed), else the ordinary best-
+        # bond Friend. A live Fish pointer, not a permanent one: cleared the
+        # moment seeking ends, same lifetime as _seeking_friend_after_nightmare
+        # below, and never saved/restored. None means "use self.friend as
+        # normal," so every night this stays untouched, floor-settle behaves
+        # exactly as it always has.
+        self._nightmare_seek_target = None
         self._just_scared_until = None
         self._nightmare_comfort_until = None
         self._seeking_friend_after_nightmare = False
@@ -311,6 +407,44 @@ class Fish(Widget):
     @property
     def age_days(self) -> float:
         return (time.monotonic() - self.birth_time) / AGE_SECONDS_PER_DAY
+
+    @property
+    def is_asleep(self) -> bool:
+        """Fully asleep -- not just slower. A sleeping fish doesn't wander,
+        chase food, flee, relax, or get any Happiness flourish (see draw()'s
+        `sleeping` and aquarium.py's _process_happiness(), which both read
+        this same property rather than each computing their own copy of it).
+        A fish hungry enough to actually be in danger stays up instead --
+        sleeping through your own starvation isn't cozy, it's just a bug
+        wearing a nightcap. A Shark never qualifies at all, regardless of
+        hunger or time of day -- the whole point of buying one is an
+        ever-present threat, and a sleeping predator could otherwise claim a
+        container alongside its own prey, bond with it (record_slept_together
+        doesn't distinguish predators), and even get a nightmare of its own
+        (see aquarium.py's _assign_dreams(), which excludes predators for the
+        same reason)."""
+        return (
+            not self.is_predator  # a Shark stays active -- and hunting -- all night
+            and self.environment is not None
+            and (self.environment.get("phase") == "Night" or self._holding_asleep)
+            and self.hunger <= SLEEP_HUNGER_THRESHOLD
+        )
+
+    @property
+    def feeling(self) -> str:
+        """"Sad" / "Neutral" / "Happy" / "Very Happy" -- the band `self.happiness`
+        falls into, read by the Inspector and every ambient Happiness nudge
+        (the relax-chance multiplier, choose_dream()'s lean, the sparkle/
+        excited-wiggle flourishes). Every effect reads this band, never the
+        raw number, which is what keeps a 3-point happiness wobble invisible
+        to gameplay -- only crossing a threshold actually changes anything."""
+        if self.happiness < HAPPINESS_SAD_THRESHOLD:
+            return "Sad"
+        if self.happiness >= HAPPINESS_VERY_HAPPY_THRESHOLD:
+            return "Very Happy"
+        if self.happiness >= HAPPINESS_HAPPY_THRESHOLD:
+            return "Happy"
+        return "Neutral"
 
     @property
     def friend(self):
@@ -539,6 +673,7 @@ class Fish(Widget):
         if self.species_name == "Axolotl" and time.monotonic() < self._relaxing_until:
             return AXOLOTL_RESTING_GLYPH
         base = self.right_glyph if self.vx >= 0 else self.left_glyph
+        wiggling = False
         if self.relaxing:
             # "Just enough to look comfortable" -- a brief tail-flick every
             # RELAX_WIGGLE_INTERVAL seconds, not a real animation state.
@@ -548,8 +683,16 @@ class Fish(Widget):
             # closed-eyes window above has lapsed (e.g. mid-join, see the join
             # branch in draw() -- _relaxing_until isn't set by joining).
             phase = (time.monotonic() + self.birth_time) % RELAX_WIGGLE_INTERVAL
-            if phase < RELAX_WIGGLE_DURATION:
-                return f"{base}~" if self.vx >= 0 else f"~{base}"
+            wiggling = phase < RELAX_WIGGLE_DURATION
+        elif time.monotonic() < self._excited_wiggle_until:
+            # The same tail-flick, reused for a Happy-or-better fish just
+            # swimming around ("occasionally wiggles excitedly") -- a timed
+            # flash rather than a periodic phase, set by aquarium.py's
+            # _process_happiness(). Only reachable while not relaxing, so the
+            # two flourishes never fight over the same glyph.
+            wiggling = True
+        if wiggling:
+            return f"{base}~" if self.vx >= 0 else f"~{base}"
         return base
 
     def natural_width(self, scale) -> int:
@@ -636,26 +779,15 @@ class Fish(Widget):
 
         speed = self._effective_speed()
         mouse_pos = self._mouse_point()
-        # Fully asleep -- not just slower. A sleeping fish doesn't wander,
-        # chase food, flee, or relax; it just settles into position (see
-        # below) and stops, same as the turn/relax timers not advancing
-        # while asleep (so it picks a fresh direction/relax roll the moment
-        # it wakes, rather than acting on a stale decision from before it
-        # fell asleep). A fish hungry enough to actually be in danger stays
-        # up instead -- sleeping through your own starvation isn't cozy,
-        # it's just a bug wearing a nightcap. A Shark never qualifies at
-        # all, regardless of hunger or time of day -- the whole point of
-        # buying one is an ever-present threat, and a sleeping predator
-        # could otherwise claim a container alongside its own prey, bond
-        # with it (record_slept_together doesn't distinguish predators),
-        # and even get a nightmare of its own (see aquarium.py's
-        # _assign_dreams(), which excludes predators for the same reason).
-        sleeping = (
-            not self.is_predator  # a Shark stays active -- and hunting -- all night
-            and self.environment is not None
-            and (self.environment.get("phase") == "Night" or self._holding_asleep)
-            and self.hunger <= SLEEP_HUNGER_THRESHOLD
-        )
+        # Fully asleep -- not just slower (see is_asleep below for the
+        # actual condition). A sleeping fish doesn't wander, chase food,
+        # flee, relax, or get any Happiness flourish (aquarium.py's
+        # _process_happiness() checks this same property) -- it just settles
+        # into position (see below) and stops, same as the turn/relax timers
+        # not advancing while asleep (so it picks a fresh direction/relax
+        # roll the moment it wakes, rather than acting on a stale decision
+        # from before it fell asleep).
+        sleeping = self.is_asleep
 
         if sleeping:
             self._awake_in_home = False  # guards against a stale True if
@@ -691,9 +823,15 @@ class Fish(Widget):
                 # far apart as the tank allows, otherwise just settle
                 # wherever night caught it.
                 settle_blend = min(1.0, SLEEP_STEER_RATE * dt)
-                if self.friend is not None:
+                # A nightmare-seek target (a living parent, or the ordinary
+                # Friend once no parent's left -- see
+                # _trigger_nightmare_relocation()) always wins over the plain
+                # Friend read below; outside a nightmare it's always None,
+                # so ordinary nights are completely unaffected.
+                seek_toward = self._nightmare_seek_target or self.friend
+                if seek_toward is not None:
                     close_enough = (
-                        math.hypot(self.fx - self.friend.fx, self.fy - self.friend.fy)
+                        math.hypot(self.fx - seek_toward.fx, self.fy - seek_toward.fy)
                         <= SLEEP_CLOSE_DISTANCE
                     )
                     if close_enough:
@@ -705,7 +843,7 @@ class Fish(Widget):
                             self.vy,
                             self.fx,
                             self.fy,
-                            (self.friend.fx, self.friend.fy),
+                            (seek_toward.fx, seek_toward.fy),
                             speed,
                             settle_blend,
                         )
@@ -772,6 +910,7 @@ class Fish(Widget):
             self._just_scared_until = None
             self._nightmare_comfort_until = None
             self._seeking_friend_after_nightmare = False
+            self._nightmare_seek_target = None
             if now >= self._next_turn:
                 lo, hi = MIN_TURN_DELAY, MAX_TURN_DELAY
                 turn_speed = speed
@@ -791,6 +930,11 @@ class Fish(Widget):
                 )
                 is_axolotl = self.species_name == "Axolotl"
                 chance = AXOLOTL_RELAX_CHANCE if is_axolotl else RELAX_CHANCE
+                # "Visits favorite decoration more often" (Happy) / less so
+                # (Sad) -- Axolotl's own already-elevated chance gets the
+                # same scaling, so a happy Axolotl rests even more than usual
+                # rather than the multiplier only mattering for ordinary fish.
+                chance *= HAPPINESS_RELAX_CHANCE_MULT.get(self.feeling, 1.0)
                 duration_range = (
                     (AXOLOTL_RELAX_DURATION_MIN, AXOLOTL_RELAX_DURATION_MAX)
                     if is_axolotl
@@ -926,6 +1070,9 @@ class Fish(Widget):
                             self.foods.remove(target)
                             self.on_eat_food(target)
                         self.hunger, self.health = feed(self.hunger, self.health)
+                        self.happiness = adjust_happiness(
+                            self.happiness, HAPPINESS_FED_GAIN
+                        )
                         # A special food (a dropped treat) reacts to whoever
                         # actually ate it -- fired here, after feed(), so the
                         # reaction sees the fed hunger/health. Plain food and
@@ -981,6 +1128,7 @@ class Fish(Widget):
                     self.friend is not None
                     and self.friend.relaxing
                     and self.friend._relax_spot is not None
+                    and self.feeling != "Sad"
                 ):
                     # A friend is already settled somewhere -- swim over and
                     # join them instead of just generically following their
@@ -1010,12 +1158,20 @@ class Fish(Widget):
                         if not was_relaxing:
                             self._relax_flash_until = now + RELAX_FLASH_SECONDS
                             self._joined_friend_relax = True
-                elif self.friend is not None:
+                elif self.friend is not None and self.feeling != "Sad":
                     # "They often swim together" -- unlike Friendly's group pull,
                     # this is a specific bond, not personality-gated, and applies
                     # to any fish with a Friend once nothing more urgent (food,
                     # fleeing, its own personality-steering) claims this frame.
-                    blend = min(1.0, FRIEND_STEER_RATE * dt)
+                    # "Follows friend around" (Very Happy, HAPPINESS_FOLLOW_*)
+                    # is the same steering, just temporarily boosted -- not a
+                    # separate behavior. A Sad fish skips this branch entirely
+                    # ("wanders alone") and falls through toward relaxing/
+                    # schooling/plain wandering below instead.
+                    rate = FRIEND_STEER_RATE
+                    if now < self._following_until:
+                        rate *= HAPPINESS_FOLLOW_STEER_MULT
+                    blend = min(1.0, rate * dt)
                     self.vx, self.vy, _ = steer_toward_food(
                         self.vx,
                         self.vy,
@@ -1054,6 +1210,24 @@ class Fish(Widget):
                         if not was_relaxing:
                             self._relax_flash_until = now + RELAX_FLASH_SECONDS
                             self._relax_began = True
+                elif self._circling_until and now < self._circling_until:
+                    # "Swims in circles" (❤️, Very Happy) -- orbit the pivot
+                    # captured when the roll landed (aquarium.py's
+                    # _process_happiness()), rather than steering anywhere
+                    # else. Ranked below relaxing/friend-following/joining
+                    # (nothing here ever preempts something more urgent or
+                    # more meaningful) but above plain schooling/wandering,
+                    # so it's visible rather than lost under ambient drift.
+                    angle = (now - self._circle_start) * HAPPINESS_CIRCLE_ANGULAR_SPEED
+                    pivot_x, pivot_y = self._circle_pivot
+                    target = (
+                        pivot_x + HAPPINESS_CIRCLE_RADIUS * math.cos(angle),
+                        pivot_y + HAPPINESS_CIRCLE_RADIUS * math.sin(angle),
+                    )
+                    blend = min(1.0, HAPPINESS_CIRCLE_STEER_RATE * dt)
+                    self.vx, self.vy, _ = steer_toward_food(
+                        self.vx, self.vy, self.fx, self.fy, target, speed, blend
+                    )
                 else:
                     # Schooling: the bottom of the priority chain, just above
                     # plain wandering -- a species-level ambient behavior
@@ -1100,22 +1274,30 @@ class Fish(Widget):
             # Tucked inside a container -- frozen in place and invisible from
             # the tank view, same as not being able to see through the Castle's
             # walls. See _build_decoration_inspector() for how to peek inside.
-            # The one exception is a live nightmare beat: a fish scared awake
-            # (😨) or being comforted beside a friend (🥺) surfaces that mood
-            # above the container even while housed. Both moments can happen
-            # entirely inside a container (the scare leaves the fish tucked in,
-            # and the comfort fires as it re-settles into a friend's bed), so
-            # without this they'd only ever show in the Castle Interior -- lost
-            # to a player watching the tank. The mood-only glyph mirrors the
-            # main indicator chain below; nothing else about being housed
-            # changes (no glyph, no steering, still frozen).
-            if self._just_scared_until is not None and now < self._just_scared_until:
+            # The exceptions are live, momentary beats that can happen entirely
+            # inside a container: a fish scared awake by a nightmare (😨), one
+            # being comforted beside a friend afterward (🥺), one mid-wake-
+            # attempt on a tankmate (*boop*), or the tankmate on the receiving
+            # end of a resisted attempt (*...zzz*). Every one of these has a
+            # housed player watching the tank, without this they'd only ever
+            # show in the Castle Interior -- lost. Same priority order as
+            # _build_castle_interior()'s own mood chain (boop first). The
+            # mood-only glyph mirrors the main indicator chain below; nothing
+            # else about being housed changes (no glyph, no steering, frozen).
+            if self._just_booped_until is not None and now < self._just_booped_until:
+                canvas.write(self.abs_x, max(0, self.abs_y - 1), "*boop*", MUTED)
+            elif self._just_scared_until is not None and now < self._just_scared_until:
                 canvas.write(self.abs_x, max(0, self.abs_y - 1), "😨", MUTED)
             elif (
                 self._nightmare_comfort_until is not None
                 and now < self._nightmare_comfort_until
             ):
                 canvas.write(self.abs_x, max(0, self.abs_y - 1), "🥺", MUTED)
+            elif (
+                self._just_resisted_wake_until is not None
+                and now < self._just_resisted_wake_until
+            ):
+                canvas.write(self.abs_x, max(0, self.abs_y - 1), "*...zzz*", MUTED)
             return
 
         self.fx, self.fy, self.vx, self.vy = steer(
@@ -1124,7 +1306,13 @@ class Fish(Widget):
         self.x, self.y = round(self.fx), round(self.fy)
         canvas.write(self.abs_x, self.abs_y, self._glyph(), self.style)
 
-        if self._just_scared_until is not None and now < self._just_scared_until:
+        if self._just_booped_until is not None and now < self._just_booped_until:
+            # Mid wake-attempt on a tankmate (aquarium.py's
+            # _process_sleepy_holds()) -- same priority as the housed branch
+            # above (this can also happen to a fish that's since left its
+            # container while the flash was still counting down).
+            canvas.write(self.abs_x, max(0, self.abs_y - 1), "*boop*", MUTED)
+        elif self._just_scared_until is not None and now < self._just_scared_until:
             # A nightmare just forced an early wake -- takes visual priority
             # over everything else below, same reasoning as sleep beating
             # the Friendly heart: a fish scared awake isn't quietly dreaming
@@ -1135,6 +1323,13 @@ class Fish(Widget):
             and now < self._nightmare_comfort_until
         ):
             canvas.write(self.abs_x, max(0, self.abs_y - 1), "🥺", MUTED)
+        elif (
+            self._just_resisted_wake_until is not None
+            and now < self._just_resisted_wake_until
+        ):
+            # The other half of a resisted wake attempt -- still asleep, but
+            # a beat more notable than the plain 😴 below for a moment.
+            canvas.write(self.abs_x, max(0, self.abs_y - 1), "*...zzz*", MUTED)
         elif sleeping:
             # Sleep takes visual priority over a Friendly heart -- a fish
             # fast asleep isn't also mooning over the cursor. A dreaming
@@ -1147,6 +1342,16 @@ class Fish(Widget):
             # glance-and-gone notice, not a permanent badge (it fades while the
             # fish keeps relaxing). Awake, so it can't collide with 😴 above.
             canvas.write(self.abs_x, max(0, self.abs_y - 1), "😌", MUTED)
+        elif self._sparkle_until and now < self._sparkle_until:
+            # A Very Happy fish's own ambient flourish -- rare and rate-
+            # limited by construction (see aquarium.py's _process_happiness()'s
+            # HAPPINESS_SPARKLE_CHANCE roll), so this never turns into a
+            # permanent badge either.
+            canvas.write(self.abs_x, max(0, self.abs_y - 1), "✨", MUTED)
+        elif self._circling_until and now < self._circling_until:
+            # "Swims in circles" -- see the movement branch above for the
+            # actual orbiting; this is just its above-the-fish marker.
+            canvas.write(self.abs_x, max(0, self.abs_y - 1), "❤️", HEART_STYLE)
         elif self.personality == "Friendly" and mouse_pos is not None:
             close = (
                 math.hypot(self.fx - mouse_pos[0], self.fy - mouse_pos[1])

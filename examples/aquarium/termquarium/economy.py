@@ -9,6 +9,8 @@ from .constants import (
     ATTRACTIVENESS_PER_RARE_FISH,
     CLEAN_TANK_ATTRACTIVENESS,
     DONATION_PER_VISITOR_MAX,
+    HAPPINESS_MAX,
+    HAPPINESS_MIN,
     HEALTH_GAIN,
     HUNGER_RELIEF,
     HUNGER_STEP,
@@ -43,6 +45,15 @@ def decay_hunger(
 def feed(hunger, health, relief=HUNGER_RELIEF, gain=HEALTH_GAIN):
     """One bite of food: relieve hunger and restore a bit of health."""
     return max(0.0, hunger - relief), min(100.0, health + gain)
+
+
+def adjust_happiness(happiness: float, delta: float) -> float:
+    """Move `happiness` by `delta` (positive or negative), clamped to
+    [HAPPINESS_MIN, HAPPINESS_MAX]. The one choke point every Happiness gain/
+    loss in aquarium.py goes through -- same shape as feed()/decay_hunger()
+    clamping hunger and health, just for the one new stat that never decays
+    on its own (see constants.py's Happiness block for why)."""
+    return max(HAPPINESS_MIN, min(HAPPINESS_MAX, happiness + delta))
 
 
 def compute_attractiveness(fish_list, decoration_list, food_list) -> int:

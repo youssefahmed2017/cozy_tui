@@ -142,6 +142,19 @@ def test_feed_clamps_hunger_and_health_to_bounds():
     assert health == 100.0
 
 
+# ── Update 1: Happiness ───────────────────────────────────────────────────────
+
+
+def test_adjust_happiness_moves_by_delta():
+    assert aq.adjust_happiness(50.0, 10.0) == 60.0
+    assert aq.adjust_happiness(50.0, -10.0) == 40.0
+
+
+def test_adjust_happiness_clamps_to_bounds():
+    assert aq.adjust_happiness(95.0, 10.0) == 100.0
+    assert aq.adjust_happiness(5.0, -10.0) == 0.0
+
+
 # ── Step 3: nearest_index (shared by food-seeking and prey-seeking) ──────────
 
 
@@ -707,10 +720,84 @@ def _neutral_fish(
     return f
 
 
+def test_fish_starts_with_happiness_in_the_documented_range():
+    # personality (and so its start bonus) is rolled internally before this
+    # test can control it -- widen the bound by the largest bonus magnitude
+    # rather than pin to one personality after the fact (too late to affect
+    # the happiness already computed at construction).
+    max_bonus = max(aq.HAPPINESS_PERSONALITY_START_BONUS.values())
+    min_bonus = min(aq.HAPPINESS_PERSONALITY_START_BONUS.values())
+    for _ in range(30):
+        f = _neutral_fish(5.0, 5.0)
+        assert aq.HAPPINESS_START_MIN + min_bonus <= f.happiness
+        assert f.happiness <= aq.HAPPINESS_START_MAX + max_bonus
+
+
+def test_fish_starting_happiness_leans_per_personality():
+    # _neutral_fish() always overwrites personality to "Explorer" right after
+    # construction -- bypass it and build directly, matching its own internal
+    # shape, so personality stays whatever random_personality() actually
+    # rolled (happiness is computed from that same real roll, at __init__).
+    def _fresh_fish():
+        return aq.Fish(
+            5.0,
+            5.0,
+            (0.0, 0.0, 50.0, 50.0),
+            [],
+            [],
+            lambda x: None,
+            lambda x: None,
+            "><>",
+            "<><",
+            "bright_yellow",
+        )
+
+    many = [_fresh_fish() for _ in range(400)]
+    friendly = [f for f in many if f.personality == "Friendly"]
+    lazy = [f for f in many if f.personality == "Lazy"]
+    assert friendly and lazy  # both personalities show up in a large sample
+    midpoint = (aq.HAPPINESS_START_MIN + aq.HAPPINESS_START_MAX) / 2
+    assert sum(f.happiness for f in friendly) / len(friendly) > midpoint
+    assert sum(f.happiness for f in lazy) / len(lazy) < midpoint
+
+
+def test_fish_feeling_bands_match_happiness():
+    f = _neutral_fish(5.0, 5.0)
+    f.happiness = 0.0
+    assert f.feeling == "Sad"
+    f.happiness = aq.HAPPINESS_SAD_THRESHOLD - 0.1
+    assert f.feeling == "Sad"
+    f.happiness = aq.HAPPINESS_SAD_THRESHOLD
+    assert f.feeling == "Neutral"
+    f.happiness = aq.HAPPINESS_HAPPY_THRESHOLD - 0.1
+    assert f.feeling == "Neutral"
+    f.happiness = aq.HAPPINESS_HAPPY_THRESHOLD
+    assert f.feeling == "Happy"
+    f.happiness = aq.HAPPINESS_VERY_HAPPY_THRESHOLD - 0.1
+    assert f.feeling == "Happy"
+    f.happiness = aq.HAPPINESS_VERY_HAPPY_THRESHOLD
+    assert f.feeling == "Very Happy"
+    f.happiness = 100.0
+    assert f.feeling == "Very Happy"
+
+
+def test_eating_regular_food_gives_the_fed_happiness_gain():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    foods = [aq.Food(5.0, 5.0)]  # exactly at the fish -- guaranteed within EAT_RADIUS
+    f = _neutral_fish(5.0, 5.0, bounds, foods=foods)
+    f.happiness = 50.0
+    f._next_turn = float("inf")
+
+    _age(f)
+    f.draw(_FakeCanvas())
+
+    assert f.happiness == 50.0 + aq.HAPPINESS_FED_GAIN
+
+
 def test_fish_at_finds_a_fish_on_its_row_within_its_glyph_width():
     f = _neutral_fish(5.0, 5.0)
     f.birth_time -= (
-        aq.AGE_SECONDS_PER_DAY * 5
+        aq.AGE_SECONDS_PER_DAY * 12
     )  # past Baby -- use the real "><>" adult glyph
     f.x, f.y = 5, 5  # natural_width("><>") == 3 -> occupies cols 5,6,7
     assert aq.fish_at([f], 5, 5) is f
@@ -1408,10 +1495,121 @@ def test_process_relaxing_fires_the_join_toast(tmp_path, monkeypatch):
 # ── The tiny relax wiggle ────────────────────────────────────────────────────
 
 
+def test_is_asleep_true_at_night_with_low_hunger():
+    f = _neutral_fish(5.0, 5.0)
+    f.environment = {"phase": "Night", "temperature": 23.0}
+    f.hunger = 0.0
+    assert f.is_asleep is True
+
+
+def test_is_asleep_false_when_too_hungry_to_actually_sleep():
+    f = _neutral_fish(5.0, 5.0)
+    f.environment = {"phase": "Night", "temperature": 23.0}
+    f.hunger = aq.SLEEP_HUNGER_THRESHOLD + 10.0
+    assert f.is_asleep is False
+
+
+def test_is_asleep_always_false_for_a_predator():
+    f = _neutral_fish(5.0, 5.0, is_predator=True)
+    f.environment = {"phase": "Night", "temperature": 23.0}
+    f.hunger = 0.0
+    assert f.is_asleep is False
+
+
+def test_is_asleep_false_with_no_environment():
+    f = _neutral_fish(5.0, 5.0)
+    assert f.environment is None
+    assert f.is_asleep is False
+
+
+def test_happiness_flourishes_never_roll_for_a_sleeping_fish(tmp_path, monkeypatch):
+    # Regression: an earlier version rolled sparkle/circle/wiggle/follow for
+    # every fish unconditionally, so a Very Happy fish sound asleep at night
+    # could still sparkle or swim in circles mid-dream.
+    app = _headless_app(tmp_path, monkeypatch)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.happiness = 100.0
+    f.hunger = 0.0
+    # _update_environment() recomputes environment["phase"] from real elapsed
+    # time every tick (Fish.environment is the *same shared dict*), so
+    # setting "phase" directly wouldn't stick -- pin compute_time_of_day
+    # itself instead, the same way every other Night-dependent test does.
+    monkeypatch.setattr(aq, "compute_time_of_day", lambda *a, **k: 0.9)  # Night
+    f._sparkle_next_check = time.monotonic()
+    f._circle_next_check = time.monotonic()
+    f._wiggle_next_check = time.monotonic()
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+    assert f.is_asleep is True
+    for _ in range(5):
+        second_timer.callback()
+
+    assert f._sparkle_until == 0.0
+    assert f._circling_until == 0.0
+    assert f._excited_wiggle_until == 0.0
+
+
+def test_happiness_decays_toward_the_floor_and_stops_there(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.happiness = 90.0
+    f.environment["phase"] = "Day"
+    f.hunger = 0.0
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    for _ in range(30):
+        second_timer.callback()
+
+    assert f.happiness < 90.0
+    assert f.happiness >= aq.HAPPINESS_DECAY_FLOOR - 0.5  # decay alone doesn't dip below it
+
+
+def test_happiness_does_not_decay_below_the_floor_on_its_own(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.happiness = aq.HAPPINESS_DECAY_FLOOR - 5.0
+    f.environment["phase"] = "Day"
+    f.hunger = 0.0
+    start = f.happiness
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    for _ in range(10):
+        second_timer.callback()
+
+    # Only the small ambient gains apply below the floor -- decay itself
+    # never pushes it lower.
+    assert f.happiness >= start
+
+
+def test_serious_event_suppresses_happiness_flourishes_tank_wide(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    victim, bystander = fishes[0], fishes[1]
+    # Pinned Day (not just set on the shared dict, which _update_environment()
+    # would overwrite from real elapsed time) so neither fish is asleep --
+    # isolates the suppression from is_asleep's own, separate gating.
+    monkeypatch.setattr(aq, "compute_time_of_day", lambda *a, **k: 0.5)
+    for f in fishes:
+        f.hunger = 0.0
+    victim.decorations = []  # no hiding -- isolates the scare
+    bystander.happiness = 100.0  # Very Happy, and due for a circle check
+    bystander._circle_next_check = time.monotonic()
+    bystander.fx, bystander.fy = victim.fx + 30.0, victim.fy  # elsewhere, uninvolved
+    _add_real_fish(app, victim.fx + 1.0, victim.fy, is_predator=True, species_name="Shark")
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()  # triggers the scare -> serious_event_at set
+
+    # The *bystander* -- not even the scared fish -- still doesn't flourish,
+    # because the suppression is tank-wide, not per-fish.
+    assert bystander._circling_until == 0.0
+
+
 def test_relaxing_fish_occasionally_shows_a_wiggle_glyph():
     f, _spot = _relaxed_fish()
     f.species_name = "Goldfish"
-    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 5  # past Baby -- real "><>" glyph
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 12  # past Baby -- real "><>" glyph
     base = f.right_glyph if f.vx >= 0 else f.left_glyph
     aged = f.birth_time
 
@@ -1433,7 +1631,7 @@ def test_relaxing_fish_occasionally_shows_a_wiggle_glyph():
 def test_non_relaxing_fish_never_shows_the_wiggle_glyph():
     f = _neutral_fish(5.0, 5.0)
     f.species_name = "Goldfish"
-    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 5  # past Baby
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 12  # past Baby
     assert f.relaxing is False
     base = f.right_glyph if f.vx >= 0 else f.left_glyph
     aged = f.birth_time
@@ -1446,10 +1644,44 @@ def test_non_relaxing_fish_never_shows_the_wiggle_glyph():
 def test_axolotls_own_resting_glyph_takes_priority_over_the_generic_wiggle():
     f, _spot = _relaxed_fish()
     f.species_name = "Axolotl"
-    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 5  # past Baby
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 12  # past Baby
     f._relaxing_until = time.monotonic() + 10.0
 
     assert f._glyph() == aq.AXOLOTL_RESTING_GLYPH
+
+
+def test_relaxing_fish_gains_happiness_every_second(tmp_path, monkeypatch):
+    # _process_happiness() also runs every tick and adds its own small
+    # passive gains/decay -- started well above HAPPINESS_DECAY_FLOOR so
+    # decay is deterministic (always applies); the temp-comfort gain still
+    # depends on where in the real day/night cycle this tick lands
+    # (compute_water_temperature() varies by elapsed wall-clock time), so
+    # that one's left uncertain -- the tolerance absorbs it either way.
+    app = _headless_app(tmp_path, monkeypatch)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.happiness = 70.0
+    f.relaxing = True  # already settled, mid-episode -- not a fresh _relax_began
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    expected = 70.0 + aq.HAPPINESS_RELAX_TICK_GAIN - aq.HAPPINESS_DECAY_PER_SECOND
+    assert f.happiness == pytest.approx(expected, abs=0.15)
+
+
+def test_non_relaxing_fish_gets_no_relax_tick_happiness(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.happiness = 70.0
+    f.relaxing = False
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    # Ambient gains/decay only (see the test above) -- no relax-specific
+    # gain since this fish isn't relaxing.
+    expected = 70.0 - aq.HAPPINESS_DECAY_PER_SECOND
+    assert f.happiness == pytest.approx(expected, abs=0.15)
 
 
 def test_process_relaxing_consumes_the_one_shot_and_respects_the_toast_cooldown(
@@ -1556,7 +1788,7 @@ def test_axolotl_shows_a_resting_glyph_only_while_actually_relaxing():
     f = _neutral_fish(5.0, 5.0, bounds)
     f.species_name = "Axolotl"
     f.right_glyph, f.left_glyph = "(°.°)~", "~(°.°)"
-    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 5  # past Baby
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 12  # past Baby
 
     f._relaxing_until = 0.0  # not relaxing
     assert f._glyph() != aq.AXOLOTL_RESTING_GLYPH
@@ -1724,7 +1956,7 @@ def test_baby_fish_uses_the_universal_fry_glyph():
 
 def test_fish_grows_up_and_uses_its_real_glyph():
     f = _neutral_fish(5.0, 5.0)
-    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 5
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 32
     assert f.growth_stage == "Adult"
     f.vx = 1.0
     assert f._glyph() == "><>"
@@ -1735,10 +1967,10 @@ def test_fish_sell_value_scales_with_growth_stage():
     f.price = 100
     assert f.growth_stage == "Baby"
     assert f.sell_value == 25
-    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 1.5
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 12
     assert f.growth_stage == "Juvenile"
     assert f.sell_value == 60
-    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 5
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 20  # cumulative 32 days -- Adult
     assert f.growth_stage == "Adult"
     assert f.sell_value == 100
 
@@ -1760,7 +1992,7 @@ def test_non_predator_fish_is_unaffected_and_still_starts_as_baby():
 def test_fish_reaches_elder_and_sells_for_less_than_an_adult():
     f = _neutral_fish(5.0, 5.0)
     f.price = 100
-    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 11
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 60
     assert f.growth_stage == "Elder"
     assert f.sell_value == 80  # 0.8x -- worth a bit less than an Adult's 100
 
@@ -1778,7 +2010,7 @@ def test_elder_fish_moves_slower():
     f.speed = 10.0
     f.personality = "Explorer"  # no Lazy multiplier to isolate Elder's own
     young_speed = f._effective_speed()
-    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 11
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 60
     assert f.growth_stage == "Elder"
     assert f._effective_speed() == pytest.approx(young_speed * aq.ELDER_SPEED_MULT)
 
@@ -2272,7 +2504,7 @@ def test_clear_relationships_leaves_unrelated_fish_untouched():
 
 def _grown_fish(x=0.0, y=0.0, is_predator=False):
     f = _neutral_fish(x, y)
-    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 5
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 32  # breeding eligibility needs Adult
     f.is_predator = is_predator
     return f
 
@@ -2700,6 +2932,48 @@ def test_feeding_a_non_favorite_treat_gives_the_plain_toast(tmp_path, monkeypatc
     assert any("Fed" in t and "Brine Shrimp" in t for t in toasts)
 
 
+def test_feeding_a_favorite_treat_gives_both_the_fed_and_favorite_happiness_gain(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    axolotl = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    axolotl.species_name = "Axolotl"
+    axolotl.favorite_foods = ("Brine Shrimp", "Bloodworms", "Worms")
+    axolotl.happiness = 50.0
+
+    _open_shop_and_buy(app, "Brine Shrimp")
+    inspector = _open_inspector_for(app, axolotl)
+    feed_btn = next(
+        c
+        for c in inspector.children
+        if c.__class__.__name__ == "Button" and "Brine Shrimp" in c.text
+    )
+    feed_btn.on_mouse_click()
+
+    assert axolotl.happiness == 50.0 + aq.HAPPINESS_FED_GAIN + aq.HAPPINESS_FAVORITE_TREAT_GAIN
+
+
+def test_feeding_a_non_favorite_treat_gives_only_the_fed_happiness_gain(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    fish.species_name = "Goldfish"
+    fish.favorite_foods = ()
+    fish.happiness = 50.0
+
+    _open_shop_and_buy(app, "Brine Shrimp")
+    inspector = _open_inspector_for(app, fish)
+    feed_btn = next(
+        c
+        for c in inspector.children
+        if c.__class__.__name__ == "Button" and "Brine Shrimp" in c.text
+    )
+    feed_btn.on_mouse_click()
+
+    assert fish.happiness == 50.0 + aq.HAPPINESS_FED_GAIN
+
+
 # ── Achievements: end-to-end unlock checks ─────────────────────────────────────
 
 
@@ -2813,8 +3087,8 @@ def test_breeding_a_baby_unlocks_first_baby_achievement(tmp_path, monkeypatch):
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     a, b = fishes[0], fishes[1]
     a.is_predator = b.is_predator = False
-    a.birth_time -= aq.AGE_SECONDS_PER_DAY * 5
-    b.birth_time -= aq.AGE_SECONDS_PER_DAY * 5
+    a.birth_time -= aq.AGE_SECONDS_PER_DAY * 32  # breeding needs Adult
+    b.birth_time -= aq.AGE_SECONDS_PER_DAY * 32  # breeding needs Adult
     aq.set_relationship(a, b, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
     monkeypatch.setattr(aq.random, "random", lambda: 0.0)
 
@@ -2837,8 +3111,8 @@ def test_breeding_with_an_axolotl_parent_babies_inherit_favorite_foods(
     a.species_name = "Axolotl"
     a.favorite_foods = ("Brine Shrimp", "Bloodworms", "Worms")
     a.is_predator = b.is_predator = False
-    a.birth_time -= aq.AGE_SECONDS_PER_DAY * 5
-    b.birth_time -= aq.AGE_SECONDS_PER_DAY * 5
+    a.birth_time -= aq.AGE_SECONDS_PER_DAY * 32  # breeding needs Adult
+    b.birth_time -= aq.AGE_SECONDS_PER_DAY * 32  # breeding needs Adult
     aq.set_relationship(a, b, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
     monkeypatch.setattr(aq.random, "random", lambda: 0.0)
     monkeypatch.setattr(
@@ -3288,7 +3562,7 @@ def test_breeding_logs_memory_entries_for_both_parents_and_the_baby(
     app = _headless_app(tmp_path, monkeypatch)
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     for f in fishes:
-        f.birth_time -= aq.AGE_SECONDS_PER_DAY * 5  # grown up
+        f.birth_time -= aq.AGE_SECONDS_PER_DAY * 32  # grown up -- breeding needs Adult
     parent_a, parent_b = fishes[0], fishes[1]
     aq.set_relationship(parent_a, parent_b, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
     monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # always breeds
@@ -3301,6 +3575,21 @@ def test_breeding_logs_memory_entries_for_both_parents_and_the_baby(
     assert any(baby.display_name in entry for entry in parent_a.memory_log)
     assert any(baby.display_name in entry for entry in parent_b.memory_log)
     assert any("born today" in entry for entry in baby.memory_log)
+
+
+def test_a_baby_is_permanently_flagged_with_both_parents_names(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    for f in fishes:
+        f.birth_time -= aq.AGE_SECONDS_PER_DAY * 32
+    parent_a, parent_b = fishes[0], fishes[1]
+    aq.set_relationship(parent_a, parent_b, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)
+
+    _fire_daily_tick(app)
+
+    baby = next(f for f in app.widgets if isinstance(f, aq.Fish) and f not in fishes)
+    assert baby.parent_names == (parent_a.display_name, parent_b.display_name)
 
 
 def test_random_events_log_memory_entries(tmp_path, monkeypatch):
@@ -3511,6 +3800,60 @@ def test_full_memory_log_round_trips_through_save_and_load(tmp_path, monkeypatch
     assert steve.full_memory_log == fish.full_memory_log
 
 
+def test_parent_names_round_trip_through_save_and_load(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    fish.display_name = "Steve"
+    fish.parent_names = ("Mom", "Dad")
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Steve's Parents"
+    prompt.on_key(aq.Key.ENTER)
+
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c
+        for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+    steve = next(
+        w for w in app.widgets if isinstance(w, aq.Fish) and w.display_name == "Steve"
+    )
+    assert steve.parent_names == ("Mom", "Dad")
+
+
+def test_loading_a_save_without_parent_names_leaves_it_none(tmp_path, monkeypatch):
+    # A save from before this feature existed has no parent_names key at
+    # all -- must not crash, and the fish is simply treated as not having
+    # been born in-tank.
+    app = _headless_app(tmp_path, monkeypatch)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    fish.display_name = "Steve"
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Old Save Without Parents"
+    prompt.on_key(aq.Key.ENTER)
+
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c
+        for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+    steve = next(
+        w for w in app.widgets if isinstance(w, aq.Fish) and w.display_name == "Steve"
+    )
+    assert steve.parent_names is None
+
+
 def test_loading_a_save_without_full_memory_log_seeds_it_from_memory_log(
     tmp_path, monkeypatch
 ):
@@ -3608,6 +3951,31 @@ def test_build_fish_history_lists_every_entry_in_the_full_log():
     assert "Steve" in history_box.title
 
 
+def test_build_fish_history_wraps_long_entries_instead_of_clipping_them():
+    from cozy_tui import App
+
+    app = App(full=False, size="400x420")
+    f = _neutral_fish(5.0, 5.0)
+    f.display_name = "Steve"
+    long_entry = (
+        "[Day 3] I dreamed about The Tunnel of Bubbles. I swam through a "
+        "tunnel made of bubbles. Every one popped into tiny stars."
+    )
+    f.full_memory_log = [long_entry]
+
+    history_box = aq._build_fish_history(app, f)
+    scroll_view = next(
+        c for c in history_box.children if c.__class__.__name__ == "ScrollView"
+    )
+    lines = [c.text for c in scroll_view.children]
+
+    # Wrapped across more than one row -- nothing silently clipped -- and
+    # rejoining the wrapped lines recovers the original text exactly.
+    assert len(lines) > 1
+    assert all(len(line) <= 48 for line in lines)
+    assert " ".join(lines) == long_entry
+
+
 # ── Phase 2: shark scares, home conflicts, relationship-crossing memories,
 #    and memory-linked dreams ─────────────────────────────────────────────────
 
@@ -3660,6 +4028,21 @@ def test_shark_scare_logs_a_solo_escape_memory(tmp_path, monkeypatch):
     )
 
 
+def test_shark_scare_costs_happiness(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    prey = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    prey.decorations = []
+    prey.happiness = 50.0
+    _add_real_fish(app, prey.fx + 1.0, prey.fy, is_predator=True, species_name="Shark")
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert prey.happiness == pytest.approx(
+        50.0 - aq.HAPPINESS_PREDATOR_SCARE_PENALTY, abs=0.5
+    )
+
+
 def test_shark_scare_with_a_nearby_friend_credits_a_rescuer(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
@@ -3667,6 +4050,7 @@ def test_shark_scare_with_a_nearby_friend_credits_a_rescuer(tmp_path, monkeypatc
     prey.decorations = []  # no container to hide in -- isolates the rescue path
     prey.fx, prey.fy = 10.0, 10.0
     rescuer.fx, rescuer.fy = 10.0, 6.0  # within SHARK_RESCUE_RADIUS, not SCARE_RADIUS
+    prey.happiness = rescuer.happiness = 65.0
     aq.set_relationship(prey, rescuer, aq.RELATIONSHIP_FRIEND_THRESHOLD)
     _add_real_fish(app, 10.0, 14.0, is_predator=True, species_name="Shark")
     rel_before = aq.get_relationship(prey, rescuer).score
@@ -3683,6 +4067,13 @@ def test_shark_scare_with_a_nearby_friend_credits_a_rescuer(tmp_path, monkeypatc
         for entry in rescuer.memory_log
     )
     assert aq.get_relationship(prey, rescuer).score > rel_before
+    # The rescued fish still nets negative overall (the scare penalty
+    # outweighs its half of the rescue's friend-interaction gain) -- being
+    # saved doesn't erase having been scared, just softens it a little.
+    net = aq.HAPPINESS_FRIEND_INTERACTION_GAIN - aq.HAPPINESS_PREDATOR_SCARE_PENALTY
+    assert prey.happiness == pytest.approx(65.0 + net, abs=0.5)
+    # The rescuer, never itself scared, comes out purely ahead.
+    assert rescuer.happiness > 65.0
 
 
 # ── Hiding from predators (a container decoration with room) ──────────────────
@@ -4211,6 +4602,19 @@ def test_nightmare_scare_phase_clears_the_dream_and_logs_it_with_a_description(
     assert any("A Shark in the Dark Water" in t for t in toasts)
 
 
+def test_nightmare_scare_costs_happiness(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.dream = aq.choose_dream(f)._replace(category="bad")
+    f._nightmare_wake_at = time.monotonic()
+    f.happiness = 50.0
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert f.happiness == pytest.approx(50.0 - aq.HAPPINESS_BAD_DREAM_PENALTY, abs=0.5)
+
+
 def test_nightmare_relocation_joins_a_friends_container_when_room_available(
     tmp_path, monkeypatch
 ):
@@ -4248,6 +4652,80 @@ def test_nightmare_relocation_without_a_friend_just_settles_back_down(
     assert f._seeking_friend_after_nightmare is False
 
 
+def test_nightmare_relocation_seeks_a_living_parent_over_a_friend(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    castle = next(
+        w for w in app.widgets if isinstance(w, aq.Decoration) and w.kind == "Castle"
+    )
+    child, friend, parent = fishes[0], fishes[1], fishes[2]
+    child.display_name, friend.display_name, parent.display_name = (
+        "Child",
+        "Friend",
+        "Parent",
+    )
+    # A Best Friend bond, but no relationship at all with the parent -- the
+    # blood bond must still win over the (much stronger) friendship.
+    aq.set_relationship(child, friend, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
+    child.parent_names = (parent.display_name, "Someone Else")
+    friend.sleeping_in = castle
+    child.sleeping_in = None
+    child._nightmare_relocate_at = time.monotonic()
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert child._nightmare_seek_target is parent
+    assert child._seeking_friend_after_nightmare is True
+
+
+def test_nightmare_relocation_falls_back_to_a_friend_once_no_parent_is_left(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    child, friend = fishes[0], fishes[1]
+    aq.set_relationship(child, friend, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
+    child.parent_names = ("A Fish That Was Sold", "Another That Died")
+    child._nightmare_relocate_at = time.monotonic()
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert child._nightmare_seek_target is friend
+
+
+def test_arriving_beside_a_parent_after_a_nightmare_logs_both_diaries(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    child, parent = fishes[0], fishes[1]
+    child.parent_names = (parent.display_name, "Someone Else")
+    child._seeking_friend_after_nightmare = True
+    child._nightmare_seek_target = parent
+    child._entered = True
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert child._seeking_friend_after_nightmare is False
+    assert child._nightmare_comfort_until is not None
+    assert any(
+        f"I was scared. I found {parent.display_name}." in entry
+        for entry in child.memory_log
+    )
+    assert any(
+        f"{child.display_name} came to me after a nightmare" in entry
+        for entry in parent.memory_log
+    )
+    assert any(parent.display_name in t for t in toasts)
+
+
 def test_arriving_beside_the_friend_triggers_a_comfort_flash_and_memory(
     tmp_path, monkeypatch
 ):
@@ -4256,6 +4734,7 @@ def test_arriving_beside_the_friend_triggers_a_comfort_flash_and_memory(
     dreamer, friend = fishes[0], fishes[1]
     aq.set_relationship(dreamer, friend, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
     dreamer._seeking_friend_after_nightmare = True
+    dreamer._nightmare_seek_target = friend
     dreamer._entered = True  # arrived and settled into the shared container
     toasts = []
     monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
@@ -4433,7 +4912,7 @@ def test_housed_fish_with_no_active_nightmare_mood_stays_invisible():
 def test_reaching_elder_unlocks_the_achievement_and_logs_it_once(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     f = next(w for w in app.widgets if isinstance(w, aq.Fish))
-    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 11
+    f.birth_time -= aq.AGE_SECONDS_PER_DAY * 60
     monkeypatch.setattr(aq.random, "random", lambda: 0.99)  # no natural death this tick
 
     _fire_daily_tick(app)
@@ -4450,7 +4929,7 @@ def test_natural_death_only_ever_picks_elder_fish(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     elder, young = fishes[0], fishes[1]
-    elder.birth_time -= aq.AGE_SECONDS_PER_DAY * 11
+    elder.birth_time -= aq.AGE_SECONDS_PER_DAY * 60
     monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # always within the chance
 
     _fire_daily_tick(app)
@@ -4463,7 +4942,7 @@ def test_natural_death_logs_departure_and_cause_and_toasts(tmp_path, monkeypatch
     app = _headless_app(tmp_path, monkeypatch)
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     elder, friend = fishes[0], fishes[1]
-    elder.birth_time -= aq.AGE_SECONDS_PER_DAY * 11
+    elder.birth_time -= aq.AGE_SECONDS_PER_DAY * 60
     aq.set_relationship(elder, friend, aq.RELATIONSHIP_FRIEND_THRESHOLD)
     toasts = []
     monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
@@ -5962,6 +6441,145 @@ def test_wake_attempt_sets_a_boop_flash_on_the_waker(tmp_path, monkeypatch):
     assert sleepy._holding_asleep is True  # resisted this time, still held
 
 
+def test_resisted_wake_attempt_sets_a_zzz_flash_on_the_sleeper(tmp_path, monkeypatch):
+    # The other half of test_wake_attempt_sets_a_boop_flash_on_the_waker --
+    # the fish being booped, not just the one doing the booping, needs its
+    # own visible reaction to a resisted attempt.
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    castle = next(
+        w for w in app.widgets if isinstance(w, aq.Decoration) and w.kind == "Castle"
+    )
+    sleepy, friend = fishes[0], fishes[1]
+    sleepy.is_sleepy = True
+    sleepy.sleeping_in = castle
+    friend.sleeping_in = castle
+    aq.set_relationship(sleepy, friend, aq.RELATIONSHIP_FRIEND_THRESHOLD)
+
+    fractions = iter([0.9, 0.2, 0.2])
+    monkeypatch.setattr(aq, "compute_time_of_day", lambda *a, **k: next(fractions))
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # resists
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()  # still Night
+    second_timer.callback()  # holding begins
+    assert sleepy._just_resisted_wake_until is None  # no attempt has happened yet
+
+    sleepy._wake_next_attempt = 0.0
+    second_timer.callback()
+
+    assert sleepy._just_resisted_wake_until is not None
+    assert sleepy._holding_asleep is True
+
+
+def test_resisted_wake_attempt_toasts_only_on_the_first_try(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    castle = next(
+        w for w in app.widgets if isinstance(w, aq.Decoration) and w.kind == "Castle"
+    )
+    sleepy, friend = fishes[0], fishes[1]
+    sleepy.display_name, friend.display_name = "Kitty", "Steve"
+    sleepy.is_sleepy = True
+    friend.is_sleepy = False  # only Kitty's hold should ever be created
+    sleepy.sleeping_in = castle
+    friend.sleeping_in = castle
+    aq.set_relationship(sleepy, friend, aq.RELATIONSHIP_FRIEND_THRESHOLD)
+
+    fractions = iter([0.9, 0.2, 0.2, 0.2])
+    monkeypatch.setattr(aq, "compute_time_of_day", lambda *a, **k: next(fractions))
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # always resists
+    # Isolated from the (unrelated) Morning Vignette, which fires at the same
+    # Night -> Morning transition and -- with random() pinned this low --
+    # would otherwise also roll Kitty/Steve as its own featured pair with its
+    # own "resist" flavor, independently reusing the exact same wording and
+    # making this look like a duplicate toast from _process_sleepy_holds.
+    monkeypatch.setattr(aq, "find_mutual_friend_pairs", lambda *a, **k: [])
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()  # still Night
+    second_timer.callback()  # holding begins
+
+    sleepy._wake_next_attempt = 0.0
+    second_timer.callback()  # first resisted attempt
+
+    resist_toasts = [t for t in toasts if "too sleepy to notice" in t]
+    assert resist_toasts == [
+        "Steve tries to boop Kitty awake... but Kitty is too sleepy to notice!"
+    ]
+    assert any(
+        "tried to wake Kitty up" in m and "too sleepy to notice" in m
+        for m in friend.memory_log
+    )
+
+    sleepy._wake_next_attempt = 0.0
+    second_timer.callback()  # second resisted attempt -- no new toast
+
+    resist_toasts = [t for t in toasts if "too sleepy to notice" in t]
+    assert len(resist_toasts) == 1  # unchanged -- not a toast per retry
+
+
+def test_boop_and_zzz_moods_surface_above_housed_fish_in_the_open_tank():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    waker = _sleepy_fish(5.0, 5.0, bounds)
+    waker.fish_list = [waker]
+    waker._entered = True
+    waker._just_booped_until = time.monotonic() + 10.0
+
+    writes = []
+    canvas = _FakeCanvas()
+    canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
+    _age(waker)
+    waker.draw(canvas)
+    assert any(text == "*boop*" for _x, _y, text in writes)
+
+    sleeper = _sleepy_fish(5.0, 5.0, bounds)
+    sleeper.fish_list = [sleeper]
+    sleeper._entered = True
+    sleeper._just_resisted_wake_until = time.monotonic() + 10.0
+
+    writes.clear()
+    _age(sleeper)
+    sleeper.draw(canvas)
+    assert any(text == "*...zzz*" for _x, _y, text in writes)
+
+
+def test_boop_mood_takes_visual_priority_over_scared_and_comfort():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    f = _sleepy_fish(5.0, 5.0, bounds)
+    f.fish_list = [f]
+    f._just_booped_until = time.monotonic() + 10.0
+    f._just_scared_until = time.monotonic() + 10.0
+    f._nightmare_comfort_until = time.monotonic() + 10.0
+
+    writes = []
+    canvas = _FakeCanvas()
+    canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
+    _age(f)
+    f.draw(canvas)
+
+    assert any(text == "*boop*" for _x, _y, text in writes)
+    assert not any(text in ("😨", "🥺") for _x, _y, text in writes)
+
+
+def test_castle_interior_shows_the_zzz_mood():
+    from cozy_tui import App
+
+    app = App(full=False, size="380x300")
+    castle = _castle()
+    sleeper = _neutral_fish(5.0, 5.0)
+    sleeper.display_name = "Kitty"
+    sleeper.sleeping_in = castle
+    sleeper._just_resisted_wake_until = time.monotonic() + 10.0
+
+    box = aq._build_castle_interior(app, castle, [sleeper])
+    labels = [c.text for c in box.children if c.__class__.__name__ == "Label"]
+
+    assert any("Kitty" in t and "*...zzz*" in t for t in labels)
+
+
 def test_capacity_is_enforced_across_two_fish_over_several_frames():
     bounds = (0.0, 0.0, 50.0, 50.0)
     castle = aq.Decoration(
@@ -6513,6 +7131,7 @@ def test_night_transition_records_slept_together_for_a_shared_container(
     )
     fishes[0].sleeping_in = castle
     fishes[1].sleeping_in = castle
+    fishes[0].happiness = fishes[1].happiness = 50.0
 
     fractions = iter([0.9, 0.2])
     monkeypatch.setattr(aq, "compute_time_of_day", lambda *a, **k: next(fractions))
@@ -6525,6 +7144,35 @@ def test_night_transition_records_slept_together_for_a_shared_container(
     rel = fishes[0].relationships.get(fishes[1])
     assert rel is not None
     assert "Slept together" in rel.memories[-1]
+    # Both the "good sleep" (+4, every non-predator fish) and the "friend
+    # interaction" (+3, this specific bonding event) gains applied.
+    assert fishes[0].happiness > 50.0 + aq.HAPPINESS_GOOD_SLEEP_GAIN
+    assert fishes[1].happiness > 50.0 + aq.HAPPINESS_GOOD_SLEEP_GAIN
+
+
+def test_good_sleep_happiness_applies_to_every_non_predator_fish(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    for i, f in enumerate(fishes):
+        f.happiness = 50.0
+        f.sleeping_in = None
+        # Spread far apart so _check_night_events()'s floor_close proximity
+        # check can never independently credit a "slept together" bonding
+        # gain -- this test isolates the good-sleep gain alone, not that one.
+        f.fx, f.fy = float(i * 40), 0.0
+
+    fractions = iter([0.9, 0.2])
+    monkeypatch.setattr(aq, "compute_time_of_day", lambda *a, **k: next(fractions))
+    monkeypatch.setattr(aq.random, "random", lambda: 0.99)  # no vignette this run
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()  # still Night
+    second_timer.callback()  # Night -> Morning
+
+    for f in fishes:
+        assert f.happiness == pytest.approx(
+            50.0 + aq.HAPPINESS_GOOD_SLEEP_GAIN, abs=0.5
+        )
 
 
 def test_night_transition_records_gave_up_home_for_a_homeless_nearby_fish(
@@ -7596,6 +8244,41 @@ def test_tiger_shark_leaves_after_its_visit(tmp_path, monkeypatch):
     clock["t"] += aq.TIGER_SHARK_STAY_SECONDS + 0.1
     _second_timer(app).callback()  # visit over -- it swims off
     assert not any(isinstance(w, aq.TigerShark) for w in app.widgets)
+
+
+def test_tiger_shark_will_not_reappear_immediately_after_a_visit_ends(tmp_path, monkeypatch):
+    """A busy Forest shouldn't stack visits back-to-back -- see
+    TIGER_SHARK_COOLDOWN_SECONDS's own comment for why an unrestrained
+    per-second roll made the shark feel like it "always" showed up."""
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    monkeypatch.setattr(app, "toast", lambda *a, **k: None)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(aq.time, "monotonic", lambda: clock["t"])
+    _send_fish_to_forest(app, monkeypatch, clock, steve)
+
+    monkeypatch.setattr(aq, "TIGER_SHARK_APPEAR_CHANCE_PER_CHECK", 1.0)
+    _second_timer(app).callback()  # shark appears
+    _forest_scene(app)
+    assert any(isinstance(w, aq.TigerShark) for w in app.widgets)
+
+    clock["t"] += aq.TIGER_SHARK_STAY_SECONDS + 0.1
+    _second_timer(app).callback()  # visit over -- it swims off
+    assert not any(isinstance(w, aq.TigerShark) for w in app.widgets)
+
+    # Steve stays put in the Forest, and the odds are pinned to guaranteed --
+    # without the cooldown a shark would reappear on the very next check.
+    steve.biome = "forest"
+    steve._travel_until = None
+    clock["t"] += 1.0
+    _second_timer(app).callback()
+    assert not any(isinstance(w, aq.TigerShark) for w in app.widgets)
+
+    # Once the cooldown has actually elapsed, a visit can happen again.
+    clock["t"] += aq.TIGER_SHARK_COOLDOWN_SECONDS + 0.1
+    _second_timer(app).callback()
+    assert any(isinstance(w, aq.TigerShark) for w in app.widgets)
 
 
 def test_two_fish_flee_the_tiger_shark_together_and_both_survive(tmp_path, monkeypatch):

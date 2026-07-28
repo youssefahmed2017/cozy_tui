@@ -487,11 +487,17 @@ def test_load_unlocked_achievements_survives_a_corrupt_file(tmp_path):
     assert load_unlocked_achievements(home=tmp_path) == set()
 
 
-def test_safe_filename_dodges_windows_reserved_names():
+def test_safe_filename_dodges_windows_reserved_names(monkeypatch):
     # A save named after a Windows device (CON, NUL, COM1, ...) is illegal there
     # even with the .json extension, and would raise OSError on write. It must be
-    # nudged aside rather than left to crash.
+    # nudged aside rather than left to crash. Explicitly pinned to win32 --
+    # this behavior is Windows-only (see safe_filename()'s own docstring), so
+    # the test must not depend on which platform actually runs the suite.
+    import sys
+
     from examples.aquarium.termquarium.save import safe_filename
+
+    monkeypatch.setattr(sys, "platform", "win32")
 
     for reserved in ("CON", "nul", "COM1", "LPT9", "aux"):
         out = safe_filename(reserved)
@@ -506,3 +512,44 @@ def test_safe_filename_dodges_windows_reserved_names():
         assert out  # never empty
     # Ordinary names are untouched.
     assert safe_filename("My Tank") == "My Tank"
+
+
+def test_safe_filename_on_windows_strips_the_full_reserved_character_set(monkeypatch):
+    import sys
+
+    from examples.aquarium.termquarium.save import safe_filename
+
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    assert safe_filename('my:file*is?very|strange<>') == "my_file_is_very_strange__"
+    assert safe_filename("trailing dots...") == "trailing dots"
+    assert safe_filename("a/b\\c") == "a_b_c"
+
+
+def test_safe_filename_on_linux_only_forbids_slash_and_nul(monkeypatch):
+    # Linux is far more permissive than Windows: the filesystem itself only
+    # forbids "/" (the path separator) and NUL -- every other character
+    # Windows disallows (: * ? < > | ") is perfectly legal in a real filename.
+    import sys
+
+    from examples.aquarium.termquarium.save import safe_filename
+
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    assert safe_filename('my:file*is?very|strange<>') == 'my:file*is?very|strange<>'
+    assert safe_filename("CON") == "CON"  # not a reserved name outside Windows
+    assert safe_filename("trailing dots...") == "trailing dots..."  # not stripped
+    assert safe_filename("a/b") == "a_b"  # the path separator is still forbidden
+    assert safe_filename("has\x00null") == "has_null"
+
+
+def test_safe_filename_on_macos_only_forbids_slash_and_nul(monkeypatch):
+    import sys
+
+    from examples.aquarium.termquarium.save import safe_filename
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+    assert safe_filename('my:file*is?very|strange<>') == 'my:file*is?very|strange<>'
+    assert safe_filename("a/b") == "a_b"
+    assert safe_filename("has\x00null") == "has_null"

@@ -400,32 +400,6 @@ Just personality.
 
 
 
-# Inspector
-
-
-
-```text
-
-Happiness
-
-
-
-█████████░ 92%
-
-
-
-Feeling:
-
-Very Happy 😊
-
-```
-
-
-
----
-
-
-
 # Dreams
 
 

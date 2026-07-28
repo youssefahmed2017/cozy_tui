@@ -1,16 +1,28 @@
 """Fish/Decoration inspector panels, the Daily Summary, and Settings --
 small Box-building functions with no shared state between them."""
 
+import textwrap
 import time
 
 from cozy_tui import Style, clipboard
-from cozy_tui.widgets import Box, Button, Checkbox, Label, ScrollView
+from cozy_tui.widgets import Box, Button, Checkbox, Label, ProgressBar, ScrollView
 
 from .constants import TREAT_SHOP_ITEMS
 from .fish import Fish, occupants_of
 from .relationships import relationship_state
 from .styles import HEART_STYLE, MUTED
 from .tank_objects import Decoration
+
+# Update 1's four Feeling bands (Fish.feeling), for the Inspector's own
+# "Feeling: Very Happy 😄" line -- kept here, not constants.py, since it's
+# purely a display concern (Fish.feeling itself is the plain band string;
+# only the Inspector needs an emoji for it).
+_FEELING_EMOJI = {
+    "Sad": "😞",
+    "Neutral": "🙂",
+    "Happy": "😊",
+    "Very Happy": "😄",
+}
 
 
 def _build_inspector(
@@ -52,12 +64,20 @@ def _build_inspector(
     box.add(Label(2, 2, f"Age: {f.age_days:.1f} days ({f.growth_stage})"))
     box.add(Label(2, 3, f"Health: {f.health:.0f}%"))
     box.add(Label(2, 4, f"Hunger: {f.hunger:.0f}%"))
+    # Update 1: happiness as a "personality amplifier," shown as a bar (not
+    # just a number) since it's the one stat here meant to be glanced at,
+    # not managed -- the Feeling line underneath is the part that actually
+    # matters to a player, the bar is just the at-a-glance version of it.
+    box.add(
+        ProgressBar(2, 5, "█", " ", int(f.happiness), width=30, style=app.style)
+    )
+    box.add(Label(2, 6, f"Feeling: {f.feeling} {_FEELING_EMOJI[f.feeling]}"))
     personality_line = f"Personality: {f.personality}"
     if f.is_sleepy:
         personality_line += " (also Sleepy 😴)"
-    box.add(Label(2, 5, personality_line))
-    box.add(Label(2, 6, f"Favorite spot: {spot}"))
-    y = 7
+    box.add(Label(2, 7, personality_line))
+    box.add(Label(2, 8, f"Favorite spot: {spot}"))
+    y = 9
     if f.relaxing and f._relax_spot is not None:
         # Surfaces the relax mechanic in the one place a player is already
         # looking at this fish -- a snapshot of "what are you up to right now",
@@ -161,20 +181,32 @@ def _build_fish_history(app, f: Fish) -> Box:
     isn't lost just because the fish has since moved on. Read-only, and
     scrollable (ScrollView, the same widget the crash screen's traceback and
     DevTools' Console tab use) since a long-lived fish's full history can
-    run well past a fixed panel's height."""
+    run well past a fixed panel's height.
+
+    A dream memory ("[Day N] I dreamed about ... <full description>.") can
+    easily run past a single row -- each entry is wrapped (textwrap, the same
+    approach the Text widget itself uses for prose) across as many rows as it
+    needs, rather than silently clipped at the viewport edge."""
+    width_cells = 56
     box = Box(
         0,
         0,
-        "400x420",
+        f"{width_cells * 10}x460",
         title=f"{f.display_name}'s History",
         border="rounded",
         style=app.style,
     )
-    view = ScrollView(2, 1, "360x330", autoscroll=False, style=app.style)
-    for i, entry in enumerate(f.full_memory_log):
-        view.add(Label(0, i, entry, MUTED))
+    view_width_cells = width_cells - 6  # inset + scrollbar column
+    view = ScrollView(
+        2, 1, f"{view_width_cells * 10}x380", autoscroll=False, style=app.style
+    )
+    y = 0
+    for entry in f.full_memory_log:
+        for line in textwrap.wrap(entry, width=view_width_cells - 2) or [""]:
+            view.add(Label(0, y, line, MUTED))
+            y += 1
     box.add(view)
-    box.add(Button(2, 36, "Close").on_click(lambda _w: app.close_overlay(box)))
+    box.add(Button(2, 41, "Close").on_click(lambda _w: app.close_overlay(box)))
     return box
 
 
@@ -243,9 +275,10 @@ def _build_castle_interior(app, d: Decoration, fish, on_open_dream=None) -> Box:
     (Fish._roommates_ready_to_leave()), not one at a time. Mid wake
     attempt, the attempting fish's mood is replaced by "*boop*" for
     BOOP_FLASH_SECONDS (set in aquarium.py's _process_sleepy_holds(), for
-    every attempt -- resisted or not). aquarium.py's _enter_decoration()
-    re-opens this same box on a timer while it's up so none of this goes
-    stale while the player's watching.
+    every attempt -- resisted or not); the tankmate on the receiving end
+    shows "*...zzz*" for the same window if that attempt was resisted.
+    aquarium.py's _enter_decoration() re-opens this same box on a timer
+    while it's up so none of this goes stale while the player's watching.
 
     Since most sleeping fish end up housed once a player owns any container,
     a dreaming occupant's row gets a 💭 next to its 😴 (same as the
@@ -285,6 +318,11 @@ def _build_castle_interior(app, d: Decoration, fish, on_open_dream=None) -> Box:
                     and now < guest._nightmare_comfort_until
                 ):
                     mood = "🥺"
+                elif (
+                    guest._just_resisted_wake_until is not None
+                    and now < guest._just_resisted_wake_until
+                ):
+                    mood = "*...zzz*"
                 elif guest._awake_in_home:
                     mood = "🙂"
                 elif guest.dream is not None:

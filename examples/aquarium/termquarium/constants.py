@@ -89,11 +89,18 @@ AGE_SECONDS_PER_DAY = (
 # just a number in the Inspector. Elder is the last stage -- see fish.py's
 # ELDER_SPEED_MULT usage and aquarium.py's natural-death check
 # (_check_natural_deaths()); worth a bit less than Adult, not worthless.
+#
+# Thresholds are deliberately in "fish days," not real seconds -- keeping
+# growth pacing separate from AGE_SECONDS_PER_DAY (the day/night cycle
+# length) means slowing one down doesn't drag hunger, sleep, or dreams along
+# with it. At AGE_SECONDS_PER_DAY's current 6-real-minute day, Adult now
+# lands around 42 real minutes in (was ~18) -- still growing up within a
+# sitting, just not almost immediately.
 GROWTH_STAGES = (
     ("Baby", 0.0, 0.25),
-    ("Juvenile", 1.0, 0.6),
-    ("Adult", 3.0, 1.0),
-    ("Elder", 10.0, 0.8),
+    ("Juvenile", 10.0, 0.6),
+    ("Adult", 30.0, 1.0),
+    ("Elder", 55.0, 0.8),
 )
 BABY_RIGHT, BABY_LEFT = "o>", "<o"
 
@@ -191,6 +198,170 @@ AXOLOTL_RELAX_CHANCE = 0.75
 AXOLOTL_RELAX_DURATION_MIN = 12.0
 AXOLOTL_RELAX_DURATION_MAX = 25.0
 AXOLOTL_RESTING_GLYPH = "(-.-)~ 😌"  # closed-eyes with 😌, shown only while relaxing
+
+# ── Happiness (Update 1): a per-fish "personality amplifier," not another
+# resource to babysit -- a player shouldn't panic because it dipped from 84%
+# to 81%. Every gain/loss below is tied to a real, already-tracked event
+# (fed, bonded, scared, etc. -- the same "no new mechanics invented just to
+# have something to move" rule Fish Memory Log follows). Effects (Fish.
+# feeling's four bands, dream weighting, the relax-chance nudge, the sparkle/
+# circle/follow/wiggle flourishes) read the *band*, not the raw number, and
+# stay bounded/rare by construction -- see each hook site (aquarium.py's
+# per-second _process_happiness(), fish.py's relax roll and _glyph(),
+# dreams.py's choose_dream()).
+#
+# Passive decay toward HAPPINESS_DECAY_FLOOR (see _process_happiness()) --
+# an earlier version of this had none, on the theory that an ordinary day
+# already trends happiness up on its own. In practice that meant a whole
+# tank saturated at Very Happy and *stayed* there permanently (nothing ever
+# pulled it back down), which turned every Very-Happy-gated flourish into a
+# constant background hum instead of a genuine, occasional "wow, they're
+# really happy" moment. Decay is stronger than the combined passive gains
+# below it, so happiness settles toward the floor (the Happy/Neutral
+# boundary) at rest and only climbs toward Very Happy from real, active
+# events -- which is what actually makes a Happy fish read as a happy fish.
+HAPPINESS_DECAY_PER_SECOND = 0.15
+# Comfortably inside "Neutral" (below HAPPINESS_HAPPY_THRESHOLD), not sitting
+# right on that boundary -- resting there without flickering between bands as
+# the small per-second ambient gains and decay tug against each other.
+HAPPINESS_DECAY_FLOOR = 50.0  # decay alone never pushes happiness below this
+HAPPINESS_MIN = 0.0
+HAPPINESS_MAX = 100.0
+HAPPINESS_START_MIN = 60.0
+HAPPINESS_START_MAX = 80.0
+# A gentle lean on the starting roll only -- flavor, not a stat difference;
+# nothing downstream ever reads personality back off of happiness.
+HAPPINESS_PERSONALITY_START_BONUS = {
+    "Friendly": 5.0,
+    "Playful": 5.0,
+    "Lazy": -3.0,
+    "Shy": -3.0,
+}
+
+# Gains -- each at a real, existing call site (see aquarium.py):
+HAPPINESS_FAVORITE_TREAT_GAIN = 8.0  # a favorite treat, on top of...
+HAPPINESS_FED_GAIN = 2.0  # ...being fed at all (any food or treat)
+HAPPINESS_RELAX_TICK_GAIN = 1.0  # per second actually relaxing (_process_relaxing)
+HAPPINESS_GOOD_SLEEP_GAIN = 4.0  # once per fish, each peaceful Night -> Morning
+HAPPINESS_FRIEND_INTERACTION_GAIN = 3.0  # a real bonding moment (see below), both fish
+HAPPINESS_TEMP_COMFORT_GAIN = 0.05  # per second, only inside the comfortable band
+HAPPINESS_CLEAN_TANK_GAIN = 0.05  # per second, only while no food sits uneaten
+
+# Losses -- deliberately smaller than the gains above and few in number
+# ("nothing harsh," per the pitch); nothing here is a new mechanic, each
+# reuses an event this file already detects elsewhere.
+HAPPINESS_HUNGRY_PENALTY = 0.1  # per second, once past HUNGER_WARNING_THRESHOLD
+HAPPINESS_FRIEND_DIED_PENALTY = 15.0  # a bonded (Friend+) tankmate's departure
+HAPPINESS_PREDATOR_SCARE_PENALTY = 6.0  # a Shark closing in (_check_shark_scares)
+HAPPINESS_BAD_DREAM_PENALTY = 5.0  # a nightmare's scare phase
+HAPPINESS_SLEEP_INTERRUPTED_PENALTY = 4.0  # woken against its will (a Sleepy hold)
+
+# The four "Feeling" bands (Fish.feeling) -- read by the Inspector and every
+# ambient nudge below. No band below HAPPINESS_SAD_THRESHOLD is "Neutral";
+# a fish is either notably Sad, plain Neutral, Happy, or Very Happy.
+HAPPINESS_SAD_THRESHOLD = 30.0
+HAPPINESS_HAPPY_THRESHOLD = 55.0
+HAPPINESS_VERY_HAPPY_THRESHOLD = 80.0
+
+# Ambient "amplifier" nudges -- each rides on an existing, already-rare-by-
+# design system, so happier just means "a bit more of the same rare thing,"
+# never a new stream of events:
+# 1) The existing favorite-spot relax roll (fish.py) scaled per band --
+#    literally "visits favorite decoration more often" (Happy) vs. less so
+#    (Sad); Neutral is exactly the pre-Happiness-update rate.
+HAPPINESS_RELAX_CHANCE_MULT = {
+    "Sad": 0.6,
+    "Neutral": 1.0,
+    "Happy": 1.2,
+    "Very Happy": 1.4,
+}
+# 2) choose_dream() leans further into (Very Happy) or away from (Sad) a
+#    fish's own preferred category, and a Sad fish gets a modest extra
+#    chance at a "bad"-category (gloomier) dream specifically -- see
+#    dreams.py's choose_dream().
+DREAM_HAPPY_PERSONALITY_BONUS = 0.15
+DREAM_SAD_PERSONALITY_PENALTY = 0.15
+DREAM_SAD_BAD_NUDGE_CHANCE = 0.12
+
+# Tank-wide: no Very-Happy flourish (sparkle/circle/follow/excited-wiggle)
+# rolls for this long after something genuinely serious just happened -- a
+# Shark actually catching a fish, a starvation or old-age death, or a Shark
+# scare (see aquarium.py's _check_shark_scares()/_per_second_tick()). A fish
+# celebrating with a happy sparkle moments after a tankmate just died reads
+# as tone-deaf regardless of that specific fish's own happiness band, so this
+# is tank-wide, not per-fish. Deliberately does *not* cover a fish being
+# sold (player-initiated, not a "something serious is happening" moment).
+HAPPINESS_SERIOUS_EVENT_SUPPRESS_SECONDS = 25.0
+
+# 3)-5) Four purely-cosmetic flourishes, all sharing one shape: a periodic
+#    *check* (like RELAX_CHECK_MIN/MAX above) rather than a bare per-second
+#    chance. A tiny per-second probability sounds harmless in isolation, but
+#    even with decay (see HAPPINESS_DECAY_PER_SECOND above) keeping the tank
+#    from saturating at Very Happy, several fish can still be Very Happy at
+#    once -- a per-second roll would compound across all of them
+#    simultaneously and read as constant. A check every CHECK_MIN-CHECK_MAX
+#    seconds, each with a real (not tiny) chance, keeps the *rate per fish*
+#    the same order of magnitude while making it read as "occasionally,"
+#    matching the pitch's own wording. All four are also gated on the fish
+#    being genuinely awake and visible (not asleep, housed, foraging, or
+#    mid-travel -- see Fish.is_asleep and _process_happiness()'s own checks)
+#    -- a sleeping fish doesn't sparkle. The two that also toast (circle,
+#    follow) additionally share one tank-wide cooldown
+#    (HAPPINESS_FLOURISH_TOAST_COOLDOWN, same pattern as RELAX_TOAST_COOLDOWN
+#    above) so several Very Happy fish rolling close together still only
+#    toasts once in a while, not once per fish.
+HAPPINESS_FLOURISH_TOAST_COOLDOWN = 90.0
+HAPPINESS_SPARKLE_CHECK_MIN = 30.0
+HAPPINESS_SPARKLE_CHECK_MAX = 70.0
+HAPPINESS_SPARKLE_CHANCE = 0.35  # at each check, Very Happy only
+HAPPINESS_SPARKLE_FLASH_SECONDS = 2.0
+
+HAPPINESS_EXCITED_WIGGLE_CHECK_MIN = 25.0
+HAPPINESS_EXCITED_WIGGLE_CHECK_MAX = 60.0
+HAPPINESS_EXCITED_WIGGLE_CHANCE = 0.35  # at each check, Happy or better, while not relaxing
+HAPPINESS_EXCITED_WIGGLE_FLASH_SECONDS = 1.0
+
+# "Swims in circles" (❤️, Very Happy) -- a real, brief steering flourish, not
+# just a glyph: for HAPPINESS_CIRCLE_DURATION_SECONDS the fish orbits a pivot
+# point (wherever it was when the roll landed) instead of steering anywhere
+# else. Reuses steer_toward_food() aimed at a point that walks around the
+# pivot each frame -- the same "steer toward a target" code every other
+# movement in this game already uses, just with a moving target, rather than
+# any new physics. Ranked below relaxing/friend-following/schooling in the
+# priority chain (see fish.py's draw()) so it can never preempt anything more
+# urgent or more socially meaningful.
+HAPPINESS_CIRCLE_CHECK_MIN = 45.0
+HAPPINESS_CIRCLE_CHECK_MAX = 100.0
+HAPPINESS_CIRCLE_CHANCE = 0.3  # at each check, Very Happy only
+HAPPINESS_CIRCLE_DURATION_SECONDS = 4.0
+HAPPINESS_CIRCLE_RADIUS = 2.5  # cells
+HAPPINESS_CIRCLE_ANGULAR_SPEED = 2.2  # radians/second -- a brisk, joyful spin
+HAPPINESS_CIRCLE_STEER_RATE = 3.0
+
+# "Follows friend around" (🐟, Very Happy) -- not a new behavior, a temporary
+# boost to the existing plain friend-follow blend rate (FRIEND_STEER_RATE) so
+# it visibly tails its friend closer/eagerer for a while. Only rolls for a
+# fish that actually has a Friend to follow.
+HAPPINESS_FOLLOW_CHECK_MIN = 45.0
+HAPPINESS_FOLLOW_CHECK_MAX = 100.0
+HAPPINESS_FOLLOW_CHANCE = 0.3  # at each check, Very Happy only, needs a Friend
+HAPPINESS_FOLLOW_DURATION_SECONDS = 6.0
+HAPPINESS_FOLLOW_STEER_MULT = 1.8  # how much closer/faster than the normal follow
+
+# "Funny dreams" (💭, Very Happy) -- its own dream category (below,
+# DREAM_FRAMES["funny"]), never a personality's own preferred category (same
+# "never a plain default" rule "reunion" follows) -- only reachable via this
+# one independent chance, checked alongside (not instead of) the ordinary
+# personality-weighted pick. See dreams.py's choose_dream().
+DREAM_FUNNY_CHANCE = 0.2  # of a Very Happy fish's *own* dream roll landing here
+
+# Morning Vignette frequency scaling ("morning vignettes more common") -- the
+# tank's *average* happiness nudges MORNING_VIGNETTE_CHANCE itself, computed
+# by the caller (aquarium.py's _fire_morning_vignette()) and passed in;
+# choose_morning_vignette() itself stays the same small, pure, already-tested
+# function it always was, just given a different chance to roll against.
+MORNING_VIGNETTE_HAPPY_BONUS = 0.1  # tank average is Happy-or-better
+MORNING_VIGNETTE_SAD_PENALTY = 0.1  # tank average is Sad
 
 # Each decoration's `art` is real (plain-character) ASCII art, not emoji --
 # an emoji glyph is drawn by the terminal's own emoji font and mostly ignores
@@ -664,10 +835,27 @@ FOREST_LEAF_GLYPHS = (",", "'", "`", ".", "🍃")
 #
 # APPEAR_CHANCE is rolled once per second, only while at least one fish is
 # actually in the Forest (it never prowls an empty forest) and no shark is
-# already present -- moderate, so foraging stays mostly safe and the event
-# reads as an occasional scare rather than a tax on every trip. STAY is how
-# long the prowler lingers before leaving; SPEED is how fast it swims across
-# (cells/second) -- fast enough to read as a menacing dash.
-TIGER_SHARK_APPEAR_CHANCE_PER_CHECK = 0.08
+# already present -- meant to read as an occasional scare, not a tax on
+# every trip. Rolled every second for as long as anyone's there, a naively
+# "moderate-looking" per-check chance compounds fast: 0.08 (an earlier value
+# here) meant roughly a 60% chance of a scare on a single ordinary ~10-15
+# second foraging trip -- "usually happens," not "occasional." This value
+# instead keeps a typical trip's overall odds low (roughly 1 in 10), only
+# creeping up toward "expected eventually" if the Forest stays occupied for
+# unusually long (many fish rotating through over several minutes), which
+# is a reasonable place for the risk to actually live. STAY is how long the
+# prowler lingers before leaving; SPEED is how fast it swims across (cells/
+# second) -- fast enough to read as a menacing dash.
+TIGER_SHARK_APPEAR_CHANCE_PER_CHECK = 0.01
 TIGER_SHARK_STAY_SECONDS = 6.0
 TIGER_SHARK_SPEED = 11.0
+# The gap the comment above accepts ("creeping up... if the Forest stays
+# occupied for unusually long") turned out to bite harder than intended in
+# practice: with fish rotating through continuously, the Forest is rarely
+# ever *empty*, so with no rest between visits the 1-in-10-per-trip odds
+# above stack into a shark on nearly every single trip over a real play
+# session -- reading as "the shark always comes" rather than "occasional."
+# This is a forced rest after each visit ends, so a scare has to wait out
+# a real gap before the Forest is dangerous again, capping the total rate
+# regardless of how busy the Forest is.
+TIGER_SHARK_COOLDOWN_SECONDS = 90.0
