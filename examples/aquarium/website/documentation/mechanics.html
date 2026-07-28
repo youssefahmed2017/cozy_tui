@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Mechanics — TermQuarium Docs</title>
-<meta name="description" content="The exact numbers behind TermQuarium's hunger, feeding, relationships, breeding, economy, achievements, random events, and dreams." />
+<meta name="description" content="The exact numbers behind TermQuarium's hunger, feeding, relationships, breeding, growth, happiness, relaxing, Forest exploration, economy, achievements, random events, and dreams." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A0%3C/text%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -59,7 +59,7 @@
           <div class="docs-content">
 
             <h2>Hunger</h2>
-            <p>Hunger climbs on a deliberately slow clock, separate from the per-frame movement update. A fish that goes long enough without reaching food starts losing health from starvation instead — a fish can genuinely die this way.</p>
+            <p>Hunger climbs on a deliberately slow clock, separate from the per-frame movement update — full to starving takes about 5 real minutes. A fish that goes long enough without reaching food in the main tank starts losing health from starvation instead, and can genuinely die this way. The one exception is a fish away exploring the Forest: it's somewhere you can't see or feed it, so hunger there simply caps out at "Low energy" instead of ever risking death — it gets a "Welcome back, looks a little hungry" nudge the moment it returns, not a punishment for having gone at all.</p>
 
             <h2>Feeding &amp; treats</h2>
             <p>Fish Food is bulk and impersonal — buy a pack, drop it in the water, and whichever fish reaches it first eats it. Treats work differently: bought one pack at a time from the Shop, then fed directly to one chosen fish from its own Inspector.</p>
@@ -98,12 +98,38 @@
             <p>A woken fish doesn't vanish the instant it wakes, either — it lingers a few seconds, and the whole room leaves together once every occupant is awake, not one at a time. See <a href="decorations.html" style="color:var(--accent);text-decoration:none;font-weight:600">Decorations</a> for the "Enter" view this all plays out in.</p>
 
             <h2>Breeding</h2>
-            <p>Once a day, every mutual, grown-up, non-predator Friend or Best Friend pair has a 25% chance to have a baby, up to a cap of 30 total fish in the tank so it can't run away forever.</p>
+            <p>Once a day, every mutual, grown-up, non-predator Friend or Best Friend pair has a 25% chance to have a baby, up to a cap of 30 total fish in the tank so it can't run away forever. A baby permanently remembers both of its parents from the moment it's born — see Dreams below for what that means the first time it has a nightmare.</p>
+
+            <h2>Growth &amp; Aging</h2>
+            <p>Every fish visibly ages through four stages — Baby, Juvenile, Adult, Elder — a Baby doesn't even get its real sprite yet, so growing up is something you actually see rather than a number in the Inspector. Elder is worth a little less to sell than Adult, but not worthless, and once a day there's a small (4%) chance an Elder fish passes peacefully in old age — rare enough to notice, never routine.</p>
 
             <h2>Economy</h2>
             <p>The tank's total attractiveness comes from its fish and decorations: +5 per fish (+15 instead for a "rare" species — anything priced at $50 or more, which today just means the Betta and the Shark), plus a flat +10 if there's no food currently sitting uneaten. Visitor count is attractiveness &divide; 20; each visitor's $2 ticket is settled once a day along with a flat, unconditional $10/day "Aquarium Maintenance Grant." Donations ($1&ndash;3 per visitor) don't wait for that — the moment a visitor actually donates, the money lands immediately and a toast announces it ("A visitor donated $2!"), rather than being bundled into the day-end total.</p>
             <p>Selling a decoration refunds half its purchase price.</p>
             <p>If the tank goes fully bankrupt — $0, no food, no fish — <b>Emergency Aquarium Welfare</b> (on by default, toggleable in Settings) grants a fresh start: +1 fish, +25 food, +$20.</p>
+            <p>The Shop's own stock rotates once a day too — one species goes "Out of Stock" until the next day, so it's worth checking back on rather than a fixed catalog.</p>
+
+            <h2>Happiness</h2>
+            <p>A personality amplifier, not another stat to babysit: every fish sits in one of four Feeling bands driven by real events, never a hidden meter to grind for its own sake.</p>
+            <div class="docs-table-wrap">
+              <table>
+                <thead><tr><th>Happiness</th><th>Feeling</th></tr></thead>
+                <tbody>
+                  <tr><td>&lt; 30</td><td>😞 Sad</td></tr>
+                  <tr><td>30&ndash;54</td><td>🙂 Neutral</td></tr>
+                  <tr><td>55&ndash;79</td><td>😊 Happy</td></tr>
+                  <tr><td>&ge; 80</td><td>😄 Very Happy</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>A good night's sleep, a favorite treat, time with a friend, and a comfortable tank all push happiness up; a scare, a bad dream, a lost tankmate, or going hungry pull it down. It also decays gently toward 50 (comfortably inside Neutral) on its own, so a tank never just sits maxed out at Very Happy forever — real events are what actually gets it back up there, not time alone. At Very Happy, a fish gets small flourishes of its own — a sparkle, an excited wiggle, swimming in a happy circle, tailing a friend around — each on its own cooldown so they read as noticing a good mood, not background noise, and never while something genuinely serious just happened (a Shark, a death, a scare).</p>
+
+            <h2>Relaxing</h2>
+            <p>Any fish has roughly a 40% chance, checked periodically, of settling in at its favorite spot for a while — a quiet 😌 above it, nothing to manage. The Axolotl relaxes far more often (75%) and for longer, true to its resting-more nature. A friend passing by while one is already relaxing may stop and join it there instead of swimming on, its own small, always-noticed moment.</p>
+
+            <h2>Exploration: The Forest</h2>
+            <p>A one-time $700 unlock (Shop) opens a whole second place a hungry fish can travel to. Once past its own hunger threshold, a fish has roughly a 5% chance per check of setting off (boosted for Greedy and Explorer personalities, and a Friendly fish may tag along with a Friend already heading out regardless of its own hunger). Once there, it forages for wood, then carries a found piece home to sell for $15.</p>
+            <p>A rare Tiger Shark (about a 1% chance per check while anyone's present) can prowl in and startle every forager home empty-handed, dropping any wood they were carrying — nobody's ever actually hurt, just sent packing. It rests for a minute and a half after each visit before it's eligible to prowl in again, so a busy Forest can't get scared back-to-back.</p>
 
             <h2>Day &amp; night</h2>
             <p>Water temperature and light drift together on one continuous curve, warmest at noon and coldest at midnight. Fish move measurably slower once the water turns cold, and non-hungry fish stop swimming and sleep once night falls — a hard stop, not just a slowdown.</p>
@@ -128,7 +154,7 @@
             <h2>Dreams</h2>
             <p>About a quarter of tonight's actually-sleeping fish dream — shown as a 💭 next to their 😴, clickable into a small looping animated scene with a plain-language caption underneath. Which kind of dream leans on personality (Explorer &rarr; Fantasy, Greedy &rarr; Food, Shy &rarr; Home, Friendly &rarr; Friendship, Lazy/Playful &rarr; Happy) about 60% of the time, spread across the other categories the rest of the time — never an exclusive lock.</p>
             <p>A fish's own Memory Log shapes it further: a recent shark scare gives a much-better-than-usual chance of a nightmare about it specifically; a recent memory naming its current Friend nudges toward a dream about them regardless of personality; and a tankmate it's lost can resurface in a dream of their own, for as long as that memory survives the log's cap — grief fading naturally as newer memories crowd it out, with no separate timer.</p>
-            <p>A nightmare is the one dream with real consequences. Five seconds in, the fish wakes up scared (😨, for a few seconds) right where it was sleeping. If it has a Friend, it then quietly relocates to sleep beside them — joining their claimed home if there's room, or just settling close on the floor if not — with a brief 🥺 once it arrives. No Friend, and it simply settles back to sleep on its own.</p>
+            <p>A nightmare is the one dream with real consequences. Five seconds in, the fish wakes up scared (😨, for a few seconds) right where it was sleeping. It then goes looking for comfort — a living parent first, if it has one, regardless of how close that relationship actually is (blood always outweighs an ordinary friendship score); only once no parent is left does it fall back to its Friend. Whichever it finds, it quietly relocates to sleep beside them — joining their claimed home if there's room, or just settling close on the floor if not — with a brief 🥺 once it arrives, and a diary line for both of them. With neither a parent nor a Friend, it simply settles back to sleep on its own.</p>
 
             <h2>Fish Memory Log</h2>
             <p>Every fish keeps its own diary, shown in its Inspector — up to 10 entries, oldest dropped first. Unlike a relationship's shared memories (only ever "why" for one specific pair), this is one fish's own history: a favorite treat, waking a friend up, becoming friends or rivals with someone, surviving a storm, escaping — or being saved from — a Shark, and a tankmate that isn't around anymore.</p>
