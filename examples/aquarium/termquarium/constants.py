@@ -7,7 +7,7 @@ from collections import namedtuple
 # compare against the published manifest -- see termquarium/updater.py.
 # Keep this in step with MyAppVersion in TermQuarium.iss and the "version"
 # field published in website/version.json.
-GAME_VERSION = "1.4.0"
+GAME_VERSION = "1.5.0"
 
 # A single tank-level toast is shown when one or more fish cross this level.
 # It is intentionally below starvation (100) so the player has time to act.
