@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SAVE_VERSION = 1
+SAVE_VERSION = 2
 APP_DIRECTORY_NAME = ".termquarium"
 
 
@@ -167,8 +167,39 @@ def write_save(
     return path
 
 
+def _migrate_v1_to_v2(payload: dict[str, Any]) -> None:
+    """v1 stored Fish.hunger as 0=full/100=starving -- the confusing
+    direction that prompted the flip to v2's 0=starving/100=full. Every
+    fish's stored hunger just needs mirroring once (100 - old value) so an
+    old save keeps reading the same real hunger state under the new scale,
+    rather than silently misinterpreting it."""
+    for fish in payload.get("aquarium", {}).get("fish", []):
+        if "hunger" in fish:
+            fish["hunger"] = 100.0 - fish["hunger"]
+    payload["version"] = 2
+
+
+_MIGRATIONS = {1: _migrate_v1_to_v2}
+
+
+def migrate_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Migrate a `{version, metadata, aquarium}` payload forward in place,
+    however many steps it needs (see _MIGRATIONS), and return it. Shared by
+    read_save() (a local file) and aquarium.py's cloud-restore flow (a
+    payload downloaded straight from the Cloud Saves API, which never
+    passes through read_save at all) -- a save that predates a migration
+    shouldn't only get fixed up on whichever of those two paths happens to
+    load it locally first."""
+    version = payload.get("version")
+    while version in _MIGRATIONS:
+        _MIGRATIONS[version](payload)
+        version = payload.get("version")
+    return payload
+
+
 def read_save(path: Path) -> dict[str, Any]:
-    """Read and validate a save, leaving migrations centralized for v2+."""
+    """Read and validate a save, migrating an older version forward in
+    place rather than rejecting it -- see migrate_payload()."""
     payload = json.loads(path.read_text(encoding="utf-8"))
     if (
         not isinstance(payload, dict)
@@ -176,6 +207,7 @@ def read_save(path: Path) -> dict[str, Any]:
         or "aquarium" not in payload
     ):
         raise ValueError("Not a TermQuarium save")
+    payload = migrate_payload(payload)
     version = payload.get("version")
     if version != SAVE_VERSION:
         raise ValueError(f"Unsupported save version: {version}")

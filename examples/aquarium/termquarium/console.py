@@ -1,12 +1,26 @@
 """The Cheat Console (backtick key) -- a dev/testing tool for setting up a
 specific scenario in seconds ("does the shark actually eat fish?") instead
-of grinding money and raising fish for real every time. Not eval()/exec():
+of grinding money and raising fish for real every time. Every named command
+(spawn_fish, set_health, give_dream, ...) is still parsed the original way:
 parse_command() uses ast.parse(mode="eval") structurally and
 ast.literal_eval() per-argument, so a typed command can only ever supply
-plain literal values (strings/numbers/bools/None) -- never call anything,
-access an attribute, or run arbitrary code."""
+plain literal values -- never call anything, access an attribute, or run
+arbitrary code.
+
+The one exception is run(code="..."), for when a single named call isn't
+expressive enough (loops, conditionals, touching several fish in one go).
+Its `code` string argument is still just a plain literal by the same
+parse_command() rule above -- what makes run() different is what happens
+to *that string*: it's compiled and executed through RestrictedPython
+(see _run_script()), a real sandboxing compiler (used by Zope/Plone) that
+rejects dunder/attribute-gadget escapes at compile time, not a hand-rolled
+`{"__builtins__": {}}` dict (which doesn't actually stop anything -- the
+classic `().__class__.__base__.__subclasses__()` walk reaches arbitrary
+classes using nothing but objects already in scope, no builtins needed)."""
 
 import ast
+import math
+import random
 import textwrap
 from collections import namedtuple
 
@@ -20,6 +34,9 @@ from .constants import (
     DECORATION_SHOP_ITEMS,
     FOOD_PACK_PRICE,
     FOOD_PACK_SIZE,
+    MAX_SPEED,
+    MIN_SPEED,
+    PERSONALITIES,
     SHOP_ITEMS,
     TRAITS,
     TREAT_SHOP_ITEMS,
@@ -92,6 +109,16 @@ def build_console_commands(
     give_dream,
     grant_trait,
     advance_day,
+    start_lost_adventure,
+    advance_adventure_day,
+    set_happiness,
+    set_speed,
+    set_personality,
+    force_relationship,
+    set_day,
+    toggle_forest,
+    spawn_decoration,
+    remove_fish,
 ) -> dict:
     """The command registry, closing over the same real state/mutators the
     Shop/Inspector already use (see aquarium.py's main()) -- every command
@@ -291,6 +318,278 @@ def build_console_commands(
             advance_day()
         return f"Advanced {amount} day(s)." if amount > 1 else "Advanced 1 day."
 
+    def cmd_start_lost_adventure(args, kwargs):
+        name = kwargs.get("fish_name", args[0] if args else None)
+        if name is None:
+            raise ConsoleError(
+                'Usage: start_lost_adventure(fish_name="Steve", duration=None '
+                "(optional, days))"
+            )
+        duration = kwargs.get("duration", args[1] if len(args) > 1 else None)
+        if duration is not None and (
+            not isinstance(duration, int)
+            or isinstance(duration, bool)
+            or duration < 1
+        ):
+            raise ConsoleError("duration must be a positive whole number of days.")
+        target = _find_fish(str(name))
+        if target.lost_adventure is not None:
+            raise ConsoleError(f"{target.display_name} is already lost in the forest.")
+        start_lost_adventure(target, duration)
+        return f"{target.display_name} is now lost in the forest."
+
+    def cmd_advance_adventure_day(args, kwargs):
+        name = kwargs.get("fish_name", args[0] if args else None)
+        if name is None:
+            raise ConsoleError('Usage: advance_adventure_day(fish_name="Steve")')
+        target = _find_fish(str(name))
+        if target.lost_adventure is None:
+            raise ConsoleError(f"{target.display_name} isn't on a Lost Adventure.")
+        advance_adventure_day(target)
+        return f"Advanced {target.display_name}'s Lost Adventure by one day."
+
+    def cmd_set_happiness(args, kwargs):
+        fish_name = kwargs.get("fish_name", args[0] if args else None)
+        amount = kwargs.get("amount", args[1] if len(args) > 1 else None)
+        if fish_name is None or amount is None:
+            raise ConsoleError("Usage: set_happiness(fish_name=..., amount=...)")
+        target = _find_fish(str(fish_name))
+        set_happiness(target, _require_number(amount, "amount"))
+        return f"Set {target.display_name}'s happiness to {target.happiness:.0f}."
+
+    def cmd_set_speed(args, kwargs):
+        fish_name = kwargs.get("fish_name", args[0] if args else None)
+        amount = kwargs.get("amount", args[1] if len(args) > 1 else None)
+        if fish_name is None or amount is None:
+            raise ConsoleError("Usage: set_speed(fish_name=..., amount=...)")
+        target = _find_fish(str(fish_name))
+        set_speed(target, _require_number(amount, "amount"))
+        return f"Set {target.display_name}'s speed to {target.speed:.1f}."
+
+    def cmd_set_personality(args, kwargs):
+        fish_name = kwargs.get("fish_name", args[0] if args else None)
+        personality = kwargs.get("personality", args[1] if len(args) > 1 else None)
+        if fish_name is None or personality is None:
+            names = ", ".join(PERSONALITIES)
+            raise ConsoleError(
+                f'Usage: set_personality(fish_name="Steve", personality="Greedy") '
+                f"-- one of: {names}"
+            )
+        target = _find_fish(str(fish_name))
+        try:
+            set_personality(target, str(personality))
+        except ValueError as error:
+            raise ConsoleError(str(error))
+        return f"Set {target.display_name}'s personality to {target.personality}."
+
+    def cmd_force_relationship(args, kwargs):
+        a_name = kwargs.get("fish_a", args[0] if args else None)
+        b_name = kwargs.get("fish_b", args[1] if len(args) > 1 else None)
+        score = kwargs.get("score", args[2] if len(args) > 2 else None)
+        if a_name is None or b_name is None or score is None:
+            raise ConsoleError(
+                'Usage: force_relationship(fish_a="Steve", fish_b="Kitty", score=80)'
+            )
+        a = _find_fish(str(a_name))
+        b = _find_fish(str(b_name))
+        clamped = _require_number(score, "score")
+        force_relationship(a, b, clamped)
+        return f"Set {a.display_name}/{b.display_name}'s relationship score to {clamped:.0f}."
+
+    def cmd_set_day(args, kwargs):
+        amount = kwargs.get("amount", args[0] if args else None)
+        if (
+            amount is None
+            or not isinstance(amount, int)
+            or isinstance(amount, bool)
+            or amount < 0
+        ):
+            raise ConsoleError("Usage: set_day(amount=...) -- a non-negative whole number")
+        set_day(amount)
+        return f"Jumped straight to day {amount}."
+
+    def cmd_toggle_forest(args, kwargs):
+        unlocked = kwargs.get("unlocked", args[0] if args else None)
+        if not isinstance(unlocked, bool):
+            raise ConsoleError("Usage: toggle_forest(unlocked=True)")
+        toggle_forest(unlocked)
+        return "Forest unlocked." if unlocked else "Forest locked."
+
+    def cmd_spawn_decoration(args, kwargs):
+        kind = kwargs.get("kind", args[0] if args else None)
+        if kind is None:
+            names = ", ".join(d.kind for d in DECORATION_SHOP_ITEMS)
+            raise ConsoleError(
+                f'Usage: spawn_decoration(kind="Castle") -- one of: {names}'
+            )
+        try:
+            kind_name = spawn_decoration(str(kind))
+        except ValueError as error:
+            raise ConsoleError(str(error))
+        return f"Spawned a {kind_name}, free of charge."
+
+    def cmd_remove_fish(args, kwargs):
+        name = kwargs.get("fish_name", args[0] if args else None)
+        if name is None:
+            raise ConsoleError('Usage: remove_fish(fish_name="Steve")')
+        target = _find_fish(str(name))
+        remove_fish(target)
+        return f"Removed {target.display_name} from the tank."
+
+    def _script_call(name):
+        # Every run() script global is just "call this same named command,
+        # with real Python arguments instead of typed console text" -- one
+        # code path, one set of validation/errors, not a second parallel
+        # implementation per command.
+        def _call(*args, **kwargs):
+            return commands[name].handler(list(args), kwargs)
+
+        return _call
+
+    def _find_fish_or_none(name):
+        return next((f for f in fish if f.display_name == name), None)
+
+    # Built once per console session (matches every other closure here) --
+    # run() scripts get the *same* fish/state and the *same* commands as
+    # everything else typed into this console, just callable as real
+    # function calls instead of one line of structural text each.
+    script_globals = {
+        "fish": fish,
+        "state": state,
+        "random": random,
+        "math": math,
+        "find_fish": _find_fish_or_none,
+    }
+    for _name in (
+        "spawn_fish",
+        "set_health",
+        "set_hunger",
+        "set_money",
+        "set_food",
+        "buy",
+        "set_time",
+        "spawn",
+        "give_nightmare",
+        "give_dream",
+        "grant_trait",
+        "advance_day",
+        "start_lost_adventure",
+        "advance_adventure_day",
+        "set_happiness",
+        "set_speed",
+        "set_personality",
+        "force_relationship",
+        "set_day",
+        "toggle_forest",
+        "spawn_decoration",
+        "remove_fish",
+    ):
+        script_globals[_name] = _script_call(_name)
+
+    def _ensure_restricted_python():
+        try:
+            import RestrictedPython  # noqa: F401
+        except ImportError as error:
+            raise ConsoleError(
+                "run() needs the RestrictedPython package -- "
+                "not installed (pip install RestrictedPython)."
+            ) from error
+
+    def _run_script(code: str) -> str:
+        # A real sandboxing *compiler*, not a hand-rolled restricted-globals
+        # dict: RestrictedPython rejects dunder/attribute-gadget access
+        # (the ().__class__.__base__.__subclasses__() family of escapes) at
+        # compile time, before the script ever runs -- see this module's
+        # docstring. It does not limit CPU time or memory (an intentional
+        # `while True: pass` will hang the game); that's an accepted,
+        # low-severity gap for a single-player local console -- no worse
+        # than a player hanging their own Python REPL.
+        _ensure_restricted_python()
+        from RestrictedPython import compile_restricted_exec
+        from RestrictedPython.Guards import (
+            guarded_iter_unpack_sequence,
+            safe_builtins,
+            safer_getattr,
+        )
+        from RestrictedPython.PrintCollector import PrintCollector
+
+        result = compile_restricted_exec(code)
+        if result.errors:
+            raise ConsoleError("; ".join(result.errors))
+
+        # safe_builtins is deliberately minimal (no list/dict/sum/min/max/...)
+        # -- these are all pure, I/O-free, well-understood builtins with no
+        # introspection risk, added on top rather than missing entirely.
+        builtins_dict = dict(safe_builtins)
+        builtins_dict.update(
+            {
+                "list": list,
+                "dict": dict,
+                "set": set,
+                "tuple": tuple,
+                "sum": sum,
+                "min": min,
+                "max": max,
+                "enumerate": enumerate,
+                "any": any,
+                "all": all,
+                "sorted": sorted,
+                "zip": zip,
+                "map": map,
+                "filter": filter,
+            }
+        )
+
+        def _write_guard(obj):
+            return obj
+
+        def _inplacevar_(op, x, y):
+            import operator
+
+            ops = {
+                "+=": operator.add,
+                "-=": operator.sub,
+                "*=": operator.mul,
+                "/=": operator.truediv,
+            }
+            if op not in ops:
+                raise ConsoleError(f"Operator {op!r} isn't supported in run().")
+            return ops[op](x, y)
+
+        exec_globals = dict(script_globals)
+        exec_globals["__builtins__"] = builtins_dict
+        exec_globals["_getattr_"] = safer_getattr
+        exec_globals["_getitem_"] = lambda obj, index: obj[index]
+        exec_globals["_getiter_"] = iter
+        exec_globals["_iter_unpack_sequence_"] = guarded_iter_unpack_sequence
+        exec_globals["_write_"] = _write_guard
+        exec_globals["_inplacevar_"] = _inplacevar_
+        exec_globals["_print_"] = PrintCollector
+
+        exec_locals = {}
+        try:
+            exec(result.code, exec_globals, exec_locals)
+        except ConsoleError:
+            raise
+        except Exception as error:
+            raise ConsoleError(f"Script error: {error}")
+
+        printer = exec_locals.get("_print")
+        if printer is not None:
+            output = str(printer()).rstrip("\n")
+            if output:
+                return output
+        return "Ran."
+
+    def cmd_run(args, kwargs):
+        code = kwargs.get("code", args[0] if args else None)
+        if code is None:
+            raise ConsoleError(
+                'Usage: run(code="for f in fish: print(f.display_name)") -- '
+                "a snippet of real Python, sandboxed by RestrictedPython"
+            )
+        return _run_script(str(code))
+
     def cmd_help(_args, _kwargs):
         return "\n".join(f"{name}: {cmd.usage}" for name, cmd in commands.items())
 
@@ -308,7 +607,7 @@ def build_console_commands(
         ),
         "set_hunger": Command(
             "set_hunger(fish_name: the fish to apply this to, amount: the "
-            "hunger it should have, 0-100)",
+            "hunger it should have, 0-100 -- 0 is starving, 100 is full)",
             cmd_set_hunger,
         ),
         "set_money": Command(
@@ -358,6 +657,70 @@ def build_console_commands(
             "random-event roll) exactly as if that many real days had "
             "passed, so you don't have to wait 6 real minutes per day",
             cmd_advance_day,
+        ),
+        "start_lost_adventure": Command(
+            "start_lost_adventure(fish_name: the fish, duration: how many days "
+            "the trip should last (optional, random 4-8 if omitted)) -- forces "
+            "the rare 'gets lost in the forest for days' event, without "
+            "waiting on its own 2%-per-day roll",
+            cmd_start_lost_adventure,
+        ),
+        "advance_adventure_day": Command(
+            "advance_adventure_day(fish_name: the fish, must already be on a "
+            "Lost Adventure) -- advances that fish's adventure by exactly one "
+            "day, rolling that day's event (shelter/Bubbles/danger/plain "
+            "wander) or returning it home if this was the last day",
+            cmd_advance_adventure_day,
+        ),
+        "set_happiness": Command(
+            "set_happiness(fish_name: the fish, amount: 0-100)",
+            cmd_set_happiness,
+        ),
+        "set_speed": Command(
+            f"set_speed(fish_name: the fish, amount: cells/second, "
+            f"{MIN_SPEED}-{MAX_SPEED})",
+            cmd_set_speed,
+        ),
+        "set_personality": Command(
+            "set_personality(fish_name: the fish, personality: one of "
+            + ", ".join(PERSONALITIES) + ")",
+            cmd_set_personality,
+        ),
+        "force_relationship": Command(
+            "force_relationship(fish_a: a fish, fish_b: another fish, score: "
+            "-100 to 100) -- sets their relationship score directly instead "
+            "of waiting for real events to earn it",
+            cmd_force_relationship,
+        ),
+        "set_day": Command(
+            "set_day(amount: the day number to jump straight to) -- unlike "
+            "advance_day(), this doesn't run any real daily-tick side effects",
+            cmd_set_day,
+        ),
+        "toggle_forest": Command(
+            "toggle_forest(unlocked: True or False) -- force the Forest "
+            "unlocked/locked, without paying or waiting",
+            cmd_toggle_forest,
+        ),
+        "spawn_decoration": Command(
+            "spawn_decoration(kind: e.g. \"Castle\") -- adds it to the tank "
+            "free of charge",
+            cmd_spawn_decoration,
+        ),
+        "remove_fish": Command(
+            "remove_fish(fish_name: the fish) -- removes it from the tank "
+            "immediately, no toast or memory flavor (unlike natural death/"
+            "starvation)",
+            cmd_remove_fish,
+        ),
+        "run": Command(
+            "run(code: a snippet of real Python, e.g. "
+            '\'for f in fish: print(f.display_name)\') -- sandboxed by '
+            "RestrictedPython (pip install RestrictedPython); every command "
+            "above is also callable as a real function inside it (fish "
+            "names as strings, e.g. give_dream(\"Steve\", \"happy\")), plus "
+            "fish/state/find_fish()/random/math",
+            cmd_run,
         ),
     }
     return commands

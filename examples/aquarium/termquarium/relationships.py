@@ -38,6 +38,7 @@ from .constants import (
     GAVE_UP_HOME_SCORE,
     SAVED_FROM_SHARK_SCORE,
     PUSHED_FROM_HOME_SCORE,
+    LOST_ADVENTURE_RETURN_RELATIONSHIP_SCORE,
 )
 
 
@@ -255,6 +256,19 @@ def record_saved_from_shark(rescuer, saved) -> None:
         rescuer,
         SAVED_FROM_SHARK_SCORE,
         f"{rescuer.display_name} saved {saved.display_name} from a shark",
+    )
+
+
+def record_returned_from_adventure(returned, tankmate) -> None:
+    """`returned` was Lost in the Forest for days and just made it home --
+    checked once per bonded tankmate still in the tank (see aquarium.py's
+    _return_from_lost_adventure()). Same shape as record_saved_from_shark():
+    a real, rare event deserves a real bump, not a mild pleasantry."""
+    remember(
+        returned,
+        tankmate,
+        LOST_ADVENTURE_RETURN_RELATIONSHIP_SCORE,
+        f"{returned.display_name} came home safe after being lost in the forest",
     )
 
 

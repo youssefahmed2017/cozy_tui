@@ -13,7 +13,12 @@ cozy-tui run examples/aquarium/aquarium.py   # same, via the CLI
 python -m pytest tests/test_aquarium.py tests/test_termquarium_*.py -q   # this example's tests only
 ```
 
-No extra dependency beyond `cozy_tui` itself — everything below is stdlib.
+No extra dependency beyond `cozy_tui` itself — everything below is stdlib,
+with one exception: the Cheat Console's `run()` command (arbitrary-ish
+scripted commands, sandboxed by RestrictedPython — see
+`termquarium/console.py`) needs `pip install RestrictedPython`, lazily
+imported only inside that one command. Every other console command, and
+the rest of the game, works with nothing installed beyond `cozy_tui`.
 
 Packaging (Windows `.exe`, from inside `examples/aquarium/`; `*.spec`/`*.iss` are
 git-ignored — they exist locally when you're building, not in the checked-out tree):

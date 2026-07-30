@@ -49,3 +49,4 @@ class MorningVignette(Widget):
         canvas.write(
             self.abs_x, self.abs_y + 1, f"{self.glyph_a}    {self.glyph_b}", self.style
         )
+

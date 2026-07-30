@@ -294,25 +294,33 @@ def _tile(unit: str, width: int) -> str:
 
 def build_forest_scene(
     app, on_leave, paused=lambda: False
-) -> tuple[list, Label, tuple[float, float, float, float]]:
+) -> tuple[list, Label, tuple[float, float, float, float], dict]:
     """The Forest biome's own full-screen scene (Exploration Update Slice 1)
     -- the *static* part only (title, a money-readout label, background
-    scenery, the Leave button), built once at boot. The live Fish/Wood
-    objects currently in this biome are appended/removed straight onto
-    this same persistent list over time by aquarium.py's _check_foraging()
+    scenery, the Leave button, and the three Lost Adventure shelter
+    fixtures below), built once at boot. The live Fish/Wood objects
+    currently in this biome are appended/removed straight onto this same
+    persistent list over time by aquarium.py's _check_foraging()
     (which fish/wood currently exist changes on its own timers, regardless
     of whether this scene happens to be the one currently shown -- see
     constants.py's Exploration Update comment), so nothing here needs
     rebuilding just to reflect that.
 
-    Returns `(widgets, stats_label, bounds)` -- the caller keeps the label
-    reference to refresh its money readout each time the scene is entered
-    (nothing in the Forest changes it while shown, so a live per-tick
-    refresh isn't needed the way the tank's own stats label has one).
-    `bounds` (x0, y0, x1, y1) is where fish/wood should be positioned --
-    sized from the *actual* terminal (app.cols/app.rows), the same way the
-    tank's own `bounds` is derived in aquarium.py, rather than a fixed
-    constant a small terminal could clip.
+    Returns `(widgets, stats_label, bounds, shelters)` -- the caller keeps
+    the label reference to refresh its money readout each time the scene is
+    entered (nothing in the Forest changes it while shown, so a live
+    per-tick refresh isn't needed the way the tank's own stats label has
+    one). `bounds` (x0, y0, x1, y1) is where fish/wood should be positioned
+    -- sized from the *actual* terminal (app.cols/app.rows), the same way
+    the tank's own `bounds` is derived in aquarium.py, rather than a fixed
+    constant a small terminal could clip. `shelters` is a
+    {name: Decoration} lookup for the three fixed Tree House/Hidden Cave/
+    Dense Plants Thicket objects (see LOST_ADVENTURE_SHELTERS) -- real
+    Decoration instances with real capacity, exactly like the tank's own
+    Castle/Rock, just never purchasable (they're "already there in the
+    forest", not Shop items). aquarium.py's _start_shelter_visit() looks a
+    fish's discovered/fled-to shelter name up in this dict to know where to
+    briefly place it.
 
     This whole scene is meant to be swapped wholesale into `app.widgets`
     (see aquarium.py's `_enter_forest()`) -- deliberately NOT a modal/
@@ -321,8 +329,19 @@ def build_forest_scene(
     falling leaves, mirrors the tank's own `BubbleField`) is included in
     the static scenery -- `paused` is the same zero-arg-callable shared-
     mutable pattern the tank's Pause menu already uses."""
-    from .constants import FOREST_HEIGHT, FOREST_WIDTH
+    from .constants import (
+        DENSE_PLANTS_ART,
+        DENSE_PLANTS_COLORS,
+        FOREST_HEIGHT,
+        FOREST_WIDTH,
+        HIDDEN_CAVE_ART,
+        HIDDEN_CAVE_COLORS,
+        LOST_ADVENTURE_SHELTER_CAPACITY,
+        TREE_HOUSE_ART,
+        TREE_HOUSE_COLORS,
+    )
     from .leaves import LeafField
+    from .tank_objects import Decoration
 
     forest_w = min(FOREST_WIDTH, max(20, app.cols - 6))
     forest_h = min(FOREST_HEIGHT, max(10, app.rows - 8))
@@ -357,7 +376,41 @@ def build_forest_scene(
     )
     widgets.append(Button(2, leave_y, "Leave Forest").on_click(lambda _w: on_leave()))
 
+    # Lost Adventure's three shelter fixtures -- real Decoration instances
+    # (capacity and all), spread across the ground so a briefly-visiting
+    # fish (see aquarium.py's _start_shelter_visit()) has somewhere
+    # distinct to appear at. Never added to `decorations`/the Shop catalog:
+    # they're scenery the player finds already there, not something bought.
+    shelters = {
+        "Tree House": Decoration(
+            forest_w * 0.25,
+            trunk_y + 1,
+            TREE_HOUSE_ART,
+            TREE_HOUSE_COLORS,
+            kind="Tree House",
+            capacity=LOST_ADVENTURE_SHELTER_CAPACITY["Tree House"],
+        ),
+        "Hidden Cave": Decoration(
+            forest_w * 0.55,
+            ground_y - len(HIDDEN_CAVE_ART),
+            HIDDEN_CAVE_ART,
+            HIDDEN_CAVE_COLORS,
+            kind="Hidden Cave",
+            capacity=LOST_ADVENTURE_SHELTER_CAPACITY["Hidden Cave"],
+        ),
+        "Dense Plants Thicket": Decoration(
+            forest_w * 0.8,
+            ground_y - len(DENSE_PLANTS_ART),
+            DENSE_PLANTS_ART,
+            DENSE_PLANTS_COLORS,
+            kind="Dense Plants Thicket",
+            capacity=LOST_ADVENTURE_SHELTER_CAPACITY["Dense Plants Thicket"],
+        ),
+    }
+    widgets.extend(shelters.values())
+
     fy_low = float(trunk_y + 1)
     fy_high = max(fy_low + 1.0, float(ground_y - 1))
     bounds = (4.0, fy_low, forest_w - 4.0, fy_high)
-    return widgets, stats_label, bounds
+    return widgets, stats_label, bounds, shelters
+

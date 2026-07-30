@@ -9,14 +9,17 @@ from collections import namedtuple
 # field published in website/version.json.
 GAME_VERSION = "1.5.0"
 
-# A single tank-level toast is shown when one or more fish cross this level.
-# It is intentionally below starvation (100) so the player has time to act.
-# Also the "Hungry" band's start in Fish.hunger_feeling's ladder below, and
-# gates the existing happiness penalty and the Forest-foraging trigger.
-HUNGER_CONTENT_THRESHOLD = 20.0
-HUNGER_A_LITTLE_HUNGRY_THRESHOLD = 35.0
+# Scale (updates.md): 0 = starving, 100 = full -- flipped from the
+# original 0=full/100=starving, which read backwards ("100% hungry" meaning
+# "just ate"). A single tank-level toast is shown when one or more fish drop
+# below this level. It is intentionally above starvation (0) so the player
+# has time to act. Also the "Hungry" band's start in Fish.hunger_feeling's
+# ladder below, and gates the existing happiness penalty and the
+# Forest-foraging trigger.
+HUNGER_LOW_ENERGY_THRESHOLD = 20.0
 HUNGER_WARNING_THRESHOLD = 50.0
-HUNGER_LOW_ENERGY_THRESHOLD = 80.0
+HUNGER_A_LITTLE_HUNGRY_THRESHOLD = 65.0
+HUNGER_CONTENT_THRESHOLD = 80.0
 # Hunger update (updates.md): starvation death is still real for a fish in
 # the main tank -- unchanged, the same tension as always. It's specifically
 # a fish away doing Forest/fishing-style biome mechanics that must never die
@@ -366,7 +369,7 @@ HAPPINESS_CLEAN_TANK_GAIN = 0.05  # per second, only while no food sits uneaten
 # Losses -- deliberately smaller than the gains above and few in number
 # ("nothing harsh," per the pitch); nothing here is a new mechanic, each
 # reuses an event this file already detects elsewhere.
-HAPPINESS_HUNGRY_PENALTY = 0.1  # per second, once past HUNGER_WARNING_THRESHOLD
+HAPPINESS_HUNGRY_PENALTY = 0.1  # per second, once below HUNGER_WARNING_THRESHOLD
 HAPPINESS_FRIEND_DIED_PENALTY = 15.0  # a bonded (Friend+) tankmate's departure
 HAPPINESS_PREDATOR_SCARE_PENALTY = 6.0  # a Shark closing in (_check_shark_scares)
 HAPPINESS_BAD_DREAM_PENALTY = 5.0  # a nightmare's scare phase
@@ -654,7 +657,7 @@ NIGHT_HUNGER_MULT = 0.4  # sleeping fish get hungry slower
 BASE_WATER_TEMP = 23.0  # degrees C, the comfortable midpoint (midday/midnight avg)
 WATER_TEMP_SWING = 3.0  # +/- degrees across the day/night cycle
 COLD_TEMP_THRESHOLD = 20.5  # below this, fish get sluggish (cold-blooded)
-HOT_TEMP_THRESHOLD = 25.5  # above this, fish get stressed (hunger climbs faster)
+HOT_TEMP_THRESHOLD = 25.5  # above this, fish get stressed (hunger drains faster)
 COLD_SPEED_MULT = 0.6
 HOT_HUNGER_MULT = 1.5
 
@@ -663,8 +666,9 @@ DAY_BG = (10, 24, 42)  # a lighter, sunlit-water blue
 
 # A fish this hungry refuses to sleep -- it stays up looking for food
 # instead of freezing in place while starving (the whole point of a
-# hard-stop sleep is cozy realism, not "goes rigid and can't eat").
-SLEEP_HUNGER_THRESHOLD = 60.0
+# hard-stop sleep is cozy realism, not "goes rigid and can't eat"). A fish
+# sleeps once its hunger is at or above this (well-fed enough).
+SLEEP_HUNGER_THRESHOLD = 40.0
 SLEEP_STEER_RATE = 1.0  # gentle settling-into-position blend while falling asleep
 SLEEP_CLOSE_DISTANCE = 3.0  # cells -- how close friends end up when both asleep
 SLEEP_FAR_DISTANCE = (
@@ -895,9 +899,9 @@ FOREST_UNLOCK_PRICE = 700
 # Real transit time (not an instant teleport) -- long enough to read as a
 # trip, short enough not to feel like a chore.
 FOREST_TRAVEL_SECONDS = 8.0
-# Rolled once per second per eligible fish once hunger crosses
+# Rolled once per second per eligible fish once hunger drops below
 # HUNGER_WARNING_THRESHOLD -- noticeable within the usual window hunger
-# sits above that line, never instant the moment it crosses.
+# sits below that line, never instant the moment it crosses.
 FOREST_TRAVEL_CHANCE_PER_CHECK = 0.05
 # Rolled once per second per fish already in the Forest with nothing to
 # carry -- faster than the travel-decision roll above, so a fish doesn't
@@ -997,3 +1001,73 @@ TIGER_SHARK_SPEED = 11.0
 # a real gap before the Forest is dangerous again, capping the total rate
 # regardless of how busy the Forest is.
 TIGER_SHARK_COOLDOWN_SECONDS = 90.0
+
+# Lost Adventure (ROADMAP.md) -- a rare, multi-day trip, deliberately kept as
+# its own separate daily roll (aquarium.py's _check_lost_adventure()) rather
+# than one more candidate in _maybe_trigger_random_event()'s pool, so it
+# doesn't compete with/dilute into that pool's own frequency. Checked once
+# per day rather than per-second like the Forest mechanics above, so the
+# chance reads as "per day", not "per check" -- 2% per day is roughly once
+# every 50 days for a single eligible fish, matching updates.md's "every few
+# in-game weeks" once a few fish are eligible at once.
+LOST_ADVENTURE_CHANCE_PER_DAY = 0.02
+LOST_ADVENTURE_DURATION_RANGE = (4, 8)  # days
+# "Currently healthy" from the brainstorm -- don't send an already-struggling
+# fish off on a multi-day trip it can't spare the health/hunger budget for.
+LOST_ADVENTURE_HEALTH_MIN = 80.0
+LOST_ADVENTURE_HUNGER_MIN = HUNGER_WARNING_THRESHOLD
+# Real, permanent Decoration fixtures in the Forest scene (see ui.py's
+# build_forest_scene(), TREE_HOUSE_ART/HIDDEN_CAVE_ART/DENSE_PLANTS_ART
+# below) -- one instance of each, built once at boot, never purchasable
+# (they're "already there in the forest", not Shop items), matching Castle/
+# Rock's capacity mechanism exactly. A lost fish that finds/flees to one
+# briefly reappears standing at it, then vanishes "inside" (see aquarium.py's
+# _start_shelter_visit()) -- an appear-and-vanish moment, not continuous
+# steering: nothing in the Forest has ever needed to move continuously
+# (a forest fish is otherwise a static prop between discrete state changes),
+# so this matches that existing idiom rather than inventing new physics.
+LOST_ADVENTURE_SHELTERS = ("Tree House", "Hidden Cave", "Dense Plants Thicket")
+LOST_ADVENTURE_SHELTER_CAPACITY = {
+    "Tree House": 2,
+    "Hidden Cave": 1,  # "a little place" -- just the one fish at a time
+    "Dense Plants Thicket": 3,
+}
+LOST_ADVENTURE_SHELTER_VISIT_SECONDS = 4.0
+
+TREE_HOUSE_ART = [
+    " ,^.  ",
+    "[___] ",
+    " | |  ",
+    " | |  ",
+]
+TREE_HOUSE_COLORS = ["green", "yellow", "bright_black", "bright_black"]
+
+HIDDEN_CAVE_ART = [
+    " .--. ",
+    "( ## )",
+    " '--' ",
+]
+HIDDEN_CAVE_COLORS = ["bright_black", "black", "bright_black"]
+
+DENSE_PLANTS_ART = [
+    ")(  )(",
+    "((  ))",
+    ")(  )(",
+]
+DENSE_PLANTS_COLORS = ["bright_green", "green", "bright_green"]
+# Plain flavor, no mechanical effect -- the "99% cozy" days between the
+# occasional shelter/wood/Bubbles/danger event.
+LOST_ADVENTURE_WANDER_LINES = (
+    "Went deeper into the forest.",
+    "Rested under a big leaf for a while.",
+    "Followed a stream for a while.",
+    "Watched some birds go by.",
+    "Napped in a patch of sunlight.",
+)
+# Danger always resolves safely (matches the Tiger Shark precedent above --
+# "nobody is ever caught") but still costs something, so a scary night isn't
+# entirely free.
+LOST_ADVENTURE_DANGER_HAPPINESS_LOSS = 5.0
+LOST_ADVENTURE_RETURN_HAPPINESS_GAIN = 15.0
+LOST_ADVENTURE_RETURN_RELATIONSHIP_SCORE = 12.0  # mirrors SAVED_FROM_SHARK_SCORE's weight
+

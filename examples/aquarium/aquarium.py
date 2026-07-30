@@ -188,6 +188,7 @@ from cozy_tui.events import Key, MouseClick, MouseMove
 from cozy_tui.motion import lerp_color
 from cozy_tui.widgets import Button, Dropdown, Label, ListItem
 
+from examples.aquarium.termquarium import adventure
 from examples.aquarium.termquarium.bubbles import BubbleField, _Bubble, rise_bubble
 from examples.aquarium.termquarium.console import (
     CheatConsole,
@@ -235,6 +236,7 @@ from examples.aquarium.termquarium.relationships import (
     random_personality,
     record_gave_up_home,
     record_pushed_from_home,
+    record_returned_from_adventure,
     record_saved_from_shark,
     record_slept_together,
     record_wake_up,
@@ -258,6 +260,7 @@ from examples.aquarium.termquarium.save import (
     list_saves,
     load_cloud_key,
     load_unlocked_achievements,
+    migrate_payload,
     read_save,
     rename_save,
     store_cloud_key,
@@ -411,8 +414,8 @@ def main() -> None:
     # `forest_button` is a real Button from the start too, just not
     # attached to `aquarium_widgets` (so not visible/clickable) until
     # _unlock_forest() adds it.
-    forest_widgets, forest_stats_label, forest_bounds = build_forest_scene(
-        app, lambda: _leave_forest(), lambda: paused["value"]
+    forest_widgets, forest_stats_label, forest_bounds, forest_shelters = (
+        build_forest_scene(app, lambda: _leave_forest(), lambda: paused["value"])
     )
     forest_button = Button(59, 2, "Enter Forest").on_click(lambda _w: _enter_forest())
     state = {
@@ -422,6 +425,7 @@ def main() -> None:
         "donations_today": 0,
         "welfare_enabled": True,
         "bubbles_enabled": True,
+        "auto_pause": True,
         "treats": {},
         "forest_unlocked": False,
         "shop_out_of_stock": [],
@@ -1094,6 +1098,10 @@ def main() -> None:
                         if f.dream is not None
                         else None
                     ),
+                    # Deliberate exception to "Forest travel state doesn't
+                    # persist" (see _load_snapshot's docstring) -- already
+                    # plain JSON-safe, no conversion needed.
+                    "lost_adventure": f.lost_adventure,
                 }
                 for f in fish
             ],
@@ -1146,6 +1154,7 @@ def main() -> None:
                 "donations_today": 0,
                 "welfare_enabled": True,
                 "bubbles_enabled": True,
+                "auto_pause": True,
                 "treats": {},
                 "forest_unlocked": False,
                 "shop_out_of_stock": [],
@@ -1166,7 +1175,13 @@ def main() -> None:
         in-progress dream *do* survive (see "day_fraction"/"dream" below) --
         these were a real gap (not a deliberate choice like the Forest one
         above), fixed alongside Coral Valley's own persistence requirement
-        (see ROADMAP.md)."""
+        (see ROADMAP.md). A fish's Lost Adventure (see "lost_adventure"
+        below) is a second, deliberate exception to the Forest-travel rule
+        above -- unlike a routine ~8-second forage trip, it's rare and
+        multi-day, so silently resetting it on load would be a real loss,
+        not a harmless simplification. A fish still mid-adventure is
+        reconstructed with biome="forest" and kept out of aquarium_widgets,
+        same as it would be mid-trip in a live session."""
         nonlocal session_start
         _clear_tank()
         state.update(snapshot.get("state", {}))
@@ -1292,8 +1307,13 @@ def main() -> None:
                 # genuinely gone; nothing to do about that retroactively.
                 f.full_memory_log = list(f.memory_log)
             f.birth_time = time.monotonic() - max(0.0, saved.get("age_seconds", 0.0))
+            saved_adventure = saved.get("lost_adventure")
+            f.lost_adventure = dict(saved_adventure) if saved_adventure else None
+            if f.lost_adventure is not None:
+                f.biome = "forest"
             fish.append(f)
-            app.add(f)
+            if f.lost_adventure is None:
+                app.add(f)
             _wire_tooltip(f)
         for f, saved in zip(fish, snapshot.get("fish", [])):
             favorite = saved.get("favorite")
@@ -1402,7 +1422,28 @@ def main() -> None:
         box = build_save_menu(app, cards, _load, _rename, _duplicate, _delete)
         app.open_overlay(box, close_on_click_outside=True)
 
+    def _enter_auto_pause() -> bool:
+        # Shared by every Auto-Pause-aware overlay (Pause, Shop, Settings,
+        # the Cheat Console): if Auto-Pause is on and the game isn't
+        # already paused, pause it and report that *this* call is the one
+        # responsible for resuming it. Reports False (does nothing) if
+        # Auto-Pause is off, or if the game was already paused for some
+        # other reason -- e.g. Settings opened from inside the Pause menu,
+        # which must not resume the game the moment Settings alone closes
+        # while Pause is still open underneath it.
+        if not state.get("auto_pause", True):
+            return False
+        if paused["value"]:
+            return False
+        paused["value"] = True
+        return True
+
+    def _exit_auto_pause(caused_pause: bool) -> None:
+        if caused_pause:
+            paused["value"] = False
+
     def _open_shop():
+        caused_pause = _enter_auto_pause()
         app.open_overlay(
             _build_shop(
                 app,
@@ -1414,6 +1455,7 @@ def main() -> None:
                 _unlock_forest,
             ),
             close_on_click_outside=True,
+            on_close=lambda _w: _exit_auto_pause(caused_pause),
         )
 
     def _unlock_forest() -> None:
@@ -1452,6 +1494,8 @@ def main() -> None:
         app.invalidate()
 
     def _open_settings():
+        caused_pause = _enter_auto_pause()
+
         def _setup_cloud():
             key = generate_cloud_key()
             cloud["key"] = key
@@ -1499,6 +1543,13 @@ def main() -> None:
 
             def _download(name: str) -> None:
                 def _on_downloaded(payload):
+                    # migrate_payload(): a save uploaded before some later
+                    # format change (e.g. the hunger-scale flip) would
+                    # otherwise land here un-migrated -- write_save() always
+                    # stamps the *current* SAVE_VERSION regardless of what
+                    # the downloaded payload actually contains, so this is
+                    # the one place that has to fix it up before that happens.
+                    migrate_payload(payload)
                     write_save(name, payload["aquarium"])
                     app.toast(f"Downloaded {name} -- find it in Load.", level="success")
 
@@ -1538,6 +1589,7 @@ def main() -> None:
                 _restore,
             ),
             close_on_click_outside=True,
+            on_close=lambda _w: _exit_auto_pause(caused_pause),
         )
 
     def _open_help():
@@ -1630,10 +1682,65 @@ def main() -> None:
         _log_memory(f, f"I've developed a new trait: {label} {emoji}")
         return f"Gave {f.display_name} the {label} trait."
 
+    def _console_set_happiness(f: Fish, amount: float) -> None:
+        f.happiness = max(HAPPINESS_MIN, min(HAPPINESS_MAX, amount))
+
+    def _console_set_speed(f: Fish, amount: float) -> None:
+        f.speed = max(MIN_SPEED, min(MAX_SPEED, amount))
+
+    def _console_set_personality(f: Fish, personality: str) -> None:
+        if personality not in PERSONALITIES:
+            names = ", ".join(PERSONALITIES)
+            raise ValueError(f"Unknown personality: {personality!r}. Try: {names}.")
+        f.personality = personality
+
+    def _console_force_relationship(a: Fish, b: Fish, score: float) -> None:
+        set_relationship(a, b, max(RELATIONSHIP_MIN, min(RELATIONSHIP_MAX, score)))
+
+    def _console_set_day(amount: int) -> None:
+        # A blunt jump of the counter only -- unlike advance_day(), this
+        # doesn't run any of the real daily-tick side effects (breeding,
+        # the Shop's rotation, random events); use advance_day() instead
+        # when those matter.
+        day_count["n"] = max(0, int(amount))
+
+    def _console_toggle_forest(unlocked: bool) -> None:
+        if unlocked:
+            if not state.get("forest_unlocked"):
+                _unlock_forest()
+        else:
+            state["forest_unlocked"] = False
+            if forest_button in aquarium_widgets:
+                aquarium_widgets.remove(forest_button)
+
+    def _console_spawn_decoration(kind: str) -> str:
+        item = next(
+            (d for d in DECORATION_SHOP_ITEMS if d.kind.lower() == str(kind).lower()),
+            None,
+        )
+        if item is None:
+            names = ", ".join(d.kind for d in DECORATION_SHOP_ITEMS)
+            raise ValueError(f"Unknown decoration: {kind!r}. Try one of: {names}.")
+        _add_decoration(item)
+        return item.kind
+
+    def _console_remove_fish(f: Fish) -> None:
+        # A blunt removal -- no toast/memory flavor, matching set_health/
+        # set_hunger's bare style, not the natural-death/starvation paths.
+        if f in fish:
+            fish.remove(f)
+        if f in aquarium_widgets:
+            aquarium_widgets.remove(f)
+        if f in forest_widgets:
+            forest_widgets.remove(f)
+        clear_relationships(f, fish)
+        _refresh_stats()
+
     def _open_console():
         # A dev/testing tool (backtick key) -- built fresh each time so its
         # command registry always closes over the *current* fish/state,
         # never a stale snapshot from an earlier "New Aquarium".
+        caused_pause = _enter_auto_pause()
         commands = build_console_commands(
             state=state,
             fish=fish,
@@ -1649,11 +1756,27 @@ def main() -> None:
             give_dream=_give_dream,
             grant_trait=_console_grant_trait,
             advance_day=_daily_tick,
+            start_lost_adventure=lambda f, duration=None: _begin_lost_adventure(
+                f, duration
+            ),
+            advance_adventure_day=_advance_lost_adventure,
+            set_happiness=_console_set_happiness,
+            set_speed=_console_set_speed,
+            set_personality=_console_set_personality,
+            force_relationship=_console_force_relationship,
+            set_day=_console_set_day,
+            toggle_forest=_console_toggle_forest,
+            spawn_decoration=_console_spawn_decoration,
+            remove_fish=_console_remove_fish,
         )
         console = CheatConsole(
             lambda text: run_console_command(commands, text), style=app.style
         )
-        app.open_overlay(console, close_on_click_outside=True)
+        app.open_overlay(
+            console,
+            close_on_click_outside=True,
+            on_close=lambda _w: _exit_auto_pause(caused_pause),
+        )
 
     def _open_start_menu(on_resume=None):
         # `on_resume` is only ever passed by _return_to_main_menu() (a real
@@ -1705,10 +1828,14 @@ def main() -> None:
 
     def _open_pause_menu():
         # Esc used to instantly quit the whole app -- a single accidental
-        # keypress destroying an unsaved session. Now it pauses instead:
-        # every Fish/BubbleField freezes solid (see their own `paused`
-        # checks), and Quit lives behind this menu's own confirmation.
-        paused["value"] = True
+        # keypress destroying an unsaved session. Now it opens this menu
+        # instead, and (Auto-Pause setting permitting -- see
+        # _enter_auto_pause()) every Fish/BubbleField freezes solid (see
+        # their own `paused` checks) while it's open; Quit lives behind
+        # this menu's own confirmation either way. With Auto-Pause off,
+        # this is just a menu screen -- the tank keeps running behind it,
+        # same as Shop/Settings/the Cheat Console do in that mode.
+        caused_pause = _enter_auto_pause()
         box = None
 
         def _resume():
@@ -1726,7 +1853,7 @@ def main() -> None:
         app.open_overlay(
             box,
             close_on_click_outside=True,
-            on_close=lambda _w: paused.update(value=False),
+            on_close=lambda _w: _exit_auto_pause(caused_pause),
         )
 
     app.add(Button(2, 2, "Open Shop").on_click(lambda _w: _open_shop()))
@@ -1865,7 +1992,7 @@ def main() -> None:
             environment["storm"] = True
             app.after(STORM_DURATION_SECONDS, _end_storm)
             for f in fish:
-                f.hunger = min(100.0, f.hunger + STORM_HUNGER_BUMP)
+                f.hunger = max(0.0, f.hunger - STORM_HUNGER_BUMP)
                 # A fish whose favorite spot is a real container gets the
                 # cozier line -- approximate (favorite_decoration, not
                 # tonight's actual sleeping_in, since this fires once per
@@ -2241,7 +2368,7 @@ def main() -> None:
             joined_friend = None
             goes = False
             if (
-                f.hunger >= HUNGER_WARNING_THRESHOLD
+                f.hunger <= HUNGER_WARNING_THRESHOLD
                 and not foods
                 and not (f.personality == "Shy" and FOREST_SHY_OPT_OUT)
             ):
@@ -2516,6 +2643,135 @@ def main() -> None:
             forest_wood.append(item)
             forest_widgets.append(item)
 
+    def _begin_lost_adventure(f: Fish, duration: int | None = None) -> None:
+        # Shared by the real daily trigger (_check_lost_adventure) and the
+        # Cheat Console's start_lost_adventure -- one place actually starts
+        # the trip, so a forced test run can't drift from what really
+        # happens in play. Same two calls _check_foraging's own departure
+        # branch makes (_release_home then drop from aquarium_widgets),
+        # plus biome="forest" so _in_tank() correctly excludes this fish
+        # from every ordinary tank-only mechanic while it's away.
+        _release_home(f)
+        if f in aquarium_widgets:
+            aquarium_widgets.remove(f)
+        f.biome = "forest"
+        f.lost_adventure = adventure.new_state(duration)
+        _log_memory(f, "Wandered off exploring and lost track of the way back.")
+        app.toast(
+            f"{f.display_name} has gone missing in the forest!",
+            level="warning",
+            icon="🌲",
+            duration=6.0,
+        )
+
+    def _check_lost_adventure() -> None:
+        # A rare, multi-day trip -- kept as its own separate daily roll
+        # rather than one more candidate in _maybe_trigger_random_event()'s
+        # pool, so it doesn't compete with/dilute into that pool's own
+        # frequency (see LOST_ADVENTURE_CHANCE_PER_DAY's comment).
+        if not state.get("forest_unlocked"):
+            return
+        if random.random() >= LOST_ADVENTURE_CHANCE_PER_DAY:
+            return
+        candidates = [
+            f
+            for f in fish
+            if _in_tank(f)
+            and not f.is_predator
+            and f.lost_adventure is None
+            and f.health >= LOST_ADVENTURE_HEALTH_MIN
+            and f.hunger >= LOST_ADVENTURE_HUNGER_MIN
+        ]
+        if not candidates:
+            return
+        _begin_lost_adventure(random.choice(candidates))
+
+    def _start_shelter_visit(f: Fish, shelter_name: str) -> None:
+        # Appear-and-vanish, matching how every other Forest fish already
+        # behaves (nothing there steers continuously -- see fish.py's
+        # draw(), which does nothing but paint a forest-biome fish exactly
+        # where it's put). No new physics: just stand the fish at the real
+        # Decoration for a few seconds, then _check_lost_adventure_
+        # shelter_visits() below removes it again.
+        shelter = forest_shelters.get(shelter_name)
+        if shelter is None:
+            return
+        f.fx, f.fy = shelter.fx, shelter.fy + 1
+        f.x, f.y = round(f.fx), round(f.fy)
+        if f not in forest_widgets:
+            forest_widgets.append(f)
+        f._shelter_visit_until = time.monotonic() + LOST_ADVENTURE_SHELTER_VISIT_SECONDS
+
+    def _check_lost_adventure_shelter_visits() -> None:
+        now = time.monotonic()
+        for f in fish:
+            if f._shelter_visit_until is not None and now >= f._shelter_visit_until:
+                f._shelter_visit_until = None
+                if f in forest_widgets:
+                    forest_widgets.remove(f)
+
+    def _resolve_lost_adventure_event(f: Fish, adv: dict) -> None:
+        # The actual decision (which event, and its effect on `adv`) is
+        # pure logic in termquarium/adventure.py -- this just applies the
+        # resulting effects to the live Fish/memory log.
+        event = adventure.pick_event(adv)
+        effects = adventure.apply_event(adv, event)
+        if effects["feed"]:
+            f.hunger, f.health = feed(f.hunger, f.health)
+        if effects["happiness_delta"]:
+            f.happiness = adjust_happiness(f.happiness, effects["happiness_delta"])
+        _log_memory(f, effects["memory"])
+        if event in ("find_shelter", "danger"):
+            _start_shelter_visit(f, adv["shelter"])
+
+    def _return_from_lost_adventure(f: Fish) -> None:
+        duration = f.lost_adventure["duration"]
+        f.lost_adventure = None
+        f.biome = "aquarium"
+        # In practice a shelter visit (a few seconds) has always long since
+        # ended before the next daily tick, but clear it defensively so a
+        # returned fish is never left lingering visibly in forest_widgets.
+        f._shelter_visit_until = None
+        if f in forest_widgets:
+            forest_widgets.remove(f)
+        x0, y0, x1, y1 = bounds
+        f.fx = random.uniform(x0, x1)
+        f.fy = random.uniform(y0, y1)
+        f.x, f.y = round(f.fx), round(f.fy)
+        if f not in aquarium_widgets:
+            aquarium_widgets.append(f)
+        _log_memory(f, f"Made it back home after {duration} days lost in the forest!")
+        f.happiness = adjust_happiness(
+            f.happiness, LOST_ADVENTURE_RETURN_HAPPINESS_GAIN
+        )
+        app.toast(
+            f"{f.display_name} made it back home safe!",
+            level="success",
+            icon="🎉",
+            duration=6.0,
+        )
+        # Bonded tankmates get their own diary line + a real relationship
+        # bump -- mirrors _log_departure's "notify bonded tankmates" loop
+        # shape, the happy-ending counterpart to it.
+        for other in fish:
+            if other is not f and f in other.relationships:
+                _log_memory(other, f"{f.display_name} is back! I missed them.")
+                record_returned_from_adventure(f, other)
+
+    def _advance_lost_adventure(f: Fish) -> None:
+        adv = f.lost_adventure
+        adv["day"] += 1
+        if adv["day"] >= adv["duration"]:
+            _return_from_lost_adventure(f)
+            return
+        if adv["awaiting_bubbles_trade"]:
+            adv["awaiting_bubbles_trade"] = False
+            adv["has_wood"] = False
+            f.hunger, f.health = feed(f.hunger, f.health)
+            _log_memory(f, adventure.BUBBLES_RESOLVED_LINE)
+            return
+        _resolve_lost_adventure_event(f, adv)
+
     def _flee_from_tiger_shark(forest_fish, now: float) -> None:
         # Everyone in the Forest bolts for home the instant a Tiger Shark is
         # around -- dropping any Wood they were carrying right where they
@@ -2597,7 +2853,16 @@ def main() -> None:
             present = [
                 f
                 for f in fish
-                if f.biome == "forest" and f._travel_until is None and not f.is_predator
+                if f.biome == "forest"
+                and f._travel_until is None
+                and not f.is_predator
+                # Excludes a Lost Adventure fish briefly visible for its own
+                # shelter-visit moment (see _start_shelter_visit()) -- it
+                # isn't part of the ordinary foraging population, and
+                # fleeing it through _flee_from_tiger_shark's travel-home
+                # path would desync it from its still-active lost_adventure
+                # state.
+                and f.lost_adventure is None
             ]
             if not present:
                 return
@@ -2632,7 +2897,10 @@ def main() -> None:
         present = [
             f
             for f in fish
-            if f.biome == "forest" and f._travel_until is None and not f.is_predator
+            if f.biome == "forest"
+            and f._travel_until is None
+            and not f.is_predator
+            and f.lost_adventure is None
         ]
         if present:
             _flee_from_tiger_shark(present, now)
@@ -2676,7 +2944,7 @@ def main() -> None:
             f._sparkle_until = 0.0
             f._following_until = 0.0
             asleep = (
-                environment["phase"] == "Night" and f.hunger <= SLEEP_HUNGER_THRESHOLD
+                environment["phase"] == "Night" and f.hunger >= SLEEP_HUNGER_THRESHOLD
             )
             if asleep:
                 _log_memory(f, "Slept through a shark getting close. Impressive.")
@@ -2866,7 +3134,7 @@ def main() -> None:
             now - serious_event_at["t"] < HAPPINESS_SERIOUS_EVENT_SUPPRESS_SECONDS
         )
         for f in fish:
-            if f.hunger > HUNGER_WARNING_THRESHOLD:
+            if f.hunger < HUNGER_WARNING_THRESHOLD:
                 f.happiness = adjust_happiness(f.happiness, -HAPPINESS_HUNGRY_PENALTY)
             if comfortable_temp:
                 f.happiness = adjust_happiness(f.happiness, HAPPINESS_TEMP_COMFORT_GAIN)
@@ -3036,7 +3304,7 @@ def main() -> None:
             if (
                 not f.is_predator
                 and _in_tank(f)
-                and f.hunger <= SLEEP_HUNGER_THRESHOLD
+                and f.hunger >= SLEEP_HUNGER_THRESHOLD
                 and random.random() < dream_chance
             ):
                 f.dream = choose_dream(f)
@@ -3108,8 +3376,8 @@ def main() -> None:
             # fish actually in the main tank, unchanged -- but a fish away
             # doing Forest/fishing-style biome mechanics (biome == "forest",
             # or mid-travel there either direction) is somewhere the player
-            # can't see or feed it, so hunger still climbs and caps at 100
-            # ("Low energy" -- see Fish.hunger_feeling), it just never
+            # can't see or feed it, so hunger still drains and bottoms out
+            # at 0 ("Low energy" -- see Fish.hunger_feeling), it just never
             # starts draining health while away. This is the fix for "I was
             # gone fishing for 3 minutes and Steve just died."
             away = f.biome == "forest" or f._travel_until is not None
@@ -3139,7 +3407,7 @@ def main() -> None:
         if should_warn_hungry(hungry_levels, hungry_warning_active["value"]):
             hungry_warning_active["value"] = True
             hungry_names = [
-                f.display_name for f in fish if f.hunger > HUNGER_WARNING_THRESHOLD
+                f.display_name for f in fish if f.hunger < HUNGER_WARNING_THRESHOLD
             ]
             message = (
                 f"{hungry_names[0]} is getting hungry!"
@@ -3147,9 +3415,9 @@ def main() -> None:
                 else f"{len(hungry_names)} fish are getting hungry!"
             )
             app.toast(message, level="warning", icon="⚠️", duration=5.0)
-        elif not any(level > HUNGER_WARNING_THRESHOLD for level in hungry_levels):
-            # Back under the threshold -- rearm the one-shot warning so it
-            # can fire again next time hunger climbs, instead of staying
+        elif not any(level < HUNGER_WARNING_THRESHOLD for level in hungry_levels):
+            # Back over the threshold -- rearm the one-shot warning so it
+            # can fire again next time hunger drains, instead of staying
             # permanently latched from the first warning of the session.
             hungry_warning_active["value"] = False
         _check_emergency_welfare()
@@ -3161,6 +3429,7 @@ def main() -> None:
         _process_happiness()
         _check_foraging()
         _check_forest_danger()
+        _check_lost_adventure_shelter_visits()
 
         # Visitor donations pay out the moment they happen instead of being
         # bundled into the once-a-day summary -- see roll_visitor_donation()
@@ -3311,6 +3580,13 @@ def main() -> None:
         _check_natural_deaths()
         _try_breeding()
         _maybe_trigger_random_event()
+        # Advance any adventure already in progress before possibly starting
+        # a new one -- a fish that goes missing today (day=0) shouldn't also
+        # advance today; it starts progressing tomorrow.
+        for f in fish:
+            if f.lost_adventure is not None:
+                _advance_lost_adventure(f)
+        _check_lost_adventure()
         attractiveness = compute_attractiveness(fish, decorations, foods)
         # Donations were already paid out (and toasted) second by second in
         # _per_second_tick as they happened -- only ticket sales and the

@@ -249,7 +249,7 @@ class Fish(Widget):
         self._just_resisted_wake_until = None
         self.speed = random.uniform(MIN_SPEED, MAX_SPEED)
         self.vx, self.vy = random_velocity(self._effective_speed())
-        self.hunger = 0.0  # 0 = full, 100 = starving
+        self.hunger = 100.0  # 0 = starving, 100 = full
         self.health = 100.0
         # Update 1: a "personality amplifier," not a resource to babysit --
         # see constants.py's Happiness block for the full philosophy. The
@@ -388,6 +388,21 @@ class Fish(Widget):
         self._travel_until = None
         self._travel_target = None
         self.carrying = None
+        # Lost Adventure (ROADMAP.md): None, or a dict while a fish is off
+        # on a rare multi-day trip -- {"day", "duration", "shelter",
+        # "has_wood", "awaiting_bubbles_trade"}. Unlike the routine forage
+        # state above, this one *is* persisted across save/load (see
+        # aquarium.py's _snapshot()/_load_snapshot()) -- a deliberate
+        # exception, since a multi-day adventure silently vanishing on
+        # reload would be a real loss, not the same kind of routine trip
+        # the "don't persist Forest travel state" precedent was written for.
+        self.lost_adventure = None
+        # Set only for the few seconds a lost fish is briefly made visible
+        # again, standing at a shelter it just found/fled to (see
+        # aquarium.py's _start_shelter_visit()/_check_lost_adventure_
+        # shelter_visits()) -- an appear-and-vanish moment, not persisted
+        # and not part of Fish.lost_adventure's own saved state.
+        self._shelter_visit_until = None
         # Set on Forest arrival, cleared on departure -- gates how soon a
         # fish is allowed to roll for a successful forage (see
         # FOREST_MIN_DWELL_SECONDS) so it's reliably visible in the scene
@@ -453,7 +468,7 @@ class Fish(Widget):
             not self.is_predator  # a Shark stays active -- and hunting -- all night
             and self.environment is not None
             and (self.environment.get("phase") == "Night" or self._holding_asleep)
-            and self.hunger <= SLEEP_HUNGER_THRESHOLD
+            and self.hunger >= SLEEP_HUNGER_THRESHOLD
         )
 
     @property
@@ -476,17 +491,18 @@ class Fish(Widget):
     def hunger_feeling(self) -> str:
         """ "Full" / "Content" / "A little hungry" / "Hungry" / "Low energy"
         -- the band `self.hunger` falls into (Hunger update, updates.md).
-        "Low energy" is hunger's own ceiling, not a step toward anything
+        "Low energy" is hunger's own floor, not a step toward anything
         worse: staying hungry a while is a mood to notice and fix by
         feeding, never a countdown. Mirrors Fish.feeling's own
-        banded-property shape exactly."""
-        if self.hunger < HUNGER_CONTENT_THRESHOLD:
+        banded-property shape exactly. Scale is 0=starving/100=full, so
+        this ladder reads top-down from the fullest band."""
+        if self.hunger >= HUNGER_CONTENT_THRESHOLD:
             return "Full"
-        if self.hunger < HUNGER_A_LITTLE_HUNGRY_THRESHOLD:
+        if self.hunger >= HUNGER_A_LITTLE_HUNGRY_THRESHOLD:
             return "Content"
-        if self.hunger < HUNGER_WARNING_THRESHOLD:
+        if self.hunger >= HUNGER_WARNING_THRESHOLD:
             return "A little hungry"
-        if self.hunger < HUNGER_LOW_ENERGY_THRESHOLD:
+        if self.hunger >= HUNGER_LOW_ENERGY_THRESHOLD:
             return "Hungry"
         return "Low energy"
 
@@ -1512,10 +1528,12 @@ def occupants_of(decoration, fish_list) -> list:
 
 def describe_fish(f: Fish) -> str:
     """One-line tooltip text: name, species, growth stage, personality,
-    hunger, and (if any) a short relationship hint -- the full detail
+    fullness, and (if any) a short relationship hint -- the full detail
     (state + recent reasons) lives in the Inspector, this is just enough to
     notice a bond exists. Never shows the raw score (Step 8), only the
-    state's own emoji (relationship_state())."""
+    state's own emoji (relationship_state()). Labeled "Fullness", not
+    "Hunger" -- f.hunger is 0=starving/100=full, so a literal "Hunger: 90%"
+    label would read backwards (90% sounding like "very hungry")."""
     relationship = ""
     if f.friend is not None:
         _label, emoji = relationship_state(f.relationships[f.friend].score)
@@ -1525,5 +1543,5 @@ def describe_fish(f: Fish) -> str:
         relationship = f" - {emoji} {f.rival.display_name}"
     return (
         f"{f.display_name} ({f.species_name}, {f.growth_stage}) - "
-        f"{f.personality} - Hunger {f.hunger:.0f}%{relationship}"
+        f"{f.personality} - Fullness {f.hunger:.0f}%{relationship}"
     )

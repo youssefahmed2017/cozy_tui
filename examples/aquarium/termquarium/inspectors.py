@@ -87,7 +87,7 @@ def _build_inspector(
     app, f: Fish, on_rename, on_sell, treats, on_feed_treat, on_view_history=None
 ) -> Box:
     """A read-only stat card for one Fish (name/species/age+growth/health/
-    hunger/personality/favorite spot/favorite foods/sell value) with Rename
+    fullness/personality/favorite spot/favorite foods/sell value) with Rename
     and Sell buttons. A snapshot at open-time, not live-refreshing --
     matching the Shop's own money label, which likewise only updates on
     explicit actions.
@@ -125,7 +125,7 @@ def _build_inspector(
         Label(
             2,
             4,
-            f"Hunger: {f.hunger:.0f}% {_HUNGER_EMOJI[f.hunger_feeling]} {f.hunger_feeling}",
+            f"Fullness: {f.hunger:.0f}% {_HUNGER_EMOJI[f.hunger_feeling]} {f.hunger_feeling}",
         )
     )
     # Update 1: happiness as a "personality amplifier," shown as a bar (not
@@ -464,14 +464,17 @@ def _build_settings(
     on_forget_key,
     on_restore,
 ) -> Box:
-    """Gameplay (Emergency Aquarium Welfare), Display (ambient bubbles), and
-    Cloud Saves. Checked state lives directly in `state`, the same dict
-    everything else in this economy reads/writes. `cloud_key` is a snapshot
-    at open-time (None if cloud saves has never been set up on this
-    machine); the four callbacks are aquarium.py's actual network/storage
-    actions -- this function only builds the box and closes itself before
-    handing off, so it doesn't need to know how any of them work."""
-    box = Box(0, 0, "440x340", title="Settings", border="rounded", style=app.style)
+    """Gameplay (Emergency Aquarium Welfare, Auto-Pause), Display (ambient
+    bubbles), and Cloud Saves. Checked state lives directly in `state`, the
+    same dict everything else in this economy reads/writes -- Auto-Pause is
+    read live by aquarium.py's _enter_auto_pause(), so toggling it here
+    takes effect the next time Pause/Shop/Settings/the Cheat Console opens,
+    not retroactively on whichever of them is already open. `cloud_key` is a
+    snapshot at open-time (None if cloud saves has never been set up on
+    this machine); the four callbacks are aquarium.py's actual network/
+    storage actions -- this function only builds the box and closes itself
+    before handing off, so it doesn't need to know how any of them work."""
+    box = Box(0, 0, "440x400", title="Settings", border="rounded", style=app.style)
     box.add(Label(2, 1, "Gameplay", Style(styles=["bold"])))
 
     welfare_cb = Checkbox(
@@ -484,18 +487,25 @@ def _build_settings(
     box.add(Label(2, 6, "no fish) gets a small fresh start instead of", MUTED))
     box.add(Label(2, 7, "staying empty forever. Turn it off for hardcore mode.", MUTED))
 
-    box.add(Label(2, 9, "Display", Style(styles=["bold"])))
+    auto_pause_cb = Checkbox(2, 9, "Auto-Pause", checked=state.get("auto_pause", True))
+    auto_pause_cb.on_change(lambda checked: state.update(auto_pause=checked))
+    box.add(auto_pause_cb)
+
+    box.add(Label(2, 11, "Pause, Shop, Settings, and the Cheat Console freeze", MUTED))
+    box.add(Label(2, 12, "the tank while open. Off, it keeps running behind them.", MUTED))
+
+    box.add(Label(2, 14, "Display", Style(styles=["bold"])))
 
     bubbles_cb = Checkbox(
-        2, 11, "Ambient Bubbles", checked=state.get("bubbles_enabled", True)
+        2, 16, "Ambient Bubbles", checked=state.get("bubbles_enabled", True)
     )
     bubbles_cb.on_change(lambda checked: state.update(bubbles_enabled=checked))
     box.add(bubbles_cb)
 
-    box.add(Label(2, 13, "Purely cosmetic rising bubbles. Turn off if you", MUTED))
-    box.add(Label(2, 14, "find them distracting.", MUTED))
+    box.add(Label(2, 18, "Purely cosmetic rising bubbles. Turn off if you", MUTED))
+    box.add(Label(2, 19, "find them distracting.", MUTED))
 
-    box.add(Label(2, 16, "Cloud Saves", Style(styles=["bold"])))
+    box.add(Label(2, 21, "Cloud Saves", Style(styles=["bold"])))
 
     def _run_and_close(callback):
         # Every cloud action needs this Settings box gone before it runs --
@@ -509,25 +519,25 @@ def _build_settings(
         return _handler
 
     if cloud_key:
-        box.add(Label(2, 18, f"Key: {cloud_key}", MUTED))
+        box.add(Label(2, 23, f"Key: {cloud_key}", MUTED))
 
         def _copy(_w=None):
             clipboard.copy(cloud_key)
             app.toast("Cloud Key copied.", level="success")
 
-        box.add(Button(2, 20, "Copy Key").on_click(_copy))
+        box.add(Button(2, 25, "Copy Key").on_click(_copy))
         box.add(
-            Button(16, 20, "Use a Different Key").on_click(
+            Button(16, 25, "Use a Different Key").on_click(
                 _run_and_close(on_change_key)
             )
         )
-        box.add(Button(2, 22, "Restore My Saves").on_click(_run_and_close(on_restore)))
-        box.add(Button(22, 22, "Forget Key").on_click(_run_and_close(on_forget_key)))
+        box.add(Button(2, 27, "Restore My Saves").on_click(_run_and_close(on_restore)))
+        box.add(Button(22, 27, "Forget Key").on_click(_run_and_close(on_forget_key)))
     else:
-        box.add(Label(2, 18, "Not set up yet -- saves stay local only.", MUTED))
+        box.add(Label(2, 23, "Not set up yet -- saves stay local only.", MUTED))
         box.add(
-            Button(2, 20, "Set Up Cloud Saves").on_click(_run_and_close(on_setup_cloud))
+            Button(2, 25, "Set Up Cloud Saves").on_click(_run_and_close(on_setup_cloud))
         )
 
-    box.add(Button(2, 24, "Close").on_click(lambda _w: app.close_overlay(box)))
+    box.add(Button(2, 29, "Close").on_click(lambda _w: app.close_overlay(box)))
     return box

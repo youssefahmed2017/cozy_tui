@@ -25,31 +25,36 @@ from .constants import (
 def should_warn_hungry(hunger_levels, warning_active: bool) -> bool:
     """Whether this tick should raise the one-shot hunger notification."""
     return not warning_active and any(
-        level > HUNGER_WARNING_THRESHOLD for level in hunger_levels
+        level < HUNGER_WARNING_THRESHOLD for level in hunger_levels
     )
 
 
 def decay_hunger(
     hunger, health, hunger_step=HUNGER_STEP, starve_loss=STARVE_HEALTH_LOSS
 ):
-    """One tick of a fish going hungrier; once hunger maxes out, health
+    """One tick of a fish going hungrier; once hunger bottoms out, health
     starts draining too -- unchanged, still real, for a fish in the main
     tank. `starve_loss=0.0` is how aquarium.py's _per_second_tick() exempts
     a fish that's currently away doing Forest/fishing-style biome mechanics
-    (see constants.py's Hunger update comment): hunger still climbs and
-    caps at 100 ("Low energy"), it just never starts draining health while
-    the player has no way to see or feed that fish. Called on its own
+    (see constants.py's Hunger update comment): hunger still drains and
+    bottoms out at 0 ("Low energy"), it just never starts draining health
+    while the player has no way to see or feed that fish. Called on its own
     periodic clock (app.every), not every frame -- hunger/health are a slow
-    background process, unlike the continuous position update."""
-    hunger = min(100.0, hunger + hunger_step)
-    if hunger >= 100.0:
+    background process, unlike the continuous position update.
+
+    Scale (updates.md): 0 = starving, 100 = full -- flipped from the
+    original 0=full/100=starving, which read backwards ("100% hungry"
+    meaning "just ate")."""
+    hunger = max(0.0, hunger - hunger_step)
+    if hunger <= 0.0:
         health = max(0.0, health - starve_loss)
     return hunger, health
 
 
 def feed(hunger, health, relief=HUNGER_RELIEF, gain=HEALTH_GAIN):
-    """One bite of food: relieve hunger and restore a bit of health."""
-    return max(0.0, hunger - relief), min(100.0, health + gain)
+    """One bite of food: relieve hunger (push it back up toward full) and
+    restore a bit of health."""
+    return min(100.0, hunger + relief), min(100.0, health + gain)
 
 
 def adjust_happiness(happiness: float, delta: float) -> float:
@@ -115,3 +120,4 @@ def should_grant_welfare(money: int, food: int, fish_count: int, enabled: bool) 
     """Emergency Aquarium Welfare's trigger condition: totally bankrupt
     (money = food = fish = 0) and the player hasn't opted out in Settings."""
     return enabled and money == 0 and food == 0 and fish_count == 0
+

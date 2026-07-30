@@ -885,244 +885,6 @@ Bubbles showed Finn the Castle.
 
 That's the kind of thing that makes players think, *"I remember catching **that** fish."* The fishing trip becomes the beginning of that fish's story, not the end of a loot roll.
 
-
----
-
-## 🧬 Personality System 2.0
-
-Instead of:
-
-```python
-fish.personality = "friendly"
-```
-
-make it:
-
-```python
-fish.personalities = {
-    "friendly",
-    "dreamer",
-    "food_lover"
-}
-```
-
-or:
-
-```python
-fish.traits = [
-    Friendly(),
-    Dreamer(),
-    FoodLover()
-]
-```
-
-Now adding new ones is easy.
-
----
-
-# New personalities
-
-## 🍤 Food Lover
-
-Effects:
-
-* gets happier when fed
-* remembers favorite food
-* may approach food faster
-
-Example:
-
-```text
-Steve smelled shrimp...
-
-Steve:
-🥺 "SHRIMP!!!"
-```
-
-😂
-
----
-
-## 🌙 Dreamer
-
-Effects:
-
-* dreams more often
-* has more memory dreams
-* thinks about past events
-
-This one fits Steve SO much because he already has dream lore.
-
----
-
-## ⚡ Energetic
-
-Effects:
-
-* swims more
-* explores more
-* gets bored if nothing happens
-
-Example:
-
-```text
-Normal fish:
-"I will stay here."
-
-Energetic fish:
-"I HAVE EXPLORED THE ENTIRE TANK."
-```
-
----
-
-## 🏃 Fast Swimmer
-
-Effects:
-
-* moves faster
-* reaches food faster
-* maybe escapes scary events faster
-
----
-
-## 😈 Mischievous
-
-BRO this one has huge potential.
-
-Effects:
-
-* steals food from others
-* annoys other fish
-* creates funny events
-
-Example:
-
-```text
-Kitty:
-"Where did my food go?"
-
-Steve:
-🥺
-
-Mischievous fish:
-😈
-```
-
----
-
-## 🗺 Explorer (expanded)
-
-This one is PERFECT for aquarium expansion.
-
-Effects:
-
-* visits new areas first
-* discovers hidden things
-* finds rare items
-
----
-
-# The REALLY interesting part:
-
-## Personality interactions
-
-This is where it gets crazy.
-
-A fish isn't just:
-
-```text
-Explorer
-```
-
-It's:
-
-```text
-Explorer + Dreamer
-```
-
-Meaning:
-
-> "A fish that explores the world but spends nights dreaming about its discoveries."
-
----
-
-Examples:
-
-### 🍤 Food Lover + 😈 Mischievous
-
-```text
-A fish that LOVES food...
-
-but also steals everyone else's food.
-```
-
-💀
-
----
-
-### 🌙 Dreamer + 🗺 Explorer
-
-```text
-A fish that dreams about places it has never visited.
-```
-
-BRO that is literally a story generator.
-
----
-
-### ❤️ Friendly + 😈 Mischievous
-
-```text
-A fish that loves friends...
-
-but constantly plays pranks on them.
-```
-
----
-
-### ⚡ Energetic + 🌙 Dreamer
-
-```text
-Very active during the day.
-Very imaginative at night.
-```
-
----
-
-# Even better: personality growth
-
-Don't make all traits permanent.
-
-A fish can develop.
-
-Example:
-
-Day 1:
-
-```text
-Steve:
-🥺 Shy
-```
-
-After meeting Kitty:
-
-```text
-Steve:
-❤️ Friendly
-🥺 Shy
-```
-
-After exploring:
-
-```text
-Steve:
-❤️ Friendly
-🌙 Dreamer
-🗺 Explorer
-```
-
-The fish's life literally changes its personality.
-
 ---
 
 # 🏗 TermQuarium Expansion Update Plan
@@ -1614,409 +1376,195 @@ It's:
 
 That's the kind of thing that makes a virtual world feel alive. 🥺🐟
 
-# 🌲 Lost Adventure System Plan (ONLY happens when the forest is unlocked)
-
-## Phase 1 — Core State System
-
-First create a new fish adventure state.
-
-Something like:
-
-```text id="loststate"
-Fish:
-  normal
-    |
-    v
-  exploring
-    |
-    v
-  lost_adventure
-    |
-    v
-  returning
-    |
-    v
-  home
+# Visitor Expansion Playthrough
+**Day 1 — First visit:**
 ```
+🎫 New Visitor!
 
-New data:
+Maya arrived.
 
-```python
-LostAdventureState:
-    fish_id
-    start_day
-    current_day
-    location
-    shelter
-    journey_events
-    target_return_day
-```
+*Maya watches the tank*
+*Steve swims by*
+*Maya watches Steve for a while*
+*Kitty swims by*
+*Maya watches Steve again*
 
-Example:
-
-```text id="stateexample"
-Steve:
-
-Status:
-Lost Adventure
-
-Day:
-4 / 8
-
-Location:
-Deep Forest
-
-Shelter:
-Tree House
-
-Memories:
-- Found shelter
-- Escaped danger
+Maya left.
+💰 Maya donated $5.
 ```
 
 ---
 
-# Phase 2 — Trigger System
-
-Make it rare.
-
-Example:
-
-```text id="trigger"
-Every few in-game weeks:
-
-Roll:
-2% chance
-
-Requirements:
-✓ Fish can explore
-✓ Forest unlocked
-✓ Fish is currently healthy
-✓ Not already on adventure
+**Day 4:**
 ```
+🎫 Returning Visitor! (Visit #2)
 
-Important:
+Maya is back.
 
-No spam.
+*immediately looks for Steve*
+*Steve is sleeping*
 
-A player should think:
+💬 "oh... he's asleep"
 
-```text id="playerreaction"
-"WAIT THIS HAPPENED??"
-```
-
-not:
-
-```text id="playerreaction2"
-oh another lost fish event 💀
+Maya watched Kitty instead.
+Maya left early.
+💰 Maya donated $2.
 ```
 
 ---
 
-# Phase 3 — Journey Generator
-
-The biggest part.
-
-Do NOT make:
-
-```text id="bad"
-Day 1:
-Lost
-
-Day 2:
-Lost
-
-Day 3:
-Returned
+**Day 5 — Steve wakes up:**
 ```
+Morning:
 
-💀
+Steve's memory:
+"I slept longer than usual."
 
-Make daily events.
+Meanwhile:
 
-Example:
+🎫 Returning Visitor! (Visit #3)
 
-```text id="journey"
-Steve's Forest Journey:
+Maya arrived.
 
-Day 1:
-Entered deeper forest
+*Steve is awake*
+*Maya visibly stays longer*
 
-Day 2:
-Found a stream
+💬 "there he is 🥺"
 
-Day 3:
-Discovered tree house
+Maya stayed for 2 hours.
+💰 Maya donated $15.
 
-Day 4:
-Storm arrived
-
-Day 5:
-Tiger Shark appeared
-
-Day 6:
-Stayed hidden
-
-Day 7:
-Found the way home
+Maya's favorite fish:
+🐟 Steve
 ```
 
 ---
 
-# Phase 4 — Shelter System 🌲
-
-BRO this is the mechanic that makes everything believable.
-
-Create shelters:
-
-```text id="shelters"
-Forest Shelters:
-
-🏚 Tree House
-- safe from storms
-- safe from sharks
-
-🪨 Hidden Cave
-- very safe
-- harder to find
-
-🌿 Dense Plants
-- temporary hiding place
+**Day 10 — Steve goes to Coral Valley:**
 ```
+🎣 Steve is exploring...
 
-When danger happens:
+🎫 Returning Visitor! (Visit #4)
 
-Bad:
+Maya arrived.
 
-```text id="bad"
-Tiger Shark appeared
+*looks for Steve*
+*Steve isn't there*
 
-Steve:
-teleports home
-```
+💬 "..."
 
-Good:
+Maya looked at every corner of the tank.
 
-```text id="good"
-Tiger Shark appeared
+💬 "where did he go"
 
-Steve:
-Remembered the tree house.
-
-Steve:
-Fled there.
-```
-
-😭
-
----
-
-# Phase 5 — Memory Integration
-
-BRO THIS PART IS FREE EMOTIONAL DAMAGE 😭
-
-Every adventure event creates memories.
-
-Examples:
-
-```text id="memory"
-"Explored the forest alone."
-
-"Found a safe shelter."
-
-"Missed the aquarium."
-
-"Returned home after a long journey."
-```
-
-Other fish get memories too.
-
-Kitty:
-
-```text id="kittymemory"
-"Steve disappeared."
-
-"Steve came back."
-```
-
-Bob:
-
-```text id="bobmemory"
-"Waited for Steve."
+Maya left after 10 minutes.
+No donation. 💀
 ```
 
 ---
 
-# Phase 6 — Return Event
-
-The return should be special.
-
-Not:
-
-```text id="badreturn"
-Steve returned.
+**Day 12 — Steve returns:**
 ```
-
-More like:
-
-```text id="return"
 🌅 Morning
 
-Something moves near the aquarium entrance...
+Steve returned from his adventure.
+Steve's memory:
+"I missed the tank.
+I missed everyone."
 
-🐠
+🎫 Returning Visitor! (Visit #5)
 
-Steve returned.
-```
+Maya arrived.
 
-Then:
+*sees Steve immediately*
 
-```text id="reaction"
-Kitty:
-Relationship increased
+💬 "HE'S BACK"
 
-Bob:
-Relationship increased
+Maya stayed for 4 hours.
+💰 Maya donated $50.
 
-Steve:
-Confidence increased
-```
+Steve's memory:
+"Someone seemed really relieved to see me.
+I wonder if I was missed."
 
----
-
-# Phase 7 — Dreams Integration
-
-BRO THIS IS WHERE IT GETS CRAZY GOOD.
-
-While Steve is missing:
-
-Possible dream:
-
-```text id="dream"
-"Finding the Way Home"
-
-Steve dreams of the aquarium.
-
-```
-
-Kitty:
-
-```text id="kittydream"
-"Waiting by the Castle"
-
-Dream:
-Steve returns.
-```
-
-Then when Steve comes back:
-
-```text id="shared"
-Memory:
-"Found each other again."
-```
-
-😭
-
----
-
-# Phase 8 — Testing
-
-we NEED a cheat console command for this.
-
-Because waiting weeks for a 2% event is painful 💀
-
-Something like:
-
-```text id="test"
-start_lost_adventure("Steve")
-```
-
-Then:
-
-```text
-advance_adventure_day()
-```
-
-or:
-
-```text
-force_adventure_event("shark")
-```
-
-Testing scenarios:
-
-```text id="tests"
-✓ Fish gets lost
-✓ Fish finds shelter
-✓ Tiger Shark sends fish to shelter
-✓ Fish returns
-✓ Memories created
-✓ Relationships update
-✓ Dreams trigger
+🥺🥺🥺💀
 ```
 
 ---
 
-# Final Feature Flow
-
-The full story:
-
-```text id="flow"
-Steve explores forest
-        |
-        v
-Gets separated
-        |
-        v
-Finds shelter
-        |
-        v
-Survives events
-        |
-        v
-Misses aquarium
-        |
-        v
-Finds path home
-        |
-        v
-Returns
-        |
-        v
-Everyone remembers
+**Day 30 — Maya's milestone:**
 ```
+🎫 Returning Visitor! (Visit #10)
 
-BRO 😭
+Maya is back.
 
-This is not just a "lost fish" feature.
+💬 "I've been coming here for a month.
+    Steve always makes my day better."
 
-This is basically:
+💰 Maya donated $100.
+🏆 Maya is now a Regular Visitor.
 
-```text id="final"
-TermQuarium:
-Fish simulator
+Steve's memory:
+"I recognized someone today.
+They always seem happy when they see me.
+I think I make them happy.
+I like that."
 
-+
-Lost Adventure:
-Rare tiny hero journey
+😭😭😭😭💀
 ```
-
-And the best part?
-
-99% of the time the player still gets:
-
-```text id="cozy"
-Steve sleeps beside Kitty 🥺
-```
-
-But once in a while:
-
-```text id="adventure"
-Steve disappears into the forest...
-
-and comes back with a story.
-```
-
-That is VERY TermQuarium. 🐟🌲
 
 ---
+
+**Day 50 — The note:**
+```
+🎫 Returning Visitor! (Visit #15)
+
+Maya arrived.
+
+Maya left a note:
+
+📝 "To whoever takes care of this aquarium —
+    Steve has been my favorite part of my week
+    for 50 days now.
+    Thank you for keeping him happy.
+    — Maya"
+
+💰 Maya donated $200.
+
+Player:
+😭😭😭😭😭
+```
+
+---
+
+**The stats screen:**
+```
+╔══════════════════════════════╗
+║      Most Loved Fish         ║
+╠══════════════════════════════╣
+║ 🥇 Steve      — 47 fans      ║
+║ 🥈 Kitty      — 23 fans      ║
+║ 🥉 Finn       — 8 fans       ║
+╚══════════════════════════════╝
+```
+
+Steve is not surprised 😂😎
+
+---
+
+The beautiful part? 👀
+
+Maya never met Steve 💀
+Steve never met Maya 😭
+But Steve made her week better for 50 days
+
+And Steve's only memory of her is:
+
+```
+"I think I make them happy.
+I like that."
+
+```
+🥺🥺
+
+
