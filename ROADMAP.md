@@ -284,25 +284,15 @@ existing engine**, not new systems:
 The four open questions above, now answered:
 
 1. **Multi-room navigation: yes, a real nested structure**, not one flat
-   scene. Sketched as three levels:
+   scene. Three levels — the structural shape below is decided; the exact
+   ASCII layouts are **not** (a quick illustrative sketch from the
+   conversation this was designed in, not a mockup to build literally —
+   the actual art is a later, separate decision):
    - **Coral Valley** — a top-level scene (the natural `Screen`, per above)
-     drawn as an ASCII map with the Coral Castle as a clickable landmark in
-     it, e.g.:
-     ```
-     -- Coral Valley --
-     🪸 🪸^^^🪸 Coral Castle
-     🪸🪸    🪸
-     🪸🪸    🪸
-     🪸🪸    🪸
-     🪸🪸🪸🪸🪸         🪸🪸🪸🪸🪸🪸
-     ```
-   - **Coral Castle** — reached by clicking that landmark: a room list/
-     preview, each entry "click to enter":
-     ```
-     -- Coral Castle --
-     <- Coral garden          ⬜ 🪸🪸 bed
-        click to enter       ⬜ 🪸🪸 bed
-     ```
+     drawn as a map with the Coral Castle as a clickable landmark leading
+     into it.
+   - **Coral Castle** — reached by clicking that landmark: a list of rooms,
+     each with a small preview, "click to enter."
    - **Individual rooms** — reached from that list; closest existing
      precedent is still `_build_castle_interior()`'s occupancy view (beds,
      who's inside), one per room instead of one per container.
