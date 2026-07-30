@@ -942,8 +942,16 @@ FOREST_EXPLORER_CHANCE_MULT = 2.0
 # whichever personality branch above already applied (an Explorer-
 # personality Keen Explorer goes eagerly indeed) -- the closest this game
 # gets to updates.md's "visits new areas first" with only one other area
-# (the Forest) actually existing to visit.
+# (the Forest) actually existing to visit. KEEN_EXPLORER_FOREST_CHANCE_MULT
+# is the *settled* boost -- "explore when not busy" once the Forest has
+# been around a while. Right after unlock it's much stronger than that
+# ("explore as soon as possible"): KEEN_EXPLORER_FRESH_CHANCE, decaying
+# linearly to 0 (leaving just the settled multiplier above) over
+# KEEN_EXPLORER_URGENCY_DECAY_SECONDS -- see aquarium.py's _check_foraging()
+# and forest_unlocked_at.
 KEEN_EXPLORER_FOREST_CHANCE_MULT = 1.5
+KEEN_EXPLORER_FRESH_CHANCE = 0.9
+KEEN_EXPLORER_URGENCY_DECAY_SECONDS = 180.0  # half a fish-day (AGE_SECONDS_PER_DAY)
 FOREST_FRIEND_JOIN_CHANCE = 0.2
 
 # Ambient falling leaves in the Forest scene (see leaves.py's LeafField) --

@@ -24,11 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   line, persist through Save/Load (old saves default to none), and the Cheat
   Console's `grant_trait(fish_name, trait)` grants one without waiting on its
   natural trigger. Keen Explorer is also more eager to go explore the
-  Forest in the first place. A small, hand-picked set of "personality
-  interaction" flavor lines shows on the Inspector for specific
-  personality+trait/trait+trait combinations (e.g. Explorer + Dreamer: "A
-  fish that dreams about places it has never visited."). See
-  [ROADMAP.md](ROADMAP.md) for the design.
+  Forest in the first place — near-certain right after it's unlocked
+  ("explore as soon as possible"), decaying down to a modest, settled boost
+  once it's been available a while ("explore when not busy"). A small,
+  hand-picked set of "personality interaction" flavor lines shows on the
+  Inspector for specific personality+trait/trait+trait combinations (e.g.
+  Explorer + Dreamer: "A fish that dreams about places it has never
+  visited."). See [ROADMAP.md](ROADMAP.md) for the design.
 
 - **TermQuarium: Crystal Logs and Giant Logs** — a Keen Explorer's forage
   trips can very rarely turn up something better than plain Wood. A Crystal
@@ -185,6 +187,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **TermQuarium: loading a save dropped each fish's favorite foods.**
   `_load_snapshot` rebuilt fish without passing `favorite_foods`, so a restored
   fish silently lost its "their favorite" treat reaction. Now carried through.
+
+- **TermQuarium: day/night phase and in-progress dreams didn't survive
+  Save/Load.** A save/load round trip silently reset the world to midday
+  with no one dreaming, regardless of when it was actually saved. Both now
+  persist — day/night phase via a plain 0..1 day-fraction (reapplied to
+  `session_start` on load), each fish's dream fully self-contained (not a
+  variant title to re-look up later). Deliberately doesn't restore the
+  nightmare-reaction sub-timers — a reloaded nightmare just lingers
+  peacefully rather than forcing its own early scared-awake wake.
 
 - **A dismissing toast (or any non-modal overlay) stole keyboard focus.**
   `close_overlay` restored the focus captured when the overlay opened — correct

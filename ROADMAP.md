@@ -203,3 +203,145 @@ Net effect: six-ish new traits, stacking freely with the existing
 personality and with each other, earned through play rather than rolled —
 without touching the steering-priority chain, `_claim_home()`, or any of the
 existing personality-keyed tests.
+
+## TermQuarium: Coral Valley (a second biome)
+
+**Status: the biome itself is still far future — no rooms, no map, no
+unlock exist.** Two general-purpose pieces it depends on shipped early
+though (see Decisions #2 and #4 below): Keen Explorer's decaying forage
+urgency, and day/night phase + in-progress dreams surviving Save/Load. This
+section exists so the rest of the idea lives somewhere more permanent than
+a scratch file, and so whoever eventually builds it starts from the right
+hook points instead of re-deriving them.
+
+**Source:** `_internal/dd.md`'s "First Visit Playthrough" — a two-day
+narrative walkthrough of a new area, discovered via a Shop-style unlock,
+built around discrete named places (Coral Gardens, Coral Castle and its
+rooms, Coral Bridge, a Secret Coral Cave) and two fish (one exploring, one
+settling in) accumulating shared memories. Its own stated design philosophy,
+worth repeating verbatim since it's the thing that actually matters:
+
+> Forest: "I want to explore." Coral Valley: "I want to stay."
+
+Where the Forest is foraging + danger (Tiger Shark, a real risk while away),
+Coral Valley is explicitly the opposite register — no predator, no risk,
+just a place a bonded pair settles into. That contrast should stay load-
+bearing in any real design, not get lost the moment implementation starts.
+
+### Where things stand today
+
+There is exactly **one** optional extra scene (the Forest), and the
+mechanism that shows it is a hand-rolled two-way toggle, not a general
+N-scene system: `_enter_forest()`/`_leave_forest()` (`aquarium.py:1338-1358`)
+just swap `app.widgets` between `aquarium_widgets` and `forest_widgets`
+based on one `in_forest["value"]` boolean. `state["forest_unlocked"]` gates
+a single Shop row (`FOREST_UNLOCK_PRICE`, `constants.py:894`) and a single
+"Enter Forest" button. Notably, **cozy_tui already has a real, general
+primitive for exactly this** — `app.screen(name)`/`app.show(name)`
+(`cozy_tui/screen.py`) — and `aquarium.py` doesn't use it anywhere; the
+Forest toggle predates it or just never got migrated. Adding a *second*
+biome is the natural forcing function to stop hand-rolling this and move
+onto `Screen`, rather than copy-pasting `in_forest`/`forest_widgets` a
+second time as `in_coral_valley`/`coral_valley_widgets`.
+
+Everything else the playthrough actually needs already exists as a real,
+working mechanic elsewhere — Coral Valley mostly reads as **new content on
+existing engine**, not new systems:
+
+- **Memories** ("Visited Coral Valley for the first time," "Slept in the
+  Coral Castle," "Watched Coral Valley from the Coral Bridge") are exactly
+  `_log_memory()` (`aquarium.py:571`) — the same call already behind every
+  Forest/dream/relationship memory line. No new logging mechanism needed,
+  just new call sites and new strings.
+- **One fish explores, the other relaxes** (Steve investigates the Castle
+  while Kitty finds a quiet corner) is exactly the personality-weighted
+  behavior split the Forest already has (`FOREST_EXPLORER_CHANCE_MULT` vs.
+  a Shy/Lazy fish's own reduced eagerness, `_check_foraging()` at
+  `aquarium.py:2126`, the weighting itself at `2156`) — this narrative would
+  fall out for free from reusing that same weighting against Coral Valley's
+  own travel roll, rather than needing bespoke scripting per personality.
+- **A discrete room you can look inside** (a Coral Room, the Coral Garden
+  Room) is closest to `_build_castle_interior()`
+  (`termquarium/inspectors.py:330`) — a read-only, live-refreshing peek
+  view reached by choice from an Inspector, not a real navigable space. It
+  is the right *shape* of interaction (quiet, deliberate, opt-in), but the
+  playthrough's rooms are chained together (Gardens → Castle → its rooms →
+  Bridge → Secret Cave) in a way Castle Interior's single flat view isn't —
+  see open question below.
+- **"Found a favorite place"** already exists as `favorite_decoration`
+  (`fish.py:204`, rolled once at birth) — Coral Valley introducing its own
+  favorite *location* is either a second, Coral-Valley-scoped instance of
+  that same idea, or (cleaner) a generalization of "favorite thing" that
+  isn't hardcoded to a `Decoration`.
+- **No danger system needed.** Deliberately: Coral Valley's whole point is
+  the *absence* of a Tiger-Shark-style threat. `_check_forest_danger()`
+  (`aquarium.py:2468`) should have no Coral Valley equivalent — resist the
+  urge to give every biome a danger mechanic just because the Forest has
+  one.
+
+### Decisions
+
+The four open questions above, now answered:
+
+1. **Multi-room navigation: yes, a real nested structure**, not one flat
+   scene. Sketched as three levels:
+   - **Coral Valley** — a top-level scene (the natural `Screen`, per above)
+     drawn as an ASCII map with the Coral Castle as a clickable landmark in
+     it, e.g.:
+     ```
+     -- Coral Valley --
+     🪸 🪸^^^🪸 Coral Castle
+     🪸🪸    🪸
+     🪸🪸    🪸
+     🪸🪸    🪸
+     🪸🪸🪸🪸🪸         🪸🪸🪸🪸🪸🪸
+     ```
+   - **Coral Castle** — reached by clicking that landmark: a room list/
+     preview, each entry "click to enter":
+     ```
+     -- Coral Castle --
+     <- Coral garden          ⬜ 🪸🪸 bed
+        click to enter       ⬜ 🪸🪸 bed
+     ```
+   - **Individual rooms** — reached from that list; closest existing
+     precedent is still `_build_castle_interior()`'s occupancy view (beds,
+     who's inside), one per room instead of one per container.
+   
+   This is a real Screen *stack* (Valley → Castle → room), not the
+   Forest's single flat swap — the one piece of new navigation
+   architecture this feature actually needs.
+2. **Keen Explorer: eagerness decays with how long the area's been
+   available, not a flat multiplier — done for the Forest.** Freshly
+   unlocked → near-certain to explore ("as soon as possible",
+   `KEEN_EXPLORER_FRESH_CHANCE`, decaying linearly over
+   `KEEN_EXPLORER_URGENCY_DECAY_SECONDS`); long-available → settles to the
+   same `KEEN_EXPLORER_FOREST_CHANCE_MULT` boost as before ("explore when
+   not busy"). `forest_unlocked_at` tracks the unlock moment (persisted as
+   elapsed seconds, same trick as `day_tick_remaining`, so a save/load
+   doesn't reset the decay clock). Still Forest-specific by name — needs
+   generalizing to "whichever optional area exists" once Coral Valley (or
+   any second biome) is real.
+3. **Unlock cost and gating: $980, and requires owning at least one
+   Axolotl.** A real prerequisite beyond money, unlike the Forest's
+   money-only `FOREST_UNLOCK_PRICE` — the Shop row would need an
+   affordability *and* eligibility check.
+4. **Yes — biome residency should survive Save/Load. Day/night phase and
+   in-progress dreams now do too (done, ahead of Coral Valley itself).**
+   Both were a real, pre-existing gap — neither `environment`/
+   `session_start` nor `Fish.dream` was in `_snapshot()`/`_load_snapshot()`
+   before this session, so a save/load round trip silently reset the world
+   to midday with no one dreaming. Fixed via a persisted `day_fraction`
+   (the same 0..1 value `_update_environment()` already computes, reapplied
+   to `session_start` on load) and a fully self-contained per-fish `dream`
+   field (not e.g. a variant title to re-look-up later, so it can't break
+   if `DREAM_FRAMES` changes shape). Deliberately doesn't restore the
+   nightmare-reaction sub-timers (`_nightmare_wake_at` and its siblings) --
+   a reloaded nightmare just lingers peacefully instead of forcing its own
+   early scared-awake wake. Coral Valley's own biome-residency persistence
+   is still unbuilt (there's no biome to persist yet), but has this exact
+   pattern to follow once it exists.
+
+**Bonus, from the same conversation:** Coral Valley is Axolotls' favorite
+place — they should be the species most likely to visit it, stay there
+(a natural fit for `favorite_decoration`-style "favorite location" once
+that generalizes, per the note above), and explore it once there.

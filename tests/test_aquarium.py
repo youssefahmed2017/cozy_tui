@@ -9249,7 +9249,13 @@ def test_keen_explorer_with_a_friend_can_bring_back_a_giant_log(tmp_path, monkey
 
 def test_keen_explorer_forages_at_a_higher_chance_than_baseline(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(aq.time, "monotonic", lambda: clock["t"])
     _unlock_forest(app)
+    # Past the fresh-unlock urgency window -- isolates the *settled*
+    # KEEN_EXPLORER_FOREST_CHANCE_MULT boost from the much stronger
+    # "just unlocked, explore ASAP" spike (see the next two tests).
+    clock["t"] += aq.KEEN_EXPLORER_URGENCY_DECAY_SECONDS + 0.1
     monkeypatch.setattr(app, "toast", lambda *a, **k: None)
     steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
     steve.personality = "Lazy"  # would not otherwise get any forage-chance boost
@@ -9263,6 +9269,55 @@ def test_keen_explorer_forages_at_a_higher_chance_than_baseline(tmp_path, monkey
     _second_timer(app).callback()
 
     assert steve._travel_until is not None
+
+
+def test_keen_explorer_explores_almost_immediately_when_freshly_unlocked(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(aq.time, "monotonic", lambda: clock["t"])
+    _unlock_forest(app)  # forest_unlocked_at["t"] == 1000.0 (just now)
+    monkeypatch.setattr(app, "toast", lambda *a, **k: None)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.personality = "Lazy"
+    steve.traits = frozenset({aq.TRAIT_KEEN_EXPLORER})
+    steve.hunger = aq.HUNGER_WARNING_THRESHOLD
+    # Well above the *settled* boost but comfortably below
+    # KEEN_EXPLORER_FRESH_CHANCE -- only wins via the fresh-unlock spike.
+    roll = (
+        aq.FOREST_TRAVEL_CHANCE_PER_CHECK * aq.KEEN_EXPLORER_FOREST_CHANCE_MULT
+        + aq.KEEN_EXPLORER_FRESH_CHANCE
+    ) / 2
+    monkeypatch.setattr(aq.random, "random", lambda: roll)
+
+    _second_timer(app).callback()
+
+    assert steve._travel_until is not None
+
+
+def test_keen_explorer_urgency_decays_back_to_the_settled_boost(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(aq.time, "monotonic", lambda: clock["t"])
+    _unlock_forest(app)
+    monkeypatch.setattr(app, "toast", lambda *a, **k: None)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.personality = "Lazy"
+    steve.traits = frozenset({aq.TRAIT_KEEN_EXPLORER})
+    steve.hunger = aq.HUNGER_WARNING_THRESHOLD
+    # Same roll used for the "fresh" test above -- wins right after unlock,
+    # but shouldn't still win once the urgency window has fully decayed.
+    roll = (
+        aq.FOREST_TRAVEL_CHANCE_PER_CHECK * aq.KEEN_EXPLORER_FOREST_CHANCE_MULT
+        + aq.KEEN_EXPLORER_FRESH_CHANCE
+    ) / 2
+    monkeypatch.setattr(aq.random, "random", lambda: roll)
+    clock["t"] += aq.KEEN_EXPLORER_URGENCY_DECAY_SECONDS + 0.1
+
+    _second_timer(app).callback()
+
+    assert steve._travel_until is None
 
 
 def test_keen_explorer_stacks_with_explorer_personality():
@@ -9356,3 +9411,114 @@ def test_inspector_omits_combo_flavor_text_when_nothing_matches(tmp_path, monkey
     )
 
     assert "—" not in line
+
+
+# ── Save/load: day/night phase and in-progress dreams (real gaps, fixed) ────
+
+
+def _load_the_one_save(app, tmp_path):
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c
+        for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+
+def test_save_then_load_round_trip_preserves_day_night_phase(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'set_time("night")')
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    assert steve.environment["phase"] == "Night"
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Night Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    _load_the_one_save(app, tmp_path)
+
+    reloaded = next(f for f in app.widgets if isinstance(f, aq.Fish))
+    assert reloaded.environment["phase"] == "Night"
+
+
+def test_loading_a_save_from_before_day_fraction_existed_defaults_to_midday(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Old Day Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    path = tmp_path / ".termquarium" / "saves" / "Old Day Save.json"
+    data = json.loads(path.read_text())
+    del data["aquarium"]["day_fraction"]  # simulate a pre-existing save
+    path.write_text(json.dumps(data))
+
+    _load_the_one_save(app, tmp_path)
+
+    reloaded = next(f for f in app.widgets if isinstance(f, aq.Fish))
+    assert reloaded.environment["phase"] == "Day"  # fraction 0.5 -- unchanged default
+
+
+def test_save_then_load_round_trip_preserves_an_in_progress_dream(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    steve.dream = aq.make_dream(steve, "happy", variant_title="Endless Bubbles")
+    original = steve.dream
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Dream Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    _load_the_one_save(app, tmp_path)
+
+    reloaded = next(f for f in app.widgets if isinstance(f, aq.Fish))
+    assert reloaded.dream is not None
+    assert reloaded.dream.category == original.category
+    assert reloaded.dream.title == original.title
+    assert reloaded.dream.description == original.description
+    assert reloaded.dream.frames == original.frames
+
+
+def test_save_then_load_round_trip_preserves_no_dream(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    assert steve.dream is None
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "No Dream Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    _load_the_one_save(app, tmp_path)
+
+    reloaded = next(f for f in app.widgets if isinstance(f, aq.Fish))
+    assert reloaded.dream is None
+
+
+def test_loading_a_save_from_before_dreams_persisted_defaults_to_no_dream(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Old Dream Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    path = tmp_path / ".termquarium" / "saves" / "Old Dream Save.json"
+    data = json.loads(path.read_text())
+    del data["aquarium"]["fish"][0]["dream"]  # simulate a pre-existing save
+    path.write_text(json.dumps(data))
+
+    _load_the_one_save(app, tmp_path)
+
+    reloaded = next(f for f in app.widgets if isinstance(f, aq.Fish))
+    assert reloaded.dream is None

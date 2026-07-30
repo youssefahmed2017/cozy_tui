@@ -195,7 +195,7 @@ from examples.aquarium.termquarium.console import (
     run_console_command,
 )
 from examples.aquarium.termquarium.constants import *
-from examples.aquarium.termquarium.dreams import choose_dream, make_dream
+from examples.aquarium.termquarium.dreams import Dream, choose_dream, make_dream
 from examples.aquarium.termquarium.economy import (
     adjust_happiness,
     compute_attractiveness,
@@ -433,6 +433,14 @@ def main() -> None:
     # always handing a loaded day a full fresh AGE_SECONDS_PER_DAY, however
     # far that day had already gotten before it was saved.
     daily_tick_timer = {"handle": None}
+    # When the Forest was unlocked (time.monotonic()), or None while it
+    # isn't -- Keen Explorer's forage-eagerness decays off how long ago
+    # this was (see _check_foraging()): near-certain right after unlock,
+    # settling to the normal KEEN_EXPLORER_FOREST_CHANCE_MULT boost once
+    # the area's been around a while. Persisted as elapsed seconds (like
+    # daily_tick_timer above), not this raw monotonic value, since that's
+    # meaningless across a process restart -- see _snapshot()/_load_snapshot().
+    forest_unlocked_at = {"t": None}
     # Tank-wide cooldown so ambient relax toasts stay rare (see _process_relaxing).
     relax_toast_at = {"t": 0.0}
     # Tank-wide cooldown so the circle/follow Happiness flourishes don't both
@@ -1021,6 +1029,25 @@ def main() -> None:
                 if daily_tick_handle is not None
                 else AGE_SECONDS_PER_DAY
             ),
+            # Day/night phase + water temperature (see _update_environment())
+            # are both derived from this one 0..1 fraction of elapsed day --
+            # persisting it (not session_start's raw monotonic() value,
+            # meaningless across a process restart) is what _load_snapshot()
+            # uses to put the world back at the same time of day/night it was
+            # saved at, the same "remaining, not absolute" trick
+            # day_tick_remaining above already uses.
+            "day_fraction": compute_time_of_day(
+                time.monotonic() - session_start, AGE_SECONDS_PER_DAY
+            ),
+            # Elapsed seconds since the Forest was unlocked (Keen Explorer's
+            # decaying urgency, see _check_foraging()) -- elapsed, not the
+            # raw forest_unlocked_at["t"] monotonic value, for the same
+            # process-restart reason as day_tick_remaining/day_fraction.
+            "forest_unlocked_elapsed": (
+                time.monotonic() - forest_unlocked_at["t"]
+                if forest_unlocked_at["t"] is not None
+                else None
+            ),
             "foods": [{"x": food.fx, "y": food.fy} for food in foods],
             "decorations": [
                 {"kind": d.kind, "x": d.fx, "y": d.fy, "price": d.price}
@@ -1046,6 +1073,27 @@ def main() -> None:
                     "parent_names": list(f.parent_names) if f.parent_names else None,
                     "age_seconds": max(0.0, time.monotonic() - f.birth_time),
                     "favorite": decoration_index.get(id(f.favorite_decoration)),
+                    # Whatever a sleeping fish was dreaming, so a save/load
+                    # round trip mid-night doesn't just silently clear it --
+                    # stored fully self-contained (not e.g. a variant title
+                    # to re-look-up later), matching this file's "saves are
+                    # inspectable, migrate rather than break" philosophy.
+                    # Deliberately doesn't persist the nightmare-reaction
+                    # sub-timers (_nightmare_wake_at and friends) -- a
+                    # reloaded nightmare just lingers peacefully instead of
+                    # forcing its own early scared-awake wake, same as any
+                    # other short-lived timer this file doesn't restore.
+                    "dream": (
+                        {
+                            "category": f.dream.category,
+                            "icon": f.dream.icon,
+                            "title": f.dream.title,
+                            "description": f.dream.description,
+                            "frames": [list(frame) for frame in f.dream.frames],
+                        }
+                        if f.dream is not None
+                        else None
+                    ),
                 }
                 for f in fish
             ],
@@ -1103,6 +1151,7 @@ def main() -> None:
                 "shop_out_of_stock": [],
             }
         )
+        forest_unlocked_at["t"] = None
         day_count["n"] = 0
         current_save["name"] = None
 
@@ -1113,7 +1162,12 @@ def main() -> None:
         time just resets to the aquarium on load, and Wood simply
         respawns over time; only whether the Forest itself is unlocked
         (state["forest_unlocked"], restored generically below like every
-        other state flag) survives."""
+        other state flag) survives. Day/night phase and each fish's
+        in-progress dream *do* survive (see "day_fraction"/"dream" below) --
+        these were a real gap (not a deliberate choice like the Forest one
+        above), fixed alongside Coral Valley's own persistence requirement
+        (see ROADMAP.md)."""
+        nonlocal session_start
         _clear_tank()
         state.update(snapshot.get("state", {}))
         if "shop_out_of_stock" not in snapshot.get("state", {}):
@@ -1129,6 +1183,31 @@ def main() -> None:
         except (TypeError, ValueError):
             remaining = AGE_SECONDS_PER_DAY
         _schedule_daily_tick(max(0.0, min(remaining, AGE_SECONDS_PER_DAY)))
+        try:
+            day_fraction = float(snapshot.get("day_fraction", 0.5))
+        except (TypeError, ValueError):
+            day_fraction = 0.5
+        day_fraction = max(0.0, min(1.0, day_fraction))
+        # Same trick _set_day_phase() (the Cheat Console's set_time()) uses:
+        # shift session_start so _update_environment()'s own fraction math
+        # lands back on the saved value, then run it once immediately so
+        # phase/temperature/background reflect it right away rather than
+        # waiting for the next per-second tick.
+        session_start = time.monotonic() - day_fraction * AGE_SECONDS_PER_DAY
+        _update_environment()
+        if state.get("forest_unlocked"):
+            try:
+                elapsed = float(
+                    snapshot.get(
+                        "forest_unlocked_elapsed", KEEN_EXPLORER_URGENCY_DECAY_SECONDS
+                    )
+                )
+            except (TypeError, ValueError):
+                elapsed = KEEN_EXPLORER_URGENCY_DECAY_SECONDS
+            # A save from before this existed (or one that just never
+            # recorded it) is treated as "unlocked a while ago" -- no
+            # undeserved fresh-unlock urgency spike for an old save.
+            forest_unlocked_at["t"] = time.monotonic() - max(0.0, elapsed)
         for saved in snapshot.get("decorations", []):
             item = DECORATION_CATALOG.get(saved.get("kind"))
             if item is None:
@@ -1193,6 +1272,18 @@ def main() -> None:
             # yet. Filtered against the current TRAITS tuple so a name from
             # a future version this build doesn't know about can't crash it.
             f.traits = frozenset(t for t in saved.get("traits", []) if t in TRAITS)
+            saved_dream = saved.get("dream")
+            if saved_dream is not None:
+                # A save from before this existed, or a fish that simply
+                # wasn't dreaming, has no "dream" key/a null one -- f.dream
+                # stays at Fish.__init__'s own default (None) either way.
+                f.dream = Dream(
+                    category=saved_dream["category"],
+                    icon=saved_dream["icon"],
+                    title=saved_dream["title"],
+                    description=saved_dream["description"],
+                    frames=tuple(tuple(row) for row in saved_dream["frames"]),
+                )
             if "full_memory_log" not in saved:
                 # A save from before "See All History" existed -- there's no
                 # uncapped archive to restore, so seed it from whatever the
@@ -1327,6 +1418,7 @@ def main() -> None:
 
     def _unlock_forest() -> None:
         state["forest_unlocked"] = True
+        forest_unlocked_at["t"] = time.monotonic()
         if forest_button not in aquarium_widgets:
             aquarium_widgets.append(forest_button)
         app.toast(
@@ -2162,7 +2254,29 @@ def main() -> None:
                     # Earned trait, not a personality -- stacks on top of
                     # whichever branch above already applied, same "stacks
                     # with, doesn't replace" rule every other trait follows.
-                    chance *= KEEN_EXPLORER_FOREST_CHANCE_MULT
+                    # A freshly-unlocked Forest gets "explore as soon as
+                    # possible" (near-certain per check); that urgency
+                    # decays linearly over KEEN_EXPLORER_URGENCY_DECAY_SECONDS
+                    # down to "explore when not busy" -- just the settled
+                    # KEEN_EXPLORER_FOREST_CHANCE_MULT boost, same as it's
+                    # been available a while.
+                    elapsed = (
+                        now - forest_unlocked_at["t"]
+                        if forest_unlocked_at["t"] is not None
+                        else KEEN_EXPLORER_URGENCY_DECAY_SECONDS
+                    )
+                    # Clamped, not just "assumed non-negative": a clock that
+                    # goes backwards relative to when forest_unlocked_at was
+                    # recorded (e.g. real time at unlock, then a test/replay
+                    # mocks time.monotonic() to something earlier) must not
+                    # blow "urgency" past KEEN_EXPLORER_FRESH_CHANCE -- it's
+                    # a chance fed straight into random.random() < chance,
+                    # not a value that's safe to let run away past 1.0.
+                    elapsed = max(0.0, elapsed)
+                    urgency = KEEN_EXPLORER_FRESH_CHANCE * max(
+                        0.0, 1.0 - elapsed / KEEN_EXPLORER_URGENCY_DECAY_SECONDS
+                    )
+                    chance = max(chance * KEEN_EXPLORER_FOREST_CHANCE_MULT, urgency)
                 goes = random.random() < chance
             if not goes and f.personality == "Friendly" and f.friend is not None:
                 friend = f.friend
