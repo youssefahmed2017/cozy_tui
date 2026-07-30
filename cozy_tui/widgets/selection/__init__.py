@@ -2,6 +2,7 @@ from .button import Button
 from .calendar import Calendar
 from .check_list import CheckItem, CheckList
 from .checkbox import Checkbox
+from .color_picker import ColorPicker
 from .command_palette import Command, CommandPalette
 from .confirm_dialog import ConfirmDialog
 from .context_menu import MenuItem, MenuSeparator, RightClickMenu
@@ -22,6 +23,7 @@ __all__ = [
     "Checkbox",
     "CheckList",
     "CheckItem",
+    "ColorPicker",
     "Command",
     "CommandPalette",
     "ConfirmDialog",

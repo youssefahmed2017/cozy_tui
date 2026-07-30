@@ -100,6 +100,100 @@ TREAT_SHOP_ITEMS = [
 #                time (bursts of energy), unlike Explorer's steady patrol.
 PERSONALITIES = ("Friendly", "Explorer", "Shy", "Greedy", "Lazy", "Playful")
 
+# Personality System 2.0 (see ROADMAP.md) -- traits earned through play,
+# stacking on top of the personality above rather than replacing it, the
+# same "stacks with, doesn't replace" relationship personality already has
+# with Sleepy (see roll_is_sleepy()). A brand-new fish starts with none
+# (frozenset()) -- earned, not rolled, the same philosophy relationships.py
+# already uses for Friend/Rival bonds.
+TRAIT_FOOD_LOVER = "food_lover"
+TRAIT_DREAMER = "dreamer"
+TRAIT_FAST_SWIMMER = "fast_swimmer"
+TRAIT_ENERGETIC = "energetic"
+TRAIT_MISCHIEVOUS = "mischievous"
+# Named "keen_explorer" rather than "explorer" -- that name is already the
+# Explorer *personality* (PERSONALITIES above); this is Personality System
+# 2.0's separate, stackable trait an Explorer-personality fish can also earn
+# (or a non-Explorer fish, just less thematically expected).
+TRAIT_KEEN_EXPLORER = "keen_explorer"
+TRAITS = (
+    TRAIT_FOOD_LOVER,
+    TRAIT_DREAMER,
+    TRAIT_FAST_SWIMMER,
+    TRAIT_ENERGETIC,
+    TRAIT_MISCHIEVOUS,
+    TRAIT_KEEN_EXPLORER,
+)
+# (emoji, display name, one-line description) -- what the Inspector and the
+# Cheat Console show. The actual game effect of each trait lives wherever
+# it's checked (fish.py/aquarium.py), not here.
+TRAIT_INFO = {
+    TRAIT_FOOD_LOVER: (
+        "🍤",
+        "Food Lover",
+        "Gets extra happy when fed; a little quicker to reach food.",
+    ),
+    TRAIT_DREAMER: ("🌙", "Dreamer", "Dreams more often."),
+    TRAIT_FAST_SWIMMER: ("🏃", "Fast Swimmer", "Swims faster, at everything."),
+    TRAIT_ENERGETIC: (
+        "⚡",
+        "Energetic",
+        "Changes direction far more often -- always on the move.",
+    ),
+    TRAIT_MISCHIEVOUS: (
+        "😈",
+        "Mischievous",
+        "Quick to snatch food out from under a tankmate.",
+    ),
+    TRAIT_KEEN_EXPLORER: (
+        "🗺",
+        "Keen Explorer",
+        "Occasionally brings back something rarer than plain wood.",
+    ),
+}
+
+# Growth chances: each rolled once, at the specific real moment named below,
+# only for a fish that doesn't already have that trait -- deliberately low
+# so gaining one reads as a small moment, not routine.
+FOOD_LOVER_TRAIT_CHANCE = 0.15  # per favorite-food treat eaten (_treat_reaction)
+DREAMER_TRAIT_CHANCE = 0.08  # per dream assigned (_assign_dreams)
+FAST_SWIMMER_TRAIT_CHANCE = 0.1  # per shark-scare rising edge (_check_shark_scares)
+ENERGETIC_TRAIT_CHANCE = (
+    0.2  # per "showing off" random event -- already rare on its own
+)
+MISCHIEVOUS_TRAIT_CHANCE = 0.2  # per food actually stolen from a closer tankmate
+KEEN_EXPLORER_TRAIT_CHANCE = 0.15  # per successful forage return with wood
+
+# Effects.
+HAPPINESS_FOOD_LOVER_BONUS = 1.5  # on top of HAPPINESS_FED_GAIN below, Food Lover only
+FOOD_LOVER_FOOD_BOOST = (
+    1.2  # food-steering speed/rate multiplier, same shape as RIVAL_FOOD_BOOST
+)
+DREAMER_DREAM_CHANCE_BONUS = 0.15  # added straight to DREAM_CHANCE's per-night roll
+FAST_SWIMMER_SPEED_MULT = (
+    1.25  # applied in Fish._effective_speed(), alongside LAZY_SPEED_MULT
+)
+ENERGETIC_TURN_DIV = (
+    1.6  # stacks multiplicatively with Explorer/Lazy/Playful's own turn-rate mult
+)
+MISCHIEVOUS_FOOD_BOOST = 1.2  # same shape as FOOD_LOVER_FOOD_BOOST/RIVAL_FOOD_BOOST
+MISCHIEVOUS_STEAL_RELATIONSHIP_PENALTY = (
+    -4.0
+)  # a small nudge via relationships.remember()
+# Keen Explorer's forage-return bonus: two distinct rare finds instead of one
+# generic bump, each deliberately far rarer than an ordinary Wood return.
+RARE_FIND_CHANCE = 0.05  # per successful forage return, Keen Explorer only -- VERY rare
+CRYSTAL_LOG_SELL_PRICE = 50
+# A Giant Log needs a Friend to help carry it home -- if a rare find lands
+# and f.friend is None, it's always a Crystal Log instead (see aquarium.py's
+# forage-return handling). Worth more than a Crystal Log alone: the trip
+# became a real shared moment, not just a better haul.
+GIANT_LOG_SELL_PRICE = 75
+GIANT_LOG_CHANCE = 0.4  # of a rare find that *also* has a Friend available
+GIANT_LOG_RELATIONSHIP_BONUS = (
+    6.0  # via relationships.remember() -- a real bonding moment
+)
+
 AGE_SECONDS_PER_DAY = (
     60.0 * 6
 )  # 6 real minutes = 1 "fish day" -- ages visibly within a sitting
@@ -725,6 +819,12 @@ MEMORY_DREAM_LOOKBACK = 3
 # "isn't around anymore" line survives MEMORY_LOG_LIMIT's cap -- grief
 # fading as newer memories crowd it out, for free, with no separate decay.
 DREAM_REUNION_CHANCE = 0.15
+# "Together Forever" -- its own category (see dreams.py's DREAM_FRAMES),
+# reachable only for an actual Best Friend pair (relationships.
+# relationship_state()'s top tier), never the plain "friendship" category's
+# ordinary uniform pick. About 1 in 10 nights, same shape as every other
+# early special-case check in choose_dream().
+DREAM_TOGETHER_FOREVER_CHANCE = 0.1
 
 # Nightmare reaction (see aquarium.py's _process_nightmares()): a "bad"
 # category dream forces a real, early, solo wake -- unlike every other

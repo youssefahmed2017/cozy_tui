@@ -7,7 +7,7 @@ import time
 from cozy_tui import Style, clipboard
 from cozy_tui.widgets import Box, Button, Checkbox, Label, ProgressBar, ScrollView
 
-from .constants import TREAT_SHOP_ITEMS
+from .constants import TRAIT_INFO, TREAT_SHOP_ITEMS
 from .fish import Fish, occupants_of
 from .relationships import relationship_state
 from .styles import HEART_STYLE, MUTED
@@ -90,6 +90,14 @@ def _build_inspector(
     personality_line = f"Personality: {f.personality}"
     if f.is_sleepy:
         personality_line += " (also Sleepy 😴)"
+    if f.traits:
+        # Personality System 2.0 (ROADMAP.md): earned traits, appended the
+        # same way Sleepy already is above -- one more stackable layer on
+        # the same line, not a mechanic that needs its own row.
+        badges = ", ".join(
+            f"{TRAIT_INFO[t][0]} {TRAIT_INFO[t][1]}" for t in sorted(f.traits)
+        )
+        personality_line += f" · {badges}"
     box.add(Label(2, 8, personality_line))
     box.add(Label(2, 9, f"Favorite spot: {spot}"))
     y = 10

@@ -21,6 +21,7 @@ from .constants import (
     FOOD_PACK_PRICE,
     FOOD_PACK_SIZE,
     SHOP_ITEMS,
+    TRAITS,
     TREAT_SHOP_ITEMS,
 )
 
@@ -89,6 +90,7 @@ def build_console_commands(
     spawn_food,
     give_nightmare,
     give_dream,
+    grant_trait,
     advance_day,
 ) -> dict:
     """The command registry, closing over the same real state/mutators the
@@ -265,6 +267,21 @@ def build_console_commands(
             raise ConsoleError(str(error))
         return f"Gave {target.display_name} a dream about {title}."
 
+    def cmd_grant_trait(args, kwargs):
+        name = kwargs.get("fish_name", args[0] if args else None)
+        trait = kwargs.get("trait", args[1] if len(args) > 1 else None)
+        if name is None or trait is None:
+            names = ", ".join(TRAITS)
+            raise ConsoleError(
+                f'Usage: grant_trait(fish_name="Steve", trait="food_lover") '
+                f"-- trait is one of: {names}"
+            )
+        target = _find_fish(str(name))
+        try:
+            return grant_trait(target, str(trait))
+        except ValueError as error:
+            raise ConsoleError(str(error))
+
     def cmd_advance_day(args, kwargs):
         amount = kwargs.get("amount", args[0] if args else 1)
         if not isinstance(amount, int) or isinstance(amount, bool) or amount < 1:
@@ -327,6 +344,12 @@ def build_console_commands(
             "give_dream(fish_name: the fish, category: happy/food/friendship/"
             "home/fantasy (optional)) -- gives it a nice dream to view",
             cmd_give_dream,
+        ),
+        "grant_trait": Command(
+            "grant_trait(fish_name: the fish, trait: food_lover/dreamer/"
+            "fast_swimmer) -- Personality System 2.0's traits, without "
+            "waiting on that trait's own rare, chance-based growth trigger",
+            cmd_grant_trait,
         ),
         "advance_day": Command(
             "advance_day(amount: how many in-game days to fast-forward "

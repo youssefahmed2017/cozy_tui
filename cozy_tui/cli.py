@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 from urllib import request
 
-from cozy_tui import __version__
+from . import __version__
 
 PYPI_JSON = "https://pypi.org/pypi/cozy-tui/json"
 

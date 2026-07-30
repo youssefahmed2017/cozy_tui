@@ -231,6 +231,7 @@ from examples.aquarium.termquarium.relationships import (
     find_eligible_waker,
     find_mutual_friend_pairs,
     get_relationship,
+    grant_trait,
     random_personality,
     record_gave_up_home,
     record_pushed_from_home,
@@ -427,6 +428,11 @@ def main() -> None:
     }
     hungry_warning_active = {"value": False}
     day_count = {"n": 0}
+    # Handle for the daily-tick timer (which the Shop's rotation rides on --
+    # see _refresh_shop_stock()) so _load_snapshot() can resync it instead of
+    # always handing a loaded day a full fresh AGE_SECONDS_PER_DAY, however
+    # far that day had already gotten before it was saved.
+    daily_tick_timer = {"handle": None}
     # Tank-wide cooldown so ambient relax toasts stay rare (see _process_relaxing).
     relax_toast_at = {"t": 0.0}
     # Tank-wide cooldown so the circle/follow Happiness flourishes don't both
@@ -575,6 +581,23 @@ def main() -> None:
         # the fish itself has forgotten it. Same line, so "See All History"
         # reads identically to the capped Memory Log section above it.
         f.full_memory_log.append(entry)
+
+    def _maybe_grant_trait(f: Fish, trait: str, chance: float) -> None:
+        # Personality System 2.0 (ROADMAP.md): the shared "roll, and if it
+        # actually lands *and* f doesn't already have it, log + toast" shape
+        # every trait's growth trigger uses -- see the three call sites
+        # (_treat_reaction/_assign_dreams/_check_shark_scares). grant_trait()
+        # itself is a no-op (and this never logs/toasts) once a fish already
+        # has the trait, so a fish can't be told it "gained" the same one
+        # twice.
+        if random.random() < chance and grant_trait(f, trait):
+            emoji, label, _description = TRAIT_INFO[trait]
+            _log_memory(f, f"I've developed a new trait: {label} {emoji}")
+            app.toast(
+                f"{f.display_name} developed a new trait: {label}!",
+                icon=emoji,
+                level="success",
+            )
 
     def _bond_happiness(a: Fish, b: Fish) -> None:
         # A real bonding moment for both fish involved (Update 1's "Friend
@@ -924,6 +947,8 @@ def main() -> None:
             _unlock_achievement("their_favorite")
             _log_memory(f, f"Ate my favorite: {kind} {item.emoji}.")
             f.happiness = adjust_happiness(f.happiness, HAPPINESS_FAVORITE_TREAT_GAIN)
+            if not f.is_predator:
+                _maybe_grant_trait(f, TRAIT_FOOD_LOVER, FOOD_LOVER_TRAIT_CHANCE)
         else:
             app.toast(f"Fed {f.display_name} some {kind}.", level="success")
 
@@ -987,9 +1012,15 @@ def main() -> None:
         """Convert live Widgets to plain JSON-friendly state."""
         fish_index = {id(f): i for i, f in enumerate(fish)}
         decoration_index = {id(d): i for i, d in enumerate(decorations)}
+        daily_tick_handle = daily_tick_timer["handle"]
         return {
             "state": dict(state),
             "day": day_count["n"],
+            "day_tick_remaining": (
+                max(0.0, daily_tick_handle.deadline - time.monotonic())
+                if daily_tick_handle is not None
+                else AGE_SECONDS_PER_DAY
+            ),
             "foods": [{"x": food.fx, "y": food.fy} for food in foods],
             "decorations": [
                 {"kind": d.kind, "x": d.fx, "y": d.fy, "price": d.price}
@@ -1009,6 +1040,7 @@ def main() -> None:
                     "happiness": f.happiness,
                     "personality": f.personality,
                     "is_sleepy": f.is_sleepy,
+                    "traits": sorted(f.traits),
                     "memory_log": list(f.memory_log),
                     "full_memory_log": list(f.full_memory_log),
                     "parent_names": list(f.parent_names) if f.parent_names else None,
@@ -1092,6 +1124,11 @@ def main() -> None:
         if state.get("forest_unlocked") and forest_button not in aquarium_widgets:
             aquarium_widgets.append(forest_button)
         day_count["n"] = int(snapshot.get("day", 0))
+        try:
+            remaining = float(snapshot.get("day_tick_remaining", AGE_SECONDS_PER_DAY))
+        except (TypeError, ValueError):
+            remaining = AGE_SECONDS_PER_DAY
+        _schedule_daily_tick(max(0.0, min(remaining, AGE_SECONDS_PER_DAY)))
         for saved in snapshot.get("decorations", []):
             item = DECORATION_CATALOG.get(saved.get("kind"))
             if item is None:
@@ -1149,6 +1186,13 @@ def main() -> None:
                     setattr(f, attr, saved[attr])
             if saved.get("parent_names"):
                 f.parent_names = tuple(saved["parent_names"])
+            # A save from before Personality System 2.0 existed has no
+            # "traits" key at all -- restores as frozenset() (below's
+            # generator over saved.get("traits", []) is naturally empty),
+            # same as a save that has the key but genuinely has no traits
+            # yet. Filtered against the current TRAITS tuple so a name from
+            # a future version this build doesn't know about can't crash it.
+            f.traits = frozenset(t for t in saved.get("traits", []) if t in TRAITS)
             if "full_memory_log" not in saved:
                 # A save from before "See All History" existed -- there's no
                 # uncapped archive to restore, so seed it from whatever the
@@ -1478,6 +1522,22 @@ def main() -> None:
         _log_memory(f, f"I dreamed about {f.dream.title}. {f.dream.description}")
         return f.dream.title
 
+    def _console_grant_trait(f: Fish, trait: str) -> str:
+        # Testing scenarios ("does Fast Swimmer actually reach food faster?")
+        # shouldn't have to wait on that trait's own rare, chance-based
+        # growth trigger -- see _maybe_grant_trait()'s three real call sites.
+        # Unlike those, this always logs on success but never toasts: a
+        # console command reports through its own return string in the
+        # console log, matching give_nightmare/give_dream above, not a
+        # second, redundant toast.
+        key = str(trait).strip().lower()
+        newly = grant_trait(f, key)  # raises ValueError on an unknown trait
+        if not newly:
+            return f"{f.display_name} already has that trait."
+        emoji, label, _description = TRAIT_INFO[key]
+        _log_memory(f, f"I've developed a new trait: {label} {emoji}")
+        return f"Gave {f.display_name} the {label} trait."
+
     def _open_console():
         # A dev/testing tool (backtick key) -- built fresh each time so its
         # command registry always closes over the *current* fish/state,
@@ -1495,6 +1555,7 @@ def main() -> None:
             spawn_food=_console_spawn_food,
             give_nightmare=_give_nightmare,
             give_dream=_give_dream,
+            grant_trait=_console_grant_trait,
             advance_day=_daily_tick,
         )
         console = CheatConsole(
@@ -1752,6 +1813,8 @@ def main() -> None:
                 icon="✨",
             )
             _log_memory(f, "Did a little spin, just because.")
+            if not f.is_predator:
+                _maybe_grant_trait(f, TRAIT_ENERGETIC, ENERGETIC_TRAIT_CHANCE)
 
     def _check_emergency_welfare():
         if not should_grant_welfare(
@@ -2085,8 +2148,10 @@ def main() -> None:
                 continue
             joined_friend = None
             goes = False
-            if f.hunger >= HUNGER_WARNING_THRESHOLD and not (
-                f.personality == "Shy" and FOREST_SHY_OPT_OUT
+            if (
+                f.hunger >= HUNGER_WARNING_THRESHOLD
+                and not foods
+                and not (f.personality == "Shy" and FOREST_SHY_OPT_OUT)
             ):
                 chance = FOREST_TRAVEL_CHANCE_PER_CHECK
                 if f.personality == "Greedy":
@@ -2185,14 +2250,79 @@ def main() -> None:
                     aquarium_widgets.append(f)
                 if f.carrying == "Wood":
                     f.carrying = None
-                    state["money"] += WOOD_SELL_PRICE
-                    _refresh_stats()
-                    _log_memory(f, "I brought back a piece of wood.")
-                    app.toast(
-                        f"{f.display_name} brought back a piece of wood. Sold "
-                        f"for ${WOOD_SELL_PRICE}.",
-                        level="success",
-                        icon="🪵",
+                    # Keen Explorer (Personality System 2.0): checked before
+                    # this trip's own growth roll below, so a fish can't
+                    # retroactively turn the wood it's already carrying into
+                    # a rare find the same trip it earns the trait. A Giant
+                    # Log additionally needs a Friend to help carry it home
+                    # -- no Friend, and a rare find is always a Crystal Log
+                    # instead.
+                    rare_find = TRAIT_KEEN_EXPLORER in f.traits and (
+                        random.random() < RARE_FIND_CHANCE
+                    )
+                    giant_log = (
+                        rare_find
+                        and f.friend is not None
+                        and random.random() < GIANT_LOG_CHANCE
+                    )
+                    if giant_log:
+                        friend = f.friend
+                        state["money"] += GIANT_LOG_SELL_PRICE
+                        _refresh_stats()
+                        # A real bonding moment -- same shape as every other
+                        # shared-moment call site (record_slept_together(),
+                        # a shark rescue): remember() for the pair's own
+                        # relationship memory, _bond_happiness() for both
+                        # fish's Happiness, and each fish's own diary line.
+                        remember(
+                            f,
+                            friend,
+                            GIANT_LOG_RELATIONSHIP_BONUS,
+                            "Carried a Giant Log home together",
+                        )
+                        _bond_happiness(f, friend)
+                        _log_memory(
+                            f,
+                            f"I carried a Giant Log with {friend.display_name}! "
+                            "It was heavy, but worth it.",
+                        )
+                        _log_memory(
+                            friend,
+                            f"Helped {f.display_name} carry a Giant Log home "
+                            "from the forest.",
+                        )
+                        app.toast(
+                            f"{f.display_name} and {friend.display_name} carried "
+                            f"a Giant Log home together! Sold for "
+                            f"${GIANT_LOG_SELL_PRICE}.",
+                            level="success",
+                            icon="🪵",
+                        )
+                    elif rare_find:
+                        state["money"] += CRYSTAL_LOG_SELL_PRICE
+                        _refresh_stats()
+                        _log_memory(
+                            f,
+                            "I found a Crystal Log out there. It practically sparkled.",
+                        )
+                        app.toast(
+                            f"{f.display_name} brought back a Crystal Log! Sold "
+                            f"for ${CRYSTAL_LOG_SELL_PRICE}.",
+                            level="success",
+                            icon="✨",
+                        )
+                    else:
+                        state["money"] += WOOD_SELL_PRICE
+                        _refresh_stats()
+                        _log_memory(f, "I brought back a piece of wood.")
+                        app.toast(
+                            f"{f.display_name} brought back a piece of wood. Sold "
+                            f"for ${WOOD_SELL_PRICE}.",
+                            level="success",
+                            icon="🪵",
+                        )
+                    _maybe_grant_trait(
+                        f, TRAIT_KEEN_EXPLORER, KEEN_EXPLORER_TRAIT_CHANCE
                     )
                 # Hunger update (updates.md): the "welcome back" moment this
                 # replaced "while you were away, X died" with -- a warm
@@ -2417,6 +2547,7 @@ def main() -> None:
             if f._shark_scare_active:
                 continue
             f._shark_scare_active = True
+            _maybe_grant_trait(f, TRAIT_FAST_SWIMMER, FAST_SWIMMER_TRAIT_CHANCE)
             serious_event_at["t"] = time.monotonic()
             # Cut short any in-progress Happiness flourish for this specific
             # fish -- the priority chain already keeps circling/following
@@ -2700,6 +2831,27 @@ def main() -> None:
                             level="info",
                         )
 
+    def _process_mischievous_steals() -> None:
+        # Consumes Fish._stole_food_from -- set by fish.py's draw() the
+        # instant a fish eats food some *other* non-predator fish was
+        # actually closer to (a real "beat someone to it"), cleared here
+        # either way so a steal is only ever processed once. Mischievous's
+        # growth trigger, and a small ongoing consequence ("annoys other
+        # fish") via the same relationships.remember() every other social
+        # event already goes through.
+        for f in fish:
+            victim = f._stole_food_from
+            f._stole_food_from = None
+            if victim is None:
+                continue
+            _maybe_grant_trait(f, TRAIT_MISCHIEVOUS, MISCHIEVOUS_TRAIT_CHANCE)
+            remember(
+                victim,
+                f,
+                MISCHIEVOUS_STEAL_RELATIONSHIP_PENALTY,
+                f"{f.display_name} snagged food right from under my nose!",
+            )
+
     def _process_relaxing() -> None:
         # Consume each fish's one-shot(s) from the moment it settles (fish.py's
         # relax/join branches). A *solo* settle surfaces as just the quiet 😌
@@ -2755,16 +2907,24 @@ def main() -> None:
         # mid-transit -- it isn't asleep in the tank, so nothing to dream
         # about there tonight.
         for f in fish:
+            # A Dreamer (Personality System 2.0, ROADMAP.md) leans straight
+            # on this same roll rather than getting a second one of its own
+            # -- matching choose_dream()'s own "a nudge on top of the
+            # existing roll, never a separate chance" philosophy.
+            dream_chance = DREAM_CHANCE + (
+                DREAMER_DREAM_CHANCE_BONUS if TRAIT_DREAMER in f.traits else 0.0
+            )
             if (
                 not f.is_predator
                 and _in_tank(f)
                 and f.hunger <= SLEEP_HUNGER_THRESHOLD
-                and random.random() < DREAM_CHANCE
+                and random.random() < dream_chance
             ):
                 f.dream = choose_dream(f)
                 _log_memory(
                     f, f"I dreamed about {f.dream.title}. {f.dream.description}"
                 )
+                _maybe_grant_trait(f, TRAIT_DREAMER, DREAMER_TRAIT_CHANCE)
                 if f.dream.category == "bad":
                     # A nightmare forces a real, early, solo wake -- see
                     # _process_nightmares(), on the per-second tick.
@@ -2878,6 +3038,7 @@ def main() -> None:
         _check_shark_scares()
         _process_nightmares()
         _process_relaxing()
+        _process_mischievous_steals()
         _process_happiness()
         _check_foraging()
         _check_forest_danger()
@@ -3061,8 +3222,25 @@ def main() -> None:
         )
         app.after(6.0, lambda: app.close_overlay(box))
 
+    def _schedule_daily_tick(delay: float) -> None:
+        """(Re)arm the daily tick -- which the Shop's stock rotation rides
+        on via _refresh_shop_stock() -- to next fire `delay` seconds from
+        now, then fall back to the normal AGE_SECONDS_PER_DAY cadence.
+        _load_snapshot() calls this with however much of the loaded day was
+        still remaining when it was saved, instead of always restarting a
+        full AGE_SECONDS_PER_DAY countdown -- the latter is what let the Shop
+        sit un-rotated for up to twice as long as intended after a Load."""
+        if daily_tick_timer["handle"] is not None:
+            app.cancel(daily_tick_timer["handle"])
+
+        def _fire():
+            _daily_tick()
+            daily_tick_timer["handle"] = app.every(AGE_SECONDS_PER_DAY, _daily_tick)
+
+        daily_tick_timer["handle"] = app.after(delay, _fire)
+
     app.every(1.0, _per_second_tick)
-    app.every(AGE_SECONDS_PER_DAY, _daily_tick)
+    daily_tick_timer["handle"] = app.every(AGE_SECONDS_PER_DAY, _daily_tick)
 
     def _return_to_main_menu():
         # Ctrl+C reaches here even through a modal (see cozy_tui's

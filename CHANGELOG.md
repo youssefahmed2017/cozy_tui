@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TermQuarium: Personality System 2.0** — fish now earn stackable
+  **traits** through play, on top of (not replacing) their existing
+  personality, the same relationship `Sleepy` already has with it. All six:
+  **Food Lover** (extra happiness when fed, quicker to reach food — grown by
+  eating a favorite treat), **Dreamer** (dreams more often — grown by
+  dreaming), **Fast Swimmer** (faster at everything — grown by a close shark
+  scare), **Energetic** (changes direction far more often — grown by the
+  "showing off" random event), **Mischievous** (quicker to snatch food out
+  from under a tankmate — grown by actually beating one to a bite, which
+  also dents their relationship a little), and **Keen Explorer**
+  (occasionally forages something better than plain wood — grown by a
+  successful forage return). Traits show on the Fish Inspector's Personality
+  line, persist through Save/Load (old saves default to none), and the Cheat
+  Console's `grant_trait(fish_name, trait)` grants one without waiting on its
+  natural trigger. See [ROADMAP.md](ROADMAP.md) for the design.
+
+- **TermQuarium: Crystal Logs and Giant Logs** — a Keen Explorer's forage
+  trips can very rarely turn up something better than plain Wood. A Crystal
+  Log alone sells for more; a Giant Log needs a Best Friend to help carry it
+  home (no Friend at all, and it's always a Crystal Log instead) — sells for
+  even more, and is a real bonding moment for both fish (a relationship
+  boost, a Happiness bump, and each fish gets its own diary line about it).
+
+- **TermQuarium: a "Together Forever" dream** — a sleeping fish whose friend
+  is currently a Best Friend (not just a Friend) has a small chance
+  (~1 in 10 nights) of a dream about it, instead of the ordinary
+  "friendship" category's uniform pick — earned by the bond itself, not a
+  personality's default.
+
+- **`ColorPicker` widget** — three R/G/B sliders (0–255) with live HEX/RGB
+  readouts, no swatch grid or palette involved. Up/Down move which channel is
+  active; click/drag a row's track to jump it directly. Ctrl+E/Ctrl+R copy the
+  HEX/RGB text to the clipboard (not Ctrl+H, which is indistinguishable from
+  Backspace over raw terminal input). The HEX/RGB readouts render in the
+  current color itself (truecolor), doubling as their own swatch. See
+  [docs/widgets.md](docs/widgets.md#colorpicker).
+
 - **Thin, auto-hiding scrollbars** — the vertical scrollbar shared by
   `ScrollView` and a capped `BarChart` is now a slim right-edge bar (`▐`/`▕`)
   instead of a full `█` column, and it auto-hides: full strength while you

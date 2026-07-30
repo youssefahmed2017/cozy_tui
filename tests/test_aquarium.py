@@ -3,6 +3,7 @@ Step 1: the steer() wall-bounce/movement function. Mirrors
 tests/test_game_2048.py's importlib-load pattern -- no Widget/App involved."""
 
 import importlib.util
+import json
 import math
 import pathlib
 import random
@@ -2856,6 +2857,53 @@ def test_save_then_load_round_trip_preserves_relationship_score_and_memories(
     assert "Slept together for the night" in rel.memories
 
 
+def test_load_resyncs_the_daily_tick_instead_of_giving_a_fresh_full_day(
+    tmp_path, monkeypatch
+):
+    # Regression: the Shop's stock rotation rides on the same daily-tick
+    # timer as aging/visitors/etc (_refresh_shop_stock(), called from
+    # _daily_tick()). _load_snapshot() used to restore day_count without
+    # touching that timer, so a save made moments before the timer was due
+    # would come back from Load facing a fresh full AGE_SECONDS_PER_DAY wait
+    # -- the Shop "refills too late". Loading should instead pick up with
+    # whatever time was actually left in the saved day.
+    app = _headless_app(tmp_path, monkeypatch)
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+    daily_timer.deadline = time.monotonic() + 5.0  # almost due when saved
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Almost Rotating"
+    prompt.on_key(aq.Key.ENTER)
+
+    saved = json.loads(
+        (tmp_path / ".termquarium" / "saves" / "Almost Rotating.json").read_text()
+    )
+    assert saved["aquarium"]["day_tick_remaining"] == pytest.approx(5.0, abs=1.0)
+
+    # Simulate what an unpatched session would have left running: a stale
+    # timer with a nearly-full day still to go, as if the game had just
+    # been (re)launched instead of mid-day when the save happened.
+    daily_timer.deadline = time.monotonic() + aq.AGE_SECONDS_PER_DAY
+
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c
+        for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+    resynced = next(
+        t
+        for t in app._timers
+        if t.alive and t.interval is None and t is not daily_timer
+    )
+    remaining = resynced.deadline - time.monotonic()
+    assert remaining < aq.AGE_SECONDS_PER_DAY / 2
+
+
 def test_emergency_welfare_fires_even_with_zero_fish(tmp_path, monkeypatch):
     # Regression: _check_emergency_welfare() must run every tick regardless
     # of whether any fish are currently hungry -- it used to be nested
@@ -3063,6 +3111,16 @@ def test_selling_a_fish_unlocks_first_sale_achievement(tmp_path, monkeypatch):
 
 
 def test_buying_an_axolotl_unlocks_first_axolotl_achievement(tmp_path, monkeypatch):
+    # Regression: _seed_starter_aquarium() calls _refresh_shop_stock(), which
+    # marks one random species "Out of Stock" (no Buy button) via an unseeded
+    # random.sample() -- this test was flaky whenever that species happened to
+    # be Axolotl itself. Force the rotation to land on some other species so
+    # Axolotl's Buy button is always present here.
+    monkeypatch.setattr(
+        aq.random,
+        "sample",
+        lambda names, count: [n for n in names if n != "Axolotl"][:count],
+    )
     app = _headless_app(tmp_path, monkeypatch)
     app._key_handlers["s"]()
     shop = app._overlays[-1].widget
@@ -3800,8 +3858,11 @@ def test_full_memory_log_never_caps_while_memory_log_does(tmp_path, monkeypatch)
     for _ in range(rounds):
         _fire_daily_tick(app)
 
+    # +1: with random.random() pinned to 0.0, the very first "showing off"
+    # spin also (once) grants Energetic (Personality System 2.0) -- its own
+    # memory-log line, on top of one "did a little spin" per round.
     assert len(target_fish.memory_log) == aq.MEMORY_LOG_LIMIT
-    assert len(target_fish.full_memory_log) == rounds
+    assert len(target_fish.full_memory_log) == rounds + 1
     # The capped log is exactly the uncapped log's tail -- same entries,
     # same order, just windowed.
     assert target_fish.memory_log == target_fish.full_memory_log[-aq.MEMORY_LOG_LIMIT :]
@@ -4599,6 +4660,46 @@ def test_a_shark_never_gets_assigned_a_dream(tmp_path, monkeypatch):
     second_timer.callback()
 
     assert shark.dream is None
+
+
+def test_together_forever_dream_requires_a_best_friend_not_just_a_friend(monkeypatch):
+    f = _neutral_fish(5.0, 5.0)
+    friend = _neutral_fish(1.0, 1.0)
+    friend.display_name = "Kitty"
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # would always win otherwise
+
+    aq.set_relationship(f, friend, aq.RELATIONSHIP_FRIEND_THRESHOLD + 1)
+    assert aq.choose_dream(f).category != "together_forever"  # Friend, not Best Friend
+
+    aq.set_relationship(f, friend, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
+    dream = aq.choose_dream(f)
+    assert dream.category == "together_forever"
+    assert "Kitty" in dream.title or "Kitty" in dream.description
+
+
+def test_together_forever_dream_never_fires_with_no_friend_at_all(monkeypatch):
+    f = _neutral_fish(5.0, 5.0)
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)
+
+    assert aq.choose_dream(f).category != "together_forever"
+
+
+def test_make_dream_together_forever_falls_back_to_happy_with_no_friend():
+    f = _neutral_fish(5.0, 5.0)
+    dream = aq.make_dream(f, "together_forever")
+    assert dream.category == "happy"
+
+
+def test_make_dream_together_forever_names_the_friend():
+    f = _neutral_fish(5.0, 5.0)
+    friend = _neutral_fish(1.0, 1.0)
+    friend.display_name = "Kitty"
+    aq.set_relationship(f, friend, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
+
+    dream = aq.make_dream(f, "together_forever")
+
+    assert dream.category == "together_forever"
+    assert "Kitty" in dream.description
 
 
 def test_reunion_dream_can_be_chosen_after_a_departure_memory(monkeypatch):
@@ -8131,6 +8232,23 @@ def test_explorer_fish_forages_at_a_higher_chance_than_baseline(tmp_path, monkey
     assert any("already halfway there" in m for m in steve.memory_log)
 
 
+def test_hungry_fish_does_not_forage_while_tank_food_is_available(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    monkeypatch.setattr(app, "toast", lambda *a, **k: None)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.personality = "Greedy"
+    steve.hunger = aq.HUNGER_WARNING_THRESHOLD
+    steve.foods.append(aq.Food(steve.fx, steve.fy))  # already something to eat
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # would always win otherwise
+
+    _second_timer(app).callback()
+
+    assert steve._travel_until is None
+
+
 def test_friendly_fish_joins_a_friend_already_heading_to_the_forest(
     tmp_path, monkeypatch
 ):
@@ -8591,3 +8709,536 @@ def test_entering_the_forest_with_a_tiger_shark_present_does_not_crash(
     _forest_scene(app)
     shark = next(w for w in app.widgets if isinstance(w, aq.TigerShark))
     shark.draw(_FakeCanvas())  # a real draw() call must not raise
+
+
+# ── Personality System 2.0 (ROADMAP.md): traits earned through play ─────────
+
+
+def test_grant_trait_adds_it_and_reports_whether_it_was_new():
+    f = _neutral_fish(5.0, 5.0)
+    assert f.traits == frozenset()
+
+    assert aq.grant_trait(f, aq.TRAIT_FOOD_LOVER) is True
+    assert f.traits == {aq.TRAIT_FOOD_LOVER}
+
+    # Already has it -- no-op, reported as such.
+    assert aq.grant_trait(f, aq.TRAIT_FOOD_LOVER) is False
+    assert f.traits == {aq.TRAIT_FOOD_LOVER}
+
+    # Traits stack -- a second, different one adds rather than replaces.
+    assert aq.grant_trait(f, aq.TRAIT_DREAMER) is True
+    assert f.traits == {aq.TRAIT_FOOD_LOVER, aq.TRAIT_DREAMER}
+
+
+def test_grant_trait_rejects_an_unknown_trait():
+    f = _neutral_fish(5.0, 5.0)
+    with pytest.raises(ValueError):
+        aq.grant_trait(f, "invisible")
+
+
+def test_fast_swimmer_multiplies_effective_speed():
+    f = _neutral_fish(5.0, 5.0)
+    f.speed = 4.0
+    baseline = f._effective_speed()
+
+    f.traits = frozenset({aq.TRAIT_FAST_SWIMMER})
+    assert f._effective_speed() == pytest.approx(baseline * aq.FAST_SWIMMER_SPEED_MULT)
+
+
+def test_food_lover_gives_a_food_speed_boost():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+
+    food_lover = _neutral_fish(5.0, 5.0, bounds)
+    food_lover.foods = [aq.Food(30.0, 5.0)]
+    food_lover.traits = frozenset({aq.TRAIT_FOOD_LOVER})
+    food_lover._next_turn = float("inf")
+    food_lover.speed = 5.0
+    food_lover.vx, food_lover.vy = 0.0, 0.0
+
+    plain = _neutral_fish(5.0, 5.0, bounds)
+    plain.foods = [aq.Food(30.0, 5.0)]
+    plain._next_turn = float("inf")
+    plain.speed = 5.0
+    plain.vx, plain.vy = 0.0, 0.0
+
+    _age(food_lover)
+    _age(plain)
+    food_lover.draw(_FakeCanvas())
+    plain.draw(_FakeCanvas())
+
+    assert food_lover.vx > plain.vx
+
+
+def test_food_lover_gets_extra_happiness_on_top_of_the_normal_fed_gain():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    foods = [aq.Food(5.0, 5.0)]  # exactly at the fish -- guaranteed within EAT_RADIUS
+    f = _neutral_fish(5.0, 5.0, bounds, foods=foods)
+    f.traits = frozenset({aq.TRAIT_FOOD_LOVER})
+    f.happiness = 50.0
+    f._next_turn = float("inf")
+
+    _age(f)
+    f.draw(_FakeCanvas())
+
+    assert f.happiness == pytest.approx(
+        50.0 + aq.HAPPINESS_FED_GAIN + aq.HAPPINESS_FOOD_LOVER_BONUS
+    )
+
+
+def test_predator_never_gets_the_food_lover_happiness_bonus():
+    # Sharks don't have Personality System 2.0 traits conceptually, but
+    # nothing stops one from carrying a stray .traits value (e.g. a bug
+    # elsewhere) -- the bonus is explicitly gated on not-a-predator so that
+    # can never silently change a Shark's happiness gain from eating fish.
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    fish_list = []
+    # Exactly at the shark's own position -- guaranteed within EAT_RADIUS,
+    # same trick test_eating_regular_food_gives_the_fed_happiness_gain uses
+    # for food, so a single draw() call is a guaranteed catch.
+    prey = _neutral_fish(5.0, 5.0, bounds, fish_list=fish_list)
+    fish_list.append(prey)
+    shark = _neutral_fish(5.0, 5.0, bounds, fish_list=fish_list, is_predator=True)
+    shark.traits = frozenset({aq.TRAIT_FOOD_LOVER})
+    shark.happiness = 50.0
+    shark._next_turn = float("inf")
+
+    _age(shark)
+    shark.draw(_FakeCanvas())
+
+    assert shark.happiness == 50.0 + aq.HAPPINESS_FED_GAIN
+
+
+def test_dreamer_trait_leans_the_existing_dream_chance_not_a_separate_roll(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    for f in fishes:
+        f.hunger = 0.0
+    dreamer, plain = fishes[0], fishes[1]
+    dreamer.traits = frozenset({aq.TRAIT_DREAMER})
+    _force_night_transition(monkeypatch)
+    # Between DREAM_CHANCE and DREAM_CHANCE + DREAMER_DREAM_CHANCE_BONUS --
+    # misses for a plain fish, hits for a Dreamer leaning the same roll.
+    roll = (aq.DREAM_CHANCE + aq.DREAM_CHANCE + aq.DREAMER_DREAM_CHANCE_BONUS) / 2
+    monkeypatch.setattr(aq.random, "random", lambda: roll)
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert dreamer.dream is not None
+    assert plain.dream is None
+
+
+def test_dreaming_can_grow_the_dreamer_trait(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    for f in fishes:
+        f.hunger = 0.0
+    monkeypatch.setattr(app, "toast", lambda *a, **k: None)
+    _force_night_transition(monkeypatch)
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # always dreams, always grows
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert all(aq.TRAIT_DREAMER in f.traits for f in fishes)
+    assert any(
+        "developed a new trait" in entry for f in fishes for entry in f.memory_log
+    )
+
+
+def test_a_shark_scare_can_grow_the_fast_swimmer_trait(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    prey = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    prey.decorations = []
+    monkeypatch.setattr(app, "toast", lambda *a, **k: None)
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # always grows
+    _add_real_fish(app, prey.fx + 1.0, prey.fy, is_predator=True, species_name="Shark")
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert aq.TRAIT_FAST_SWIMMER in prey.traits
+
+
+def test_a_shark_scare_does_not_regrant_fast_swimmer_or_re_toast(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    prey = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    prey.display_name = "Steve"
+    prey.decorations = []
+    prey.traits = frozenset({aq.TRAIT_FAST_SWIMMER})
+    # The other starter fish spawn at random positions -- push them well
+    # outside SHARK_SCARE_RADIUS so only Steve is ever scared by the shark
+    # placed below; otherwise one of them can, entirely correctly, earn its
+    # own Fast Swimmer this same tick and pollute the toast-text assertion.
+    for other in [w for w in app.widgets if isinstance(w, aq.Fish) and w is not prey]:
+        other.fx, other.fy = -1000.0, -1000.0
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)
+    _add_real_fish(app, prey.fx + 1.0, prey.fy, is_predator=True, species_name="Shark")
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert prey.traits == {aq.TRAIT_FAST_SWIMMER}
+    assert not any(f"{prey.display_name} developed a new trait" in t for t in toasts)
+
+
+def test_console_grant_trait_command(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+
+    _type_into_console(console, 'grant_trait(fish_name="Steve", trait="food_lover")')
+
+    assert aq.TRAIT_FOOD_LOVER in steve.traits
+
+
+def test_console_grant_trait_reports_when_already_held(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    steve.traits = frozenset({aq.TRAIT_DREAMER})
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+
+    _type_into_console(console, 'grant_trait(fish_name="Steve", trait="dreamer")')
+
+    assert any("already has that trait" in text for text, _is_error in console.lines)
+
+
+def test_console_grant_trait_rejects_an_unknown_trait(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+
+    _type_into_console(console, 'grant_trait(fish_name="Steve", trait="invisible")')
+
+    assert steve.traits == frozenset()
+
+
+def test_save_then_load_round_trip_preserves_traits(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    steve.traits = frozenset({aq.TRAIT_FOOD_LOVER, aq.TRAIT_FAST_SWIMMER})
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Trait Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c
+        for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+    reloaded = next(f for f in app.widgets if isinstance(f, aq.Fish))
+    assert reloaded.display_name == "Steve"
+    assert reloaded.traits == {aq.TRAIT_FOOD_LOVER, aq.TRAIT_FAST_SWIMMER}
+
+
+def test_loading_a_save_from_before_traits_existed_defaults_to_no_traits(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Old Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    path = tmp_path / ".termquarium" / "saves" / "Old Save.json"
+    data = json.loads(path.read_text())
+    del data["aquarium"]["fish"][0]["traits"]  # simulate a pre-2.0 save
+    path.write_text(json.dumps(data))
+
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c
+        for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+    reloaded = next(f for f in app.widgets if isinstance(f, aq.Fish))
+    assert reloaded.traits == frozenset()
+
+
+def test_inspector_shows_earned_traits_on_the_personality_line(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.traits = frozenset({aq.TRAIT_FOOD_LOVER})
+
+    inspector = _open_inspector_for(app, steve)
+    line = next(
+        w.text
+        for w in inspector.children
+        if w.__class__.__name__ == "Label" and w.text.startswith("Personality:")
+    )
+
+    assert "Food Lover" in line
+    assert "🍤" in line
+
+
+def test_inspector_personality_line_unchanged_with_no_traits(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    assert steve.traits == frozenset()
+
+    inspector = _open_inspector_for(app, steve)
+    line = next(
+        w.text
+        for w in inspector.children
+        if w.__class__.__name__ == "Label" and w.text.startswith("Personality:")
+    )
+
+    assert "·" not in line
+
+
+# ── Personality System 2.0, part 2: Energetic / Mischievous / Keen Explorer ──
+
+
+def test_energetic_reduces_the_turn_delay_range():
+    f = _neutral_fish(5.0, 5.0)
+    f.personality = "Explorer"  # a plain baseline turn-rate to compare against
+    f._next_turn = 0.0  # already due
+    _age(f, 1.0)
+    baseline_delay = None
+    f.draw(_FakeCanvas())
+    baseline_delay = f._next_turn - f._last
+
+    f.traits = frozenset({aq.TRAIT_ENERGETIC})
+    f._next_turn = 0.0
+    _age(f, 1.0)
+    f.draw(_FakeCanvas())
+    energetic_delay = f._next_turn - f._last
+
+    # Both delays are randomized within a range, so compare the ranges'
+    # upper bounds rather than one sampled draw.
+    assert aq.MAX_TURN_DELAY / aq.EXPLORER_TURN_DIV / aq.ENERGETIC_TURN_DIV < (
+        aq.MAX_TURN_DELAY / aq.EXPLORER_TURN_DIV
+    )
+    assert (
+        energetic_delay
+        <= aq.MAX_TURN_DELAY / aq.EXPLORER_TURN_DIV / aq.ENERGETIC_TURN_DIV
+    )
+    assert baseline_delay <= aq.MAX_TURN_DELAY / aq.EXPLORER_TURN_DIV
+
+
+def test_showing_off_event_can_grow_the_energetic_trait(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    target_fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    monkeypatch.setattr(app, "toast", lambda *a, **k: None)
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # event fires, roll succeeds
+    monkeypatch.setattr(
+        aq.random,
+        "choice",
+        lambda seq: "showing_off" if "showing_off" in seq else target_fish,
+    )
+
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+    daily_timer.callback()
+
+    assert aq.TRAIT_ENERGETIC in target_fish.traits
+
+
+def test_closer_rival_for_finds_the_nearest_closer_tankmate():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    fish_list = []
+    thief = _neutral_fish(0.0, 0.0, bounds, fish_list=fish_list)
+    far_rival = _neutral_fish(9.0, 0.0, bounds, fish_list=fish_list)
+    near_rival = _neutral_fish(9.5, 0.0, bounds, fish_list=fish_list)
+    fish_list.extend([thief, far_rival, near_rival])
+
+    closest = thief._closer_rival_for((10.0, 0.0))
+    assert closest is near_rival
+
+
+def test_closer_rival_for_ignores_predators_and_fish_that_are_not_actually_closer():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    fish_list = []
+    thief = _neutral_fish(9.0, 0.0, bounds, fish_list=fish_list)
+    farther = _neutral_fish(0.0, 0.0, bounds, fish_list=fish_list)  # farther than thief
+    shark = _neutral_fish(9.9, 0.0, bounds, fish_list=fish_list, is_predator=True)
+    fish_list.extend([thief, farther, shark])
+
+    assert thief._closer_rival_for((10.0, 0.0)) is None
+
+
+def test_mischievous_gives_a_food_speed_boost():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+
+    mischievous = _neutral_fish(5.0, 5.0, bounds)
+    mischievous.foods = [aq.Food(30.0, 5.0)]
+    mischievous.traits = frozenset({aq.TRAIT_MISCHIEVOUS})
+    mischievous._next_turn = float("inf")
+    mischievous.speed = 5.0
+    mischievous.vx, mischievous.vy = 0.0, 0.0
+
+    plain = _neutral_fish(5.0, 5.0, bounds)
+    plain.foods = [aq.Food(30.0, 5.0)]
+    plain._next_turn = float("inf")
+    plain.speed = 5.0
+    plain.vx, plain.vy = 0.0, 0.0
+
+    _age(mischievous)
+    _age(plain)
+    mischievous.draw(_FakeCanvas())
+    plain.draw(_FakeCanvas())
+
+    assert mischievous.vx > plain.vx
+
+
+def test_eating_food_a_closer_tankmate_wanted_sets_stole_food_from():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    fish_list = []
+    # thief is 0.5 from the food (within EAT_RADIUS -- a guaranteed catch,
+    # not distance 0: that would make "someone closer than me" impossible
+    # for anyone to satisfy) and victim is 0.1 from it -- genuinely closer.
+    thief = _neutral_fish(5.0, 5.0, bounds, fish_list=fish_list)
+    victim = _neutral_fish(5.6, 5.0, bounds, fish_list=fish_list)
+    fish_list.extend([thief, victim])
+    thief.foods = [aq.Food(5.5, 5.0)]
+    thief._next_turn = float("inf")
+
+    _age(thief)
+    thief.draw(_FakeCanvas())
+
+    assert thief._stole_food_from is victim
+
+
+def test_a_steal_can_grow_mischievous_and_dents_the_relationship(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    thief, victim = [w for w in app.widgets if isinstance(w, aq.Fish)][:2]
+    # Neither Lazy -- remember() dampens the delta toward 0 for a Lazy fish
+    # on either side, which would make the exact-value assertion below flaky
+    # against whatever personality got randomly rolled.
+    thief.personality = "Explorer"
+    victim.personality = "Explorer"
+    monkeypatch.setattr(app, "toast", lambda *a, **k: None)
+    thief._stole_food_from = victim
+    before = aq.get_relationship(thief, victim).score
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # growth roll always succeeds
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert aq.TRAIT_MISCHIEVOUS in thief.traits
+    assert thief._stole_food_from is None  # consumed, not reprocessed every tick
+    after = aq.get_relationship(thief, victim).score
+    assert after == pytest.approx(before + aq.MISCHIEVOUS_STEAL_RELATIONSHIP_PENALTY)
+    assert any(
+        "snagged food" in reason
+        for reason in aq.get_relationship(thief, victim).memories
+    )
+
+
+def _return_from_forage_with_wood(app, monkeypatch, f):
+    """Drive `f` all the way from a successful forage through arriving home
+    with wood, via the real per-second ticks -- same sequence
+    test_fish_forages_wood_and_sells_it_on_returning_home uses."""
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(aq.time, "monotonic", lambda: clock["t"])
+    _send_fish_to_forest(app, monkeypatch, clock, f, carry_wood=True)
+    clock["t"] += aq.FOREST_CARRY_LINGER_SECONDS + 0.1
+    _second_timer(app).callback()  # done lingering -- heads home
+    clock["t"] += aq.FOREST_TRAVEL_SECONDS + 0.1
+    _second_timer(app).callback()  # arrives home and sells
+
+
+def test_forage_return_can_grow_the_keen_explorer_trait(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    _return_from_forage_with_wood(app, monkeypatch, steve)
+
+    assert aq.TRAIT_KEEN_EXPLORER in steve.traits
+
+
+def test_keen_explorer_can_bring_back_a_crystal_log(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    steve.traits = frozenset({aq.TRAIT_KEEN_EXPLORER})
+    state_money_before = app.widgets  # placeholder, real check is via toast below
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    _return_from_forage_with_wood(app, monkeypatch, steve)
+
+    assert any(
+        f"Crystal Log! Sold for ${aq.CRYSTAL_LOG_SELL_PRICE}" in t for t in toasts
+    )
+    assert any("Crystal Log" in m for m in steve.memory_log)
+
+
+def test_keen_explorer_needs_a_friend_for_a_giant_log(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    steve = fishes[0]
+    steve.display_name = "Steve"
+    steve.traits = frozenset({aq.TRAIT_KEEN_EXPLORER})
+    assert steve.friend is None  # a fresh starter aquarium hasn't earned any bonds yet
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    _return_from_forage_with_wood(app, monkeypatch, steve)
+
+    # No Friend to help carry -- always a Crystal Log, never a Giant Log,
+    # even though the rare-find roll itself (pinned to 0.0 by
+    # _send_fish_to_forest) always succeeds.
+    assert any("Crystal Log" in t for t in toasts)
+    assert not any("Giant Log" in t for t in toasts)
+
+
+def test_keen_explorer_with_a_friend_can_bring_back_a_giant_log(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    steve, kitty = fishes[0], fishes[1]
+    steve.display_name = "Steve"
+    kitty.display_name = "Kitty"
+    # Not Lazy -- remember() dampens the relationship delta for a Lazy fish
+    # on either side, which would make the exact-value assertion below
+    # flaky against Kitty's randomly-rolled personality (Steve's own gets
+    # forced to "Playful" by _send_fish_to_forest() regardless).
+    kitty.personality = "Explorer"
+    steve.traits = frozenset({aq.TRAIT_KEEN_EXPLORER})
+    aq.set_relationship(steve, kitty, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
+    assert steve.friend is kitty
+    before = aq.get_relationship(steve, kitty).score
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+
+    _return_from_forage_with_wood(app, monkeypatch, steve)
+
+    assert any(
+        f"Giant Log home together! Sold for ${aq.GIANT_LOG_SELL_PRICE}" in t
+        for t in toasts
+    )
+    assert any("carried a Giant Log with Kitty" in m for m in steve.memory_log)
+    assert any("Helped Steve carry a Giant Log" in m for m in kitty.memory_log)
+    after = aq.get_relationship(steve, kitty).score
+    assert after == pytest.approx(
+        min(aq.RELATIONSHIP_MAX, before + aq.GIANT_LOG_RELATIONSHIP_BONUS)
+    )

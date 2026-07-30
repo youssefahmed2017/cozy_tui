@@ -1372,6 +1372,55 @@ box.add(volume)
 
 ---
 
+### `ColorPicker`
+
+Three R/G/B sliders (0–255 each) with live HEX/RGB readouts underneath — no swatch grid, no palette picker, just sliders. Up/Down move which channel the arrow keys/Page/Home/End affect; clicking or dragging a row's own track jumps that channel directly and makes it active. The HEX/RGB lines are drawn *in* the current color (truecolor, via `Style`'s `"rgb(r,g,b)"` form) — the readout doubles as its own swatch, so there's no separate preview widget needed.
+
+```python
+ColorPicker(x, y, color=(255, 255, 255), *,
+            width=16, step=1, page_step=16, on_change=None, style=None)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `x`, `y` | Position |
+| `color` | Initial color: an `(r, g, b)` tuple/list, or any string `Style` understands — `"#rrggbb"`/`"#rgb"`, `"rgb(r,g,b)"`, `"color(N)"`, or a named color |
+| `width` | Width of each channel's own slider track (not counting its `"R "`/`"G "`/`"B "` label) |
+| `step` | Amount Left/Right/Up/Down move the active channel by |
+| `page_step` | Amount Page Up/Down move the active channel by |
+| `on_change` | Shortcut for `.on_change(func)` below |
+
+**Reading / setting the color:**
+
+```python
+cp.rgb                # current (r, g, b)
+cp.hex                # current "#rrggbb"
+cp.set_rgb(color)      # same color formats as the constructor
+```
+
+**Callbacks:**
+
+```python
+cp.on_change(func)          # func(rgb) — fires when any channel actually changes
+cp.on_copy(func)            # func(kind, text) — fires after a copy; kind is "hex" or "rgb"
+```
+
+**Key bindings (when focused):** Up/Down — move between R/G/B (clamped, not wrapped), Left/Right — step the active channel, Page Up/Down — jump the active channel by `page_step`, Home/End — jump the active channel to 0/255, **Ctrl+E** — copy the HEX value to the clipboard, **Ctrl+R** — copy the RGB value. (Not Ctrl+H: that byte is indistinguishable from Backspace over raw terminal input.)
+
+**Mouse:** click or drag any row's track to jump that channel directly, which also makes it the active channel for the keyboard.
+
+**Example:**
+
+```python
+from cozy_tui.widgets import ColorPicker
+
+picker = ColorPicker(2, 2, "#3498db")
+picker.on_change(lambda rgb: swatch.set_bg(f"rgb({rgb[0]},{rgb[1]},{rgb[2]})"))
+box.add(picker)
+```
+
+---
+
 ### `Splitter`
 
 Two panes divided by a 1-cell bar you can drag to resize them. `orientation="horizontal"` (default) places the panes side by side with a vertical bar; `"vertical"` stacks them with a horizontal bar.

@@ -139,6 +139,12 @@ def _build_registry():
         events.append(("give_dream", f.display_name, category))
         return "A Sunny Reef"
 
+    def grant_trait(f, trait):
+        events.append(("grant_trait", f.display_name, trait))
+        if trait not in ("food_lover", "dreamer", "fast_swimmer"):
+            raise ValueError(f"Unknown trait: {trait!r}.")
+        return f"Gave {f.display_name} the {trait} trait."
+
     def advance_day():
         events.append(("advance_day",))
 
@@ -155,6 +161,7 @@ def _build_registry():
         spawn_food=spawn_food,
         give_nightmare=give_nightmare,
         give_dream=give_dream,
+        grant_trait=grant_trait,
         advance_day=advance_day,
     )
     return commands, fish, state, events

@@ -30,6 +30,7 @@ from .constants import (
     SLEEPY_CHANCE,
     SLEEPY_RESIST_CHANCE,
     SLEPT_TOGETHER_SCORE,
+    TRAITS,
     WAKE_CHANCES_FRIEND,
     WAKE_CHANCES_NEUTRAL,
     WAKE_UP_SCORE,
@@ -51,6 +52,24 @@ def roll_is_sleepy() -> bool:
     Affects only how hard it is to wake (see find_eligible_waker()/
     resolve_wake_attempt()); nothing else about it changes."""
     return random.random() < SLEEPY_CHANCE
+
+
+def grant_trait(f, trait: str) -> bool:
+    """Give `f` its Personality System 2.0 trait, if it doesn't already have
+    it -- called at whatever real, existing event that trait grows from
+    (aquarium.py's _treat_reaction/_assign_dreams/_check_shark_scares),
+    behind that event's own chance roll. Returns whether it was actually
+    newly granted, so a caller can gate a toast/memory-log entry on a real
+    change rather than writing one every time the roll happens to fire for
+    a trait already held. Raises ValueError for an unknown trait -- the
+    Cheat Console's grant_trait() command relies on that to report a typo
+    instead of silently no-op'ing."""
+    if trait not in TRAITS:
+        raise ValueError(f"Unknown trait: {trait!r}. Try one of: {', '.join(TRAITS)}.")
+    if trait in f.traits:
+        return False
+    f.traits = f.traits | {trait}
+    return True
 
 
 def find_eligible_waker(sleeper, candidates):

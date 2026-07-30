@@ -28,6 +28,7 @@ from cozy_tui.widgets import (
     Checkbox,
     CheckItem,
     CheckList,
+    ColorPicker,
     Diff,
     Dropdown,
     GlowAnimation,
@@ -186,6 +187,11 @@ def page_inputs(app, box):
     volume_label.text = f"volume: {volume.get()}"
     box.add(volume_label)
     app.set_tooltip(volume, "Left/Right to adjust, or drag the handle")
+
+    box.add(Label(40, 8, "Color (ColorPicker):", ACCENT))
+    picker = ColorPicker(40, 9, "#ff6347", width=16)  # tomato
+    box.add(picker)
+    app.set_tooltip(picker, "Up/Down: channel, Left/Right: adjust, Ctrl+E/Ctrl+R: copy")
 
     out = Label(2, 11, "", OK)
     # Hover reacts per-widget: on_enter/on_leave opt just this button into

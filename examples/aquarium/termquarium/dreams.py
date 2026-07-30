@@ -31,9 +31,11 @@ from .constants import (
     DREAM_SAD_BAD_NUDGE_CHANCE,
     DREAM_SAD_PERSONALITY_PENALTY,
     DREAM_SHARK_NIGHTMARE_CHANCE,
+    DREAM_TOGETHER_FOREVER_CHANCE,
     MEMORY_DREAM_LOOKBACK,
     DREAM_FUNNY_CHANCE,
 )
+from .relationships import relationship_state
 
 Dream = namedtuple("Dream", "category icon title description frames")
 
@@ -194,6 +196,29 @@ DREAM_FRAMES = {
             (
                 ("🐠😴 zzz   🐡 zzz", "🪨 ✨", "with {friend}"),
                 ("🐠😴🐡", "   zzz", "with {friend}"),
+            ),
+        ),
+    ],
+    # Only ever reached through the Best-Friend-only check in choose_dream()
+    # -- never the plain "friendship" category's uniform random.choice(),
+    # and never a personality's default either (see _PERSONALITY_CATEGORY,
+    # which has no "together_forever" entry) -- this dream is earned by the
+    # relationship itself, not leaned toward by temperament.
+    "together_forever": [
+        DreamVariant(
+            "Staying Together",
+            "Me and {friend}... I wish we stay together forever.",
+            (
+                (
+                    "🌊      🐠 🥺 🦎",
+                    "        ❤️",
+                    "together forever",
+                ),
+                (
+                    "🌊      🐠🥺🦎",
+                    "        ❤️",
+                    "together forever",
+                ),
             ),
         ),
     ],
@@ -465,6 +490,7 @@ _CATEGORY_ICON = {
     "funny": "😂",
     "bad": "😨",
     "reunion": "🥹",
+    "together_forever": "💞",
 }
 
 # Matches aquarium.py's _log_departure() line format exactly
@@ -552,10 +578,10 @@ def make_dream(
     if category not in DREAM_FRAMES:
         valid = ", ".join(sorted(DREAM_FRAMES))
         raise ValueError(f"Unknown dream category {category!r}. Try one of: {valid}.")
-    if category == "friendship" and f.friend is None:
+    if category in ("friendship", "together_forever") and f.friend is None:
         category = "happy"  # nobody to dream about -- same fallback as choose_dream()
     variant = _pick_variant(category, variant_title)
-    if category == "friendship":
+    if category in ("friendship", "together_forever"):
         return _build_dream(category, variant, friend=f.friend.display_name)
     if category == "reunion":
         name = _departed_friend_name(f.memory_log) or "an old friend"
@@ -572,12 +598,18 @@ def choose_dream(f) -> Dream:
 
     1. A "reunion" dream about a still-remembered departed tankmate
        (DREAM_REUNION_CHANCE) -- see _departed_friend_name().
-    2. A shark-specific nightmare (DREAM_SHARK_NIGHTMARE_CHANCE, well above
+    2. A "Together Forever" dream (DREAM_TOGETHER_FOREVER_CHANCE, about 1 in
+       10 nights) if `f`'s friend is currently a Best Friend, not just a
+       Friend (relationships.relationship_state()) -- earned by the bond
+       itself, never a personality's plain default, the same "reunion never
+       lives in _PERSONALITY_CATEGORY" rule applied to a happy dream instead
+       of a grieving one.
+    3. A shark-specific nightmare (DREAM_SHARK_NIGHTMARE_CHANCE, well above
        the plain nightmare rate below) if a recent memory mentions one --
        see MEMORY_DREAM_LOOKBACK.
-    3. A rare, flat, personality-independent plain nightmare
+    4. A rare, flat, personality-independent plain nightmare
        (DREAM_NIGHTMARE_CHANCE).
-    4. Otherwise, a personality-weighted category (falling back to "happy"
+    5. Otherwise, a personality-weighted category (falling back to "happy"
        for Friendly with no current friend to dream about) -- nudged toward
        "friendship" instead, regardless of personality, if a recent memory
        already names the current friend; or, failing that, nudged toward
@@ -589,7 +621,7 @@ def choose_dream(f) -> Dream:
        separate roll, so it never doubles a fish's total dream chance.
 
     Happiness (Update 1, f.feeling) leans the personality-weighted roll in
-    step 4 rather than adding a new one: Very Happy raises the odds of
+    step 5 rather than adding a new one: Very Happy raises the odds of
     landing on the fish's own preferred category (DREAM_HAPPY_PERSONALITY_
     BONUS); Sad lowers them (DREAM_SAD_PERSONALITY_PENALTY) and, separately,
     gets one extra small chance (DREAM_SAD_BAD_NUDGE_CHANCE) to lean toward a
@@ -597,7 +629,7 @@ def choose_dream(f) -> Dream:
     memory (friendship/peaceful-moment) still wins over a fish's mood.
 
     A Very Happy fish also gets one independent shot (DREAM_FUNNY_CHANCE,
-    checked before step 4) at a "funny" dream -- its own category, never a
+    checked before step 5) at a "funny" dream -- its own category, never a
     personality's plain default, decisive once rolled (skips the friendship/
     peaceful-moment nudges entirely, unlike the personality-weighted pick).
     """
@@ -607,6 +639,16 @@ def choose_dream(f) -> Dream:
     if departed_name is not None and random.random() < DREAM_REUNION_CHANCE:
         variant = random.choice(DREAM_FRAMES["reunion"])
         return _build_dream("reunion", variant, name=departed_name)
+
+    if (
+        f.friend is not None
+        and relationship_state(f.relationships[f.friend].score)[0] == "Best Friend"
+        and random.random() < DREAM_TOGETHER_FOREVER_CHANCE
+    ):
+        variant = DREAM_FRAMES["together_forever"][0]
+        return _build_dream(
+            "together_forever", variant, friend=f.friend.display_name
+        )
 
     had_shark_scare = any("shark" in entry.lower() for entry in recent)
     if had_shark_scare and random.random() < DREAM_SHARK_NIGHTMARE_CHANCE:

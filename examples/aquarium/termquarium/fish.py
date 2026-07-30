@@ -16,9 +16,12 @@ from .constants import (
     AXOLOTL_RELAX_DURATION_MAX,
     AXOLOTL_RELAX_DURATION_MIN,
     AXOLOTL_RESTING_GLYPH,
+    ENERGETIC_TURN_DIV,
     EXPLORER_HOME_SHUFFLE_CHANCE,
+    FAST_SWIMMER_SPEED_MULT,
     FLEE_STEER_RATE,
     FOLLOW_MOUSE_RATE,
+    FOOD_LOVER_FOOD_BOOST,
     FOOD_STEER_RATE,
     FRIEND_STEER_RATE,
     GREEDY_RATE_MULT,
@@ -29,6 +32,7 @@ from .constants import (
     HAPPINESS_CIRCLE_STEER_RATE,
     HAPPINESS_FED_GAIN,
     HAPPINESS_FOLLOW_STEER_MULT,
+    HAPPINESS_FOOD_LOVER_BONUS,
     HAPPINESS_HAPPY_THRESHOLD,
     HUNGER_A_LITTLE_HUNGRY_THRESHOLD,
     HUNGER_CONTENT_THRESHOLD,
@@ -60,6 +64,7 @@ from .constants import (
     MIN_SPEED,
     MIN_TURN_DELAY,
     MAX_TURN_DELAY,
+    MISCHIEVOUS_FOOD_BOOST,
     PLAYFUL_SPEED_VARIANCE,
     PLAYFUL_TURN_DIV,
     RELAX_ARRIVE_MARGIN,
@@ -85,6 +90,10 @@ from .constants import (
     SLEEP_FAR_DISTANCE,
     SLEEP_HUNGER_THRESHOLD,
     SLEEP_STEER_RATE,
+    TRAIT_ENERGETIC,
+    TRAIT_FAST_SWIMMER,
+    TRAIT_FOOD_LOVER,
+    TRAIT_MISCHIEVOUS,
     SOCIAL_STEER_RATE,
     AGE_SECONDS_PER_DAY,
     WAKE_LINGER_SECONDS,
@@ -177,6 +186,19 @@ class Fish(Widget):
         # Independent of (and stackable with) personality -- see
         # roll_is_sleepy()'s docstring. A Greedy fish can also be Sleepy.
         self.is_sleepy = roll_is_sleepy()
+        # Personality System 2.0 (ROADMAP.md): traits earned through play,
+        # not rolled at birth -- a brand-new fish starts with none, same
+        # philosophy relationships.py already uses for Friend/Rival bonds.
+        # See relationships.grant_trait(), called from aquarium.py at
+        # whatever real event a given trait grows from.
+        self.traits: frozenset[str] = frozenset()
+        # Set the moment this fish eats food that some other (non-predator)
+        # fish was actually closer to -- a real "beat someone to it", not
+        # just a flat stat. aquarium.py's per-second tick reads this, rolls
+        # Mischievous's growth chance, logs/toasts, nudges the two fish's
+        # relationship, and clears it back to None; a plain widget can't do
+        # any of that itself (no _log_memory/app/relationships access here).
+        self._stole_food_from = None
         # Chosen once at birth, like a real pet's favorite spot -- never
         # re-rolled later, unlike everything else personality-related.
         self.favorite_decoration = (
@@ -508,6 +530,8 @@ class Fish(Widget):
         # Night no longer lives here -- a sleeping fish is a hard stop
         # (see draw()), not just slower, so there's nothing left to blend.
         mult = LAZY_SPEED_MULT if self.personality == "Lazy" else 1.0
+        if TRAIT_FAST_SWIMMER in self.traits:
+            mult *= FAST_SWIMMER_SPEED_MULT  # earned trait, stacks with everything else here
         if self.growth_stage == "Elder":
             mult *= ELDER_SPEED_MULT  # measurably slower with age
         if self.environment is not None:
@@ -519,6 +543,22 @@ class Fish(Widget):
     def _nearest_food(self):
         i = nearest_index(self.fx, self.fy, [(f.fx, f.fy) for f in self.foods])
         return self.foods[i] if i is not None else None
+
+    def _closer_rival_for(self, food_pos):
+        """The nearest *other* non-predator fish that was closer to
+        `food_pos` than this fish is right now, or None -- Mischievous's
+        growth trigger (see aquarium.py's per-second processing of
+        `_stole_food_from`): eating food some tankmate was arguably about to
+        get first is a real "stole it" moment, not a flat stat check."""
+        my_dist = math.hypot(self.fx - food_pos[0], self.fy - food_pos[1])
+        closest, closest_dist = None, None
+        for other in self.fish_list:
+            if other is self or other.is_predator:
+                continue
+            d = math.hypot(other.fx - food_pos[0], other.fy - food_pos[1])
+            if d < my_dist and (closest_dist is None or d < closest_dist):
+                closest, closest_dist = other, d
+        return closest
 
     def _nearest_prey(self):
         # Sharks hunt ordinary fish, never each other -- and never one
@@ -943,6 +983,12 @@ class Fish(Widget):
                 elif self.personality == "Playful":
                     lo, hi = lo / PLAYFUL_TURN_DIV, hi / PLAYFUL_TURN_DIV
                     turn_speed = speed * random.uniform(*PLAYFUL_SPEED_VARIANCE)
+                if TRAIT_ENERGETIC in self.traits:
+                    # An earned trait, not a personality -- applied after
+                    # (and stacking with) whichever personality branch above
+                    # just ran, e.g. an Explorer+Energetic fish turns even
+                    # more often than a plain Explorer.
+                    lo, hi = lo / ENERGETIC_TURN_DIV, hi / ENERGETIC_TURN_DIV
                 self.vx, self.vy = random_velocity(turn_speed)
                 self._next_turn = now + random.uniform(lo, hi)
 
@@ -1066,13 +1112,19 @@ class Fish(Widget):
                     seeking_food = True
                     greedy = self.personality == "Greedy"
                     has_rival = self.rival is not None
+                    food_lover = TRAIT_FOOD_LOVER in self.traits
+                    mischievous = TRAIT_MISCHIEVOUS in self.traits
                     food_speed = speed * (
                         (GREEDY_SPEED_MULT if greedy else 1.0)
                         * (RIVAL_FOOD_BOOST if has_rival else 1.0)
+                        * (FOOD_LOVER_FOOD_BOOST if food_lover else 1.0)
+                        * (MISCHIEVOUS_FOOD_BOOST if mischievous else 1.0)
                     )
                     rate = FOOD_STEER_RATE * (
                         (GREEDY_RATE_MULT if greedy else 1.0)
                         * (RIVAL_FOOD_BOOST if has_rival else 1.0)
+                        * (FOOD_LOVER_FOOD_BOOST if food_lover else 1.0)
+                        * (MISCHIEVOUS_FOOD_BOOST if mischievous else 1.0)
                     )
                     blend = min(1.0, rate * dt)
                     self.vx, self.vy, caught = steer_toward_food(
@@ -1091,10 +1143,19 @@ class Fish(Widget):
                         else:
                             self.foods.remove(target)
                             self.on_eat_food(target)
+                            self._stole_food_from = self._closer_rival_for(target_pos)
                         self.hunger, self.health = feed(self.hunger, self.health)
                         self.happiness = adjust_happiness(
                             self.happiness, HAPPINESS_FED_GAIN
                         )
+                        if not self.is_predator and TRAIT_FOOD_LOVER in self.traits:
+                            # On top of HAPPINESS_FED_GAIN above -- any food,
+                            # not just a favorite treat (see aquarium.py's
+                            # _treat_reaction for the separate favorite-food
+                            # bonus, which stacks with this one too).
+                            self.happiness = adjust_happiness(
+                                self.happiness, HAPPINESS_FOOD_LOVER_BONUS
+                            )
                         # A special food (a dropped treat) reacts to whoever
                         # actually ate it -- fired here, after feed(), so the
                         # reaction sees the fed hunger/health. Plain food and
