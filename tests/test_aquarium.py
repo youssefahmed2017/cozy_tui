@@ -9242,3 +9242,117 @@ def test_keen_explorer_with_a_friend_can_bring_back_a_giant_log(tmp_path, monkey
     assert after == pytest.approx(
         min(aq.RELATIONSHIP_MAX, before + aq.GIANT_LOG_RELATIONSHIP_BONUS)
     )
+
+
+# ── Personality System 2.0, part 3: combo flavor / Keen Explorer eagerness ──
+
+
+def test_keen_explorer_forages_at_a_higher_chance_than_baseline(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    monkeypatch.setattr(app, "toast", lambda *a, **k: None)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.personality = "Lazy"  # would not otherwise get any forage-chance boost
+    steve.traits = frozenset({aq.TRAIT_KEEN_EXPLORER})
+    steve.hunger = aq.HUNGER_WARNING_THRESHOLD
+    baseline = aq.FOREST_TRAVEL_CHANCE_PER_CHECK
+    boosted = baseline * aq.KEEN_EXPLORER_FOREST_CHANCE_MULT
+    roll = (baseline + boosted) / 2  # only wins because of the trait's multiplier
+    monkeypatch.setattr(aq.random, "random", lambda: roll)
+
+    _second_timer(app).callback()
+
+    assert steve._travel_until is not None
+
+
+def test_keen_explorer_stacks_with_explorer_personality():
+    from examples.aquarium.termquarium import constants as c
+
+    stacked = (
+        c.FOREST_TRAVEL_CHANCE_PER_CHECK
+        * c.FOREST_EXPLORER_CHANCE_MULT
+        * c.KEEN_EXPLORER_FOREST_CHANCE_MULT
+    )
+    assert stacked > c.FOREST_TRAVEL_CHANCE_PER_CHECK * c.FOREST_EXPLORER_CHANCE_MULT
+
+
+def test_combo_flavor_explorer_personality_plus_dreamer_trait():
+    from examples.aquarium.termquarium.inspectors import _combo_flavor_text
+
+    f = _neutral_fish(5.0, 5.0)
+    f.personality = "Explorer"
+    f.traits = frozenset({aq.TRAIT_DREAMER})
+    assert (
+        _combo_flavor_text(f)
+        == "A fish that dreams about places it has never visited."
+    )
+
+
+def test_combo_flavor_food_lover_plus_mischievous_traits():
+    from examples.aquarium.termquarium.inspectors import _combo_flavor_text
+
+    f = _neutral_fish(5.0, 5.0)
+    f.traits = frozenset({aq.TRAIT_FOOD_LOVER, aq.TRAIT_MISCHIEVOUS})
+    assert "steals everyone else's" in _combo_flavor_text(f)
+
+
+def test_combo_flavor_friendly_personality_plus_mischievous_trait():
+    from examples.aquarium.termquarium.inspectors import _combo_flavor_text
+
+    f = _neutral_fish(5.0, 5.0)
+    f.personality = "Friendly"
+    f.traits = frozenset({aq.TRAIT_MISCHIEVOUS})
+    assert "pranks" in _combo_flavor_text(f)
+
+
+def test_combo_flavor_energetic_plus_dreamer_traits():
+    from examples.aquarium.termquarium.inspectors import _combo_flavor_text
+
+    f = _neutral_fish(5.0, 5.0)
+    f.personality = "Lazy"  # not Explorer/Friendly -- isolates the trait-pair check
+    f.traits = frozenset({aq.TRAIT_ENERGETIC, aq.TRAIT_DREAMER})
+    assert (
+        _combo_flavor_text(f)
+        == "Very active during the day. Very imaginative at night."
+    )
+
+
+def test_combo_flavor_none_when_nothing_matches():
+    from examples.aquarium.termquarium.inspectors import _combo_flavor_text
+
+    f = _neutral_fish(5.0, 5.0)
+    f.personality = "Lazy"
+    f.traits = frozenset({aq.TRAIT_FAST_SWIMMER})
+    assert _combo_flavor_text(f) is None
+
+
+def test_inspector_shows_combo_flavor_text_when_it_matches(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.personality = "Explorer"
+    steve.traits = frozenset({aq.TRAIT_DREAMER})
+
+    inspector = _open_inspector_for(app, steve)
+    line = next(
+        w.text
+        for w in inspector.children
+        if w.__class__.__name__ == "Label" and w.text.startswith("Personality:")
+    )
+
+    assert "dreams about places it has never visited" in line
+
+
+def test_inspector_omits_combo_flavor_text_when_nothing_matches(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.personality = "Lazy"
+    steve.traits = frozenset()
+
+    inspector = _open_inspector_for(app, steve)
+    line = next(
+        w.text
+        for w in inspector.children
+        if w.__class__.__name__ == "Label" and w.text.startswith("Personality:")
+    )
+
+    assert "—" not in line

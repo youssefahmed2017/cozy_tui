@@ -7,7 +7,14 @@ import time
 from cozy_tui import Style, clipboard
 from cozy_tui.widgets import Box, Button, Checkbox, Label, ProgressBar, ScrollView
 
-from .constants import TRAIT_INFO, TREAT_SHOP_ITEMS
+from .constants import (
+    TRAIT_DREAMER,
+    TRAIT_ENERGETIC,
+    TRAIT_FOOD_LOVER,
+    TRAIT_INFO,
+    TRAIT_MISCHIEVOUS,
+    TREAT_SHOP_ITEMS,
+)
 from .fish import Fish, occupants_of
 from .relationships import relationship_state
 from .styles import HEART_STYLE, MUTED
@@ -34,6 +41,46 @@ _HUNGER_EMOJI = {
     "Hungry": "🙁",
     "Low energy": "😴",
 }
+
+# Personality System 2.0's "personality interactions" (updates.md): a small,
+# curated set of flavor lines for specific personality+trait or trait+trait
+# combinations -- purely cosmetic texture, kept here (not constants.py) for
+# the same reason _FEELING_EMOJI/_HUNGER_EMOJI are: no mechanical effect
+# anywhere depends on which combination is present, only on which individual
+# personality/traits are, so this table can grow (or shrink) freely without
+# touching any gameplay code. Deliberately small and hand-picked rather than
+# generated for every possible pair -- most combinations just don't have
+# anything clever to say yet.
+_PERSONALITY_TRAIT_FLAVOR = {
+    ("Explorer", TRAIT_DREAMER): (
+        "A fish that dreams about places it has never visited."
+    ),
+    ("Friendly", TRAIT_MISCHIEVOUS): (
+        "A fish that loves its friends... but constantly plays pranks on them."
+    ),
+}
+_TRAIT_PAIR_FLAVOR = {
+    frozenset({TRAIT_FOOD_LOVER, TRAIT_MISCHIEVOUS}): (
+        "A fish that LOVES food... but also steals everyone else's."
+    ),
+    frozenset({TRAIT_ENERGETIC, TRAIT_DREAMER}): (
+        "Very active during the day. Very imaginative at night."
+    ),
+}
+
+
+def _combo_flavor_text(f: Fish) -> str | None:
+    """A short flavor line for a specific personality+trait or trait+trait
+    combination `f` currently matches, or None. Checked in the order the two
+    tables above are defined; first match wins (a fish matching more than
+    one just shows the first, rather than stacking captions)."""
+    for (personality, trait), text in _PERSONALITY_TRAIT_FLAVOR.items():
+        if f.personality == personality and trait in f.traits:
+            return text
+    for pair, text in _TRAIT_PAIR_FLAVOR.items():
+        if pair <= f.traits:
+            return text
+    return None
 
 
 def _build_inspector(
@@ -98,6 +145,9 @@ def _build_inspector(
             f"{TRAIT_INFO[t][0]} {TRAIT_INFO[t][1]}" for t in sorted(f.traits)
         )
         personality_line += f" · {badges}"
+    combo_flavor = _combo_flavor_text(f)
+    if combo_flavor is not None:
+        personality_line += f'  — "{combo_flavor}"'
     box.add(Label(2, 8, personality_line))
     box.add(Label(2, 9, f"Favorite spot: {spot}"))
     y = 10

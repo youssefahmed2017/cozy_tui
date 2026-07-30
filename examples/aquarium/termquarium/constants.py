@@ -148,7 +148,8 @@ TRAIT_INFO = {
     TRAIT_KEEN_EXPLORER: (
         "🗺",
         "Keen Explorer",
-        "Occasionally brings back something rarer than plain wood.",
+        "Eager to explore the Forest, and occasionally brings back "
+        "something rarer than plain wood.",
     ),
 }
 
@@ -937,6 +938,12 @@ FOREST_HEIGHT = 16
 FOREST_SHY_OPT_OUT = True
 FOREST_GREEDY_CHANCE_MULT = 3.0
 FOREST_EXPLORER_CHANCE_MULT = 2.0
+# Keen Explorer (Personality System 2.0): stacks multiplicatively on top of
+# whichever personality branch above already applied (an Explorer-
+# personality Keen Explorer goes eagerly indeed) -- the closest this game
+# gets to updates.md's "visits new areas first" with only one other area
+# (the Forest) actually existing to visit.
+KEEN_EXPLORER_FOREST_CHANCE_MULT = 1.5
 FOREST_FRIEND_JOIN_CHANCE = 0.2
 
 # Ambient falling leaves in the Forest scene (see leaves.py's LeafField) --

@@ -23,7 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   successful forage return). Traits show on the Fish Inspector's Personality
   line, persist through Save/Load (old saves default to none), and the Cheat
   Console's `grant_trait(fish_name, trait)` grants one without waiting on its
-  natural trigger. See [ROADMAP.md](ROADMAP.md) for the design.
+  natural trigger. Keen Explorer is also more eager to go explore the
+  Forest in the first place. A small, hand-picked set of "personality
+  interaction" flavor lines shows on the Inspector for specific
+  personality+trait/trait+trait combinations (e.g. Explorer + Dreamer: "A
+  fish that dreams about places it has never visited."). See
+  [ROADMAP.md](ROADMAP.md) for the design.
 
 - **TermQuarium: Crystal Logs and Giant Logs** — a Keen Explorer's forage
   trips can very rarely turn up something better than plain Wood. A Crystal

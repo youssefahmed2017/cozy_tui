@@ -89,16 +89,17 @@ behavior change for apps that don't use it.
 
 ## TermQuarium: Personality System 2.0
 
-**Status: all six traits shipped.** `Fish.traits`, `relationships.grant_trait()`,
-save/load compatibility, the Cheat Console's `grant_trait()` command, and the
-Inspector display (steps 1/2/4/5 below) are all in place for **Food Lover**,
-**Dreamer**, **Fast Swimmer**, **Energetic**, **Mischievous**, and **Keen
-Explorer** (each with a real, existing-event growth trigger — see
-`CHANGELOG.md`). **Not yet done:** combination flavor text (step 3) — no
-trait's mechanical effect depends on which others are also present, only
-which individual tags exist; a later pass could add cosmetic text for
-specific pairs (e.g. Dreamer + Keen Explorer) the way `updates.md` originally
-pitched it.
+**Status: fully shipped**, all five steps below. `Fish.traits`,
+`relationships.grant_trait()`, save/load compatibility, the Cheat Console's
+`grant_trait()` command, and the Inspector display are all in place for
+**Food Lover**, **Dreamer**, **Fast Swimmer**, **Energetic**, **Mischievous**,
+and **Keen Explorer** (each with a real, existing-event growth trigger — see
+`CHANGELOG.md`). Combination flavor text (step 3) is in too, as a small,
+hand-picked table in `inspectors.py` (not every one of the ~50 possible
+personality+trait/trait+trait pairs — just the four `updates.md` actually
+gave text for). Keen Explorer's "visits new areas first" pitch became "more
+eager to go explore the Forest" (`KEEN_EXPLORER_FOREST_CHANCE_MULT`), since
+the Forest is the only other area that actually exists to visit.
 
 **Source:** `examples/aquarium/updates.md`, "🧬 Personality System 2.0" and the
 sections following it (new personalities, personality interactions,

@@ -2158,6 +2158,11 @@ def main() -> None:
                     chance *= FOREST_GREEDY_CHANCE_MULT
                 elif f.personality == "Explorer":
                     chance *= FOREST_EXPLORER_CHANCE_MULT
+                if TRAIT_KEEN_EXPLORER in f.traits:
+                    # Earned trait, not a personality -- stacks on top of
+                    # whichever branch above already applied, same "stacks
+                    # with, doesn't replace" rule every other trait follows.
+                    chance *= KEEN_EXPLORER_FOREST_CHANCE_MULT
                 goes = random.random() < chance
             if not goes and f.personality == "Friendly" and f.friend is not None:
                 friend = f.friend
