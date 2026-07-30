@@ -11,6 +11,7 @@ from examples.aquarium.termquarium.save import (
     list_saves,
     load_cloud_key,
     load_unlocked_achievements,
+    migrate_payload,
     read_save,
     rename_save,
     store_cloud_key,
@@ -31,7 +32,7 @@ def test_save_has_versioned_metadata_and_aquarium_state(tmp_path):
     data = read_save(path)
 
     assert path.name == "Steve's Kingdom.json"
-    assert data["version"] == 1
+    assert data["version"] == 2
     assert data["metadata"]["name"] == "Steve's Kingdom"
     assert data["metadata"]["money"] == 100
     assert data["metadata"]["food"] == 13
@@ -52,10 +53,61 @@ def test_save_list_returns_newest_metadata_and_creates_data_layout(tmp_path):
     assert (root / "screenshots").is_dir()
 
 
+def test_migrate_payload_v1_to_v2_flips_hunger_scale():
+    # v1: 0=full/100=starving (the confusing direction that prompted the
+    # flip). v2: 0=starving/100=full. An old save's stored values must
+    # keep meaning the same real hunger state, not get reinterpreted.
+    payload = {
+        "version": 1,
+        "metadata": {},
+        "aquarium": {"fish": [{"hunger": 30.0}, {"hunger": 0.0}, {}]},
+    }
+
+    migrate_payload(payload)
+
+    fish = payload["aquarium"]["fish"]
+    assert fish[0]["hunger"] == 70.0
+    assert fish[1]["hunger"] == 100.0
+    assert "hunger" not in fish[2]  # nothing to migrate -- left alone
+    assert payload["version"] == 2
+
+
+def test_migrate_payload_leaves_a_current_version_payload_untouched():
+    payload = {
+        "version": 2,
+        "metadata": {},
+        "aquarium": {"fish": [{"hunger": 30.0}]},
+    }
+
+    migrate_payload(payload)
+
+    assert payload["aquarium"]["fish"][0]["hunger"] == 30.0
+    assert payload["version"] == 2
+
+
+def test_read_save_migrates_a_v1_file_on_load(tmp_path):
+    path = write_save(
+        "Old Save",
+        {"state": {}, "day": 5, "fish": [{"hunger": 10.0}]},
+        home=tmp_path,
+    )
+    # Simulate a save written before the hunger-scale flip: patch the
+    # version back down to 1 and re-save the same v1-shaped hunger value.
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["version"] = 1
+    raw["aquarium"]["fish"][0]["hunger"] = 10.0
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    data = read_save(path)
+
+    assert data["version"] == 2
+    assert data["aquarium"]["fish"][0]["hunger"] == 90.0
+
+
 def test_hunger_warning_fires_only_on_a_threshold_crossing():
     assert not should_warn_hungry([50.0], warning_active=False)
-    assert should_warn_hungry([50.1], warning_active=False)
-    assert not should_warn_hungry([100.0], warning_active=True)
+    assert should_warn_hungry([49.9], warning_active=False)
+    assert not should_warn_hungry([0.0], warning_active=True)
 
 
 def test_save_list_sorts_newest_played_first(tmp_path):

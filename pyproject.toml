@@ -31,7 +31,7 @@ dependencies = [
 
 [project.optional-dependencies]
 image = ["Pillow"]
-dev = ["pytest", "Pillow"]
+dev = ["pytest", "Pillow", "RestrictedPython"]
 
 [project.scripts]
 cozy-tui = "cozy_tui.cli:main"

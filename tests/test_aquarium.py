@@ -109,37 +109,37 @@ def test_steer_toward_food_reports_ate_within_eat_radius():
 # ── Step 2: hunger / health decay and feeding ─────────────────────────────────
 
 
-def test_decay_hunger_increments_hunger_below_max():
-    hunger, health = aq.decay_hunger(0.0, 100.0)
-    assert hunger == aq.HUNGER_STEP
+def test_decay_hunger_decrements_hunger_above_min():
+    hunger, health = aq.decay_hunger(100.0, 100.0)
+    assert hunger == 100.0 - aq.HUNGER_STEP
     assert health == 100.0
 
 
-def test_decay_hunger_caps_at_one_hundred():
-    hunger, health = aq.decay_hunger(99.0, 100.0)
-    assert hunger == 100.0
+def test_decay_hunger_floors_at_zero():
+    hunger, health = aq.decay_hunger(1.0, 100.0)
+    assert hunger == 0.0
 
 
 def test_decay_hunger_drains_health_once_starving():
-    hunger, health = aq.decay_hunger(100.0, 100.0)
-    assert hunger == 100.0
+    hunger, health = aq.decay_hunger(0.0, 100.0)
+    assert hunger == 0.0
     assert health == 100.0 - aq.STARVE_HEALTH_LOSS
 
 
 def test_decay_hunger_health_does_not_go_negative():
-    hunger, health = aq.decay_hunger(100.0, 2.0)
+    hunger, health = aq.decay_hunger(0.0, 2.0)
     assert health == 0.0
 
 
 def test_feed_relieves_hunger_and_restores_health():
-    hunger, health = aq.feed(80.0, 50.0)
-    assert hunger == 80.0 - aq.HUNGER_RELIEF
+    hunger, health = aq.feed(20.0, 50.0)
+    assert hunger == 20.0 + aq.HUNGER_RELIEF
     assert health == 50.0 + aq.HEALTH_GAIN
 
 
 def test_feed_clamps_hunger_and_health_to_bounds():
-    hunger, health = aq.feed(10.0, 98.0)
-    assert hunger == 0.0
+    hunger, health = aq.feed(90.0, 98.0)
+    assert hunger == 100.0
     assert health == 100.0
 
 
@@ -235,7 +235,7 @@ def test_shark_eats_nearby_prey_and_is_fed():
     )
     fish_list.extend([shark, prey])
     shark._next_turn = float("inf")
-    shark.hunger = 80.0
+    shark.hunger = 20.0
     shark.health = 50.0
 
     class _FakeCanvas:
@@ -246,7 +246,7 @@ def test_shark_eats_nearby_prey_and_is_fed():
 
     assert prey not in fish_list
     assert eaten == [prey]
-    assert shark.hunger == 80.0 - aq.HUNGER_RELIEF
+    assert shark.hunger == 20.0 + aq.HUNGER_RELIEF
     assert shark.health == 50.0 + aq.HEALTH_GAIN
 
 
@@ -783,26 +783,27 @@ def test_fish_feeling_bands_match_happiness():
 
 
 def test_fish_hunger_feeling_bands_match_hunger():
+    # Scale is 0=starving/100=full, so the ladder reads top-down from Full.
     f = _neutral_fish(5.0, 5.0)
-    f.hunger = 0.0
-    assert f.hunger_feeling == "Full"
-    f.hunger = aq.HUNGER_CONTENT_THRESHOLD - 0.1
+    f.hunger = 100.0
     assert f.hunger_feeling == "Full"
     f.hunger = aq.HUNGER_CONTENT_THRESHOLD
-    assert f.hunger_feeling == "Content"
-    f.hunger = aq.HUNGER_A_LITTLE_HUNGRY_THRESHOLD - 0.1
+    assert f.hunger_feeling == "Full"
+    f.hunger = aq.HUNGER_CONTENT_THRESHOLD - 0.1
     assert f.hunger_feeling == "Content"
     f.hunger = aq.HUNGER_A_LITTLE_HUNGRY_THRESHOLD
-    assert f.hunger_feeling == "A little hungry"
-    f.hunger = aq.HUNGER_WARNING_THRESHOLD - 0.1
+    assert f.hunger_feeling == "Content"
+    f.hunger = aq.HUNGER_A_LITTLE_HUNGRY_THRESHOLD - 0.1
     assert f.hunger_feeling == "A little hungry"
     f.hunger = aq.HUNGER_WARNING_THRESHOLD
-    assert f.hunger_feeling == "Hungry"
-    f.hunger = aq.HUNGER_LOW_ENERGY_THRESHOLD - 0.1
+    assert f.hunger_feeling == "A little hungry"
+    f.hunger = aq.HUNGER_WARNING_THRESHOLD - 0.1
     assert f.hunger_feeling == "Hungry"
     f.hunger = aq.HUNGER_LOW_ENERGY_THRESHOLD
+    assert f.hunger_feeling == "Hungry"
+    f.hunger = aq.HUNGER_LOW_ENERGY_THRESHOLD - 0.1
     assert f.hunger_feeling == "Low energy"
-    f.hunger = 100.0
+    f.hunger = 0.0
     assert f.hunger_feeling == "Low energy"
 
 
@@ -843,7 +844,7 @@ def test_describe_fish_includes_name_species_personality_hunger():
     assert f.display_name in text
     assert f.species_name in text
     assert "Greedy" in text
-    assert "Hunger 42%" in text
+    assert "Fullness 42%" in text
 
 
 def test_describe_fish_reflects_a_rename():
@@ -1525,21 +1526,21 @@ def test_process_relaxing_fires_the_join_toast(tmp_path, monkeypatch):
 def test_is_asleep_true_at_night_with_low_hunger():
     f = _neutral_fish(5.0, 5.0)
     f.environment = {"phase": "Night", "temperature": 23.0}
-    f.hunger = 0.0
+    f.hunger = 100.0
     assert f.is_asleep is True
 
 
 def test_is_asleep_false_when_too_hungry_to_actually_sleep():
     f = _neutral_fish(5.0, 5.0)
     f.environment = {"phase": "Night", "temperature": 23.0}
-    f.hunger = aq.SLEEP_HUNGER_THRESHOLD + 10.0
+    f.hunger = aq.SLEEP_HUNGER_THRESHOLD - 10.0
     assert f.is_asleep is False
 
 
 def test_is_asleep_always_false_for_a_predator():
     f = _neutral_fish(5.0, 5.0, is_predator=True)
     f.environment = {"phase": "Night", "temperature": 23.0}
-    f.hunger = 0.0
+    f.hunger = 100.0
     assert f.is_asleep is False
 
 
@@ -1556,7 +1557,7 @@ def test_happiness_flourishes_never_roll_for_a_sleeping_fish(tmp_path, monkeypat
     app = _headless_app(tmp_path, monkeypatch)
     f = next(w for w in app.widgets if isinstance(w, aq.Fish))
     f.happiness = 100.0
-    f.hunger = 0.0
+    f.hunger = 100.0
     # _update_environment() recomputes environment["phase"] from real elapsed
     # time every tick (Fish.environment is the *same shared dict*), so
     # setting "phase" directly wouldn't stick -- pin compute_time_of_day
@@ -1599,7 +1600,7 @@ def test_happiness_does_not_decay_below_the_floor_on_its_own(tmp_path, monkeypat
     f = next(w for w in app.widgets if isinstance(w, aq.Fish))
     f.happiness = aq.HAPPINESS_DECAY_FLOOR - 5.0
     f.environment["phase"] = "Day"
-    f.hunger = 0.0
+    f.hunger = 100.0
     start = f.happiness
 
     second_timer = next(t for t in app._timers if t.interval == 1.0)
@@ -3250,13 +3251,13 @@ def test_storm_event_bumps_every_fishs_hunger(tmp_path, monkeypatch):
     monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     for f in fishes:
-        f.hunger = 10.0
+        f.hunger = 90.0
     _force_random_event(monkeypatch, "storm")
 
     _fire_daily_tick(app)
 
     assert any("storm" in t.lower() for t in toasts)
-    assert all(f.hunger == pytest.approx(10.0 + aq.STORM_HUNGER_BUMP) for f in fishes)
+    assert all(f.hunger == pytest.approx(90.0 - aq.STORM_HUNGER_BUMP) for f in fishes)
 
 
 def _find_end_storm_timer(app):
@@ -3357,8 +3358,8 @@ def test_assign_dreams_gives_a_hunger_eligible_fish_a_dream_at_night(
     app = _headless_app(tmp_path, monkeypatch)
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     hungry, sleepy_ready = fishes[0], fishes[1]
-    hungry.hunger = aq.SLEEP_HUNGER_THRESHOLD + 10.0  # too hungry to actually sleep
-    sleepy_ready.hunger = 0.0
+    hungry.hunger = aq.SLEEP_HUNGER_THRESHOLD - 10.0  # too hungry to actually sleep
+    sleepy_ready.hunger = 100.0
     _force_night_transition(monkeypatch)
     monkeypatch.setattr(
         aq.random, "random", lambda: 0.0
@@ -3375,7 +3376,7 @@ def test_dreams_are_never_assigned_outside_the_dream_chance_roll(tmp_path, monke
     app = _headless_app(tmp_path, monkeypatch)
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     for f in fishes:
-        f.hunger = 0.0
+        f.hunger = 100.0
     _force_night_transition(monkeypatch)
     monkeypatch.setattr(aq.random, "random", lambda: 0.99)  # always misses DREAM_CHANCE
 
@@ -3767,7 +3768,7 @@ def test_a_fish_in_the_main_tank_can_still_starve_to_death(tmp_path, monkeypatch
     # mechanics is exempt (see the test below).
     app = _headless_app(tmp_path, monkeypatch)
     f = next(w for w in app.widgets if isinstance(w, aq.Fish))
-    f.hunger = 100.0
+    f.hunger = 0.0
     f.health = aq.STARVE_HEALTH_LOSS  # one more tick's worth of decay kills it
     assert f.biome == "aquarium" and f._travel_until is None
 
@@ -3780,12 +3781,13 @@ def test_a_fish_in_the_main_tank_can_still_starve_to_death(tmp_path, monkeypatch
 def test_a_fish_away_in_the_forest_never_starves_to_death(tmp_path, monkeypatch):
     # The actual bug this fixes: going away (Forest today, fishing once
     # that exists) must never come back to "while you were away, X died" --
-    # hunger still climbs and caps at "Low energy", it just never drains
-    # health while the fish is somewhere the player can't see or feed it.
+    # hunger still drains and bottoms out at "Low energy", it just never
+    # drains health while the fish is somewhere the player can't see or
+    # feed it.
     app = _headless_app(tmp_path, monkeypatch)
     f = next(w for w in app.widgets if isinstance(w, aq.Fish))
     f.biome = "forest"
-    f.hunger = 100.0
+    f.hunger = 0.0
     f.health = aq.STARVE_HEALTH_LOSS  # would die next tick if not exempted
 
     second_timer = next(t for t in app._timers if t.interval == 1.0)
@@ -3793,7 +3795,7 @@ def test_a_fish_away_in_the_forest_never_starves_to_death(tmp_path, monkeypatch)
         second_timer.callback()
 
     assert f.health == aq.STARVE_HEALTH_LOSS  # untouched the whole time -- never died
-    assert f.hunger == 100.0  # capped, not climbing forever
+    assert f.hunger == 0.0  # floored, not draining forever
 
 
 def test_a_fish_mid_travel_to_the_forest_never_starves_to_death(tmp_path, monkeypatch):
@@ -3801,7 +3803,7 @@ def test_a_fish_mid_travel_to_the_forest_never_starves_to_death(tmp_path, monkey
     f = next(w for w in app.widgets if isinstance(w, aq.Fish))
     f._travel_until = time.monotonic() + 999.0  # still mid-trip, far from due
     f._travel_target = "forest"
-    f.hunger = 100.0
+    f.hunger = 0.0
     f.health = aq.STARVE_HEALTH_LOSS
 
     second_timer = next(t for t in app._timers if t.interval == 1.0)
@@ -4472,7 +4474,7 @@ def test_nearest_prey_never_returns_a_hidden_or_sleeping_fish():
 def test_sleeping_fish_slept_through_a_shark_scare(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     prey = next(w for w in app.widgets if isinstance(w, aq.Fish))
-    prey.hunger = 0.0
+    prey.hunger = 100.0
     _force_night_transition(monkeypatch)
     monkeypatch.setattr(aq.random, "random", lambda: 0.99)  # isolate from dream noise
     _add_real_fish(app, prey.fx + 1.0, prey.fy, is_predator=True, species_name="Shark")
@@ -4635,7 +4637,7 @@ def test_dream_assignment_logs_a_dream_summary_memory(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     for f in fishes:
-        f.hunger = 0.0
+        f.hunger = 100.0
     _force_night_transition(monkeypatch)
     monkeypatch.setattr(aq.random, "random", lambda: 0.0)
 
@@ -4745,7 +4747,7 @@ def test_a_bad_dream_schedules_a_forced_nightmare_wake(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     for f in fishes:
-        f.hunger = 0.0
+        f.hunger = 100.0
     _force_night_transition(monkeypatch)
     monkeypatch.setattr(
         aq.random, "random", lambda: 0.0
@@ -5274,6 +5276,44 @@ def test_set_money_command_sets_state_exactly(tmp_path, monkeypatch):
     assert "Money: $1000" in stats_label.text
 
 
+def test_set_happiness_command_wires_through_to_the_real_fish(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+
+    _type_into_console(console, 'set_happiness(fish_name="Steve", amount=500)')
+
+    assert steve.happiness == 100.0
+
+
+def test_remove_fish_command_wires_through_to_the_real_tank(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+
+    _type_into_console(console, 'remove_fish(fish_name="Steve")')
+
+    assert steve not in [w for w in app.widgets if isinstance(w, aq.Fish)]
+
+
+def test_run_command_wires_through_to_the_real_app(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+
+    _type_into_console(
+        console, 'run(code="for f in fish: set_happiness(f.display_name, 100)")'
+    )
+
+    assert steve.happiness == 100.0
+
+
 def test_buy_command_deducts_money_and_spawns_a_shark(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     app._key_handlers["`"]()
@@ -5520,6 +5560,10 @@ def test_give_nightmare_command_shows_the_dream_then_scares(tmp_path, monkeypatc
     assert steve._nightmare_wake_at is not None
     assert steve._just_scared_until is None
     assert any("dreamed about" in m.lower() for m in steve.memory_log)
+
+    # Close the console first -- Auto-Pause (default on) freezes the tank
+    # while it's open, and this is testing the nightmare tick, not that.
+    app.close_overlay(console)
 
     # After the wake delay, the per-second tick fires the scare (😨).
     steve._nightmare_wake_at = time.monotonic()  # due now
@@ -5845,7 +5889,7 @@ def test_hungry_fish_refuses_to_sleep():
         foods=foods,
         environment={"phase": "Night", "temperature": 23.0},
     )
-    f.hunger = aq.SLEEP_HUNGER_THRESHOLD + 1
+    f.hunger = aq.SLEEP_HUNGER_THRESHOLD - 1
     f._next_turn = float("inf")
     f.vx, f.vy = 0.0, 0.0
 
@@ -5857,7 +5901,7 @@ def test_hungry_fish_refuses_to_sleep():
 
 def test_hungry_fish_does_not_draw_the_sleeping_glyph():
     f = _neutral_fish(5.0, 5.0, environment={"phase": "Night", "temperature": 23.0})
-    f.hunger = aq.SLEEP_HUNGER_THRESHOLD + 1
+    f.hunger = aq.SLEEP_HUNGER_THRESHOLD - 1
     f._next_turn = float("inf")
 
     canvas = _FakeCanvas()
@@ -5888,7 +5932,7 @@ def test_a_shark_never_sleeps_even_at_night_with_low_hunger():
         environment={"phase": "Night", "temperature": 23.0},
         is_predator=True,
     )
-    f.hunger = 0.0
+    f.hunger = 100.0
     f._next_turn = float("inf")
 
     canvas = _FakeCanvas()
@@ -6119,6 +6163,24 @@ def test_settings_bubbles_checkbox_toggles_state():
     assert state["bubbles_enabled"] is False
 
 
+def test_settings_auto_pause_checkbox_toggles_state():
+    from cozy_tui import App
+
+    app = App(full=False, size="400x200")
+    state = {"auto_pause": True}
+    box = aq._build_settings(
+        app, state, None, lambda: None, lambda: None, lambda: None, lambda: None
+    )
+    auto_pause_cb = next(
+        c
+        for c in box.children
+        if c.__class__.__name__ == "Checkbox" and "Auto-Pause" in c.text
+    )
+    auto_pause_cb.on_mouse_click()  # was checked=True, so this unchecks it
+
+    assert state["auto_pause"] is False
+
+
 # ── Schooling ──────────────────────────────────────────────────────────────
 
 
@@ -6288,7 +6350,7 @@ def _sleepy_fish(x, y, bounds, decorations=None, **kw):
         **kw,
     )
     f._next_turn = float("inf")
-    f.hunger = 0.0
+    f.hunger = 100.0
     # Baseline (non-personality-specific) priority tests want a personality
     # with no special-cased _claim_home() behavior -- Explorer's random
     # shuffle chance would otherwise make them flaky. Tests targeting a
@@ -7354,7 +7416,7 @@ def test_leave_flavor_adds_no_in_tank_vignette(tmp_path, monkeypatch):
     # random.random() once per hunger-eligible fish right at the Day->Night
     # transition below and would otherwise steal from the stubbed sequence.
     for f in fishes:
-        f.hunger = aq.SLEEP_HUNGER_THRESHOLD + 1.0
+        f.hunger = aq.SLEEP_HUNGER_THRESHOLD - 1.0
 
     fractions = iter([0.9, 0.2])
     monkeypatch.setattr(aq, "compute_time_of_day", lambda *a, **k: next(fractions))
@@ -7814,6 +7876,116 @@ def test_closing_pause_menu_via_escape_also_unpauses(tmp_path, monkeypatch):
     assert fish.paused["value"] is False
 
 
+def _toggle_auto_pause_off(app):
+    app._key_handlers["g"]()
+    box = app._topmost_modal().widget
+    checkbox = next(
+        c
+        for c in box.children
+        if c.__class__.__name__ == "Checkbox" and "Auto-Pause" in c.text
+    )
+    checkbox.on_mouse_click()
+    close_btn = next(
+        c
+        for c in box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Close"
+    )
+    close_btn.on_mouse_click()
+
+
+def test_opening_shop_pauses_the_game_by_default(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["s"]()
+
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    assert fish.paused["value"] is True
+
+
+def test_closing_shop_unpauses(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["s"]()
+    app._dispatch_input(aq.Key.ESC)
+
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    assert fish.paused["value"] is False
+
+
+def test_opening_console_pauses_the_game_by_default(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["`"]()
+
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    assert fish.paused["value"] is True
+
+
+def test_closing_console_unpauses(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["`"]()
+    app._dispatch_input(aq.Key.ESC)
+
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    assert fish.paused["value"] is False
+
+
+def test_auto_pause_off_keeps_shop_and_console_running_in_background(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    _toggle_auto_pause_off(app)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+
+    app._key_handlers["s"]()
+    assert fish.paused["value"] is False
+    app._dispatch_input(aq.Key.ESC)
+
+    app._key_handlers["`"]()
+    assert fish.paused["value"] is False
+    app._dispatch_input(aq.Key.ESC)
+
+
+def test_auto_pause_off_also_keeps_the_pause_menu_from_freezing(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    _toggle_auto_pause_off(app)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+
+    app._key_handlers[aq.Key.ESC]()
+
+    assert app._topmost_modal() is not None  # the menu still opens...
+    assert fish.paused["value"] is False  # ...it just no longer freezes the tank
+
+
+def test_settings_opened_from_pause_menu_does_not_unpause_when_settings_closes(
+    tmp_path, monkeypatch
+):
+    # Settings is reachable from inside the Pause menu without closing it
+    # first (see build_pause_menu's own Settings button) -- closing the
+    # nested Settings overlay alone must not resume the game while Pause is
+    # still open underneath it (see aquarium.py's _enter_auto_pause()).
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers[aq.Key.ESC]()  # Pause
+    pause_box = app._topmost_modal().widget
+    settings_btn = next(
+        c
+        for c in pause_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Settings"
+    )
+    settings_btn.on_mouse_click()  # Settings, stacked on top of Pause
+
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    assert fish.paused["value"] is True
+
+    app._dispatch_input(aq.Key.ESC)  # closes Settings, Pause still open beneath
+
+    assert app._topmost_modal() is not None
+    assert app._topmost_modal().widget.title == "Paused"
+    assert fish.paused["value"] is True  # still paused -- Pause never closed
+
+    app._dispatch_input(aq.Key.ESC)  # closes Pause too
+
+    assert app._topmost_modal() is None
+    assert fish.paused["value"] is False
+
+
 # ── Achievements ───────────────────────────────────────────────────────────────
 
 
@@ -8258,7 +8430,7 @@ def test_friendly_fish_joins_a_friend_already_heading_to_the_forest(
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     leader, follower = fishes[0], fishes[1]
     follower.personality = "Friendly"
-    follower.hunger = 0.0  # not hungry -- only travels via the friend-join clause
+    follower.hunger = 100.0  # not hungry -- only travels via the friend-join clause
     aq.set_relationship(leader, follower, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
     leader.biome = "forest"  # already heading out/there
     monkeypatch.setattr(aq.random, "random", lambda: 0.0)
@@ -8395,7 +8567,7 @@ def test_no_welcome_back_toast_for_a_well_fed_fish_returning_from_the_forest(
     f.biome = "forest"
     f._travel_until = time.monotonic() - 1.0
     f._travel_target = "aquarium"
-    f.hunger = 0.0  # Full
+    f.hunger = 100.0  # Full
     toasts = []
     monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
 
@@ -8440,7 +8612,7 @@ def _send_fish_to_forest(app, monkeypatch, clock, f, carry_wood=False):
     is set unhungry so only `f` makes the trip. Callers re-pin
     TIGER_SHARK_APPEAR_CHANCE_PER_CHECK / random afterward to stage the scare."""
     for other in [w for w in app.widgets if isinstance(w, aq.Fish) and w is not f]:
-        other.hunger = 0.0
+        other.hunger = 100.0
     f.personality = "Playful"  # not Shy (opts out) or flavored (Greedy/Explorer)
     f.hunger = aq.HUNGER_WARNING_THRESHOLD
     monkeypatch.setattr(aq.random, "random", lambda: 0.0)
@@ -8666,7 +8838,7 @@ def test_two_fish_flee_the_tiger_shark_together_and_both_survive(tmp_path, monke
     a, b = fishes[0], fishes[1]
     a.display_name, b.display_name = "Alex", "Steve"
     for other in fishes:
-        other.hunger = 0.0  # keep everyone else home
+        other.hunger = 100.0  # keep everyone else home
     for f in (a, b):
         f.personality = "Playful"
         f.hunger = aq.HUNGER_WARNING_THRESHOLD
@@ -8814,7 +8986,7 @@ def test_dreamer_trait_leans_the_existing_dream_chance_not_a_separate_roll(
     app = _headless_app(tmp_path, monkeypatch)
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     for f in fishes:
-        f.hunger = 0.0
+        f.hunger = 100.0
     dreamer, plain = fishes[0], fishes[1]
     dreamer.traits = frozenset({aq.TRAIT_DREAMER})
     _force_night_transition(monkeypatch)
@@ -8834,7 +9006,7 @@ def test_dreaming_can_grow_the_dreamer_trait(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
     for f in fishes:
-        f.hunger = 0.0
+        f.hunger = 100.0
     monkeypatch.setattr(app, "toast", lambda *a, **k: None)
     _force_night_transition(monkeypatch)
     monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # always dreams, always grows

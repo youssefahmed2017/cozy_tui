@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-pip install -e .[dev]        # editable install with pytest + Pillow (for the Image widget's tests)
+pip install -e .[dev]        # editable install with pytest + Pillow (Image widget) + RestrictedPython (aquarium's Cheat Console run() command)
 python -m pytest -q          # run the whole suite
 python -m pytest tests/test_render.py -q          # one file
 python -m pytest tests/test_render.py::test_name  # one test

@@ -148,6 +148,48 @@ def _build_registry():
     def advance_day():
         events.append(("advance_day",))
 
+    def start_lost_adventure(f, duration=None):
+        f.lost_adventure = {"day": 0, "duration": duration or 5}
+        events.append(("start_lost_adventure", f.display_name, duration))
+
+    def advance_adventure_day(f):
+        events.append(("advance_adventure_day", f.display_name))
+
+    def set_happiness(f, amount):
+        f.happiness = max(0.0, min(100.0, amount))
+        events.append(("set_happiness", f.display_name, amount))
+
+    def set_speed(f, amount):
+        f.speed = max(2.5, min(6.0, amount))
+        events.append(("set_speed", f.display_name, amount))
+
+    def set_personality(f, personality):
+        if personality not in ("Friendly", "Explorer", "Shy", "Greedy", "Lazy", "Playful"):
+            raise ValueError(f"Unknown personality: {personality!r}.")
+        f.personality = personality
+        events.append(("set_personality", f.display_name, personality))
+
+    def force_relationship(a, b, score):
+        events.append(("force_relationship", a.display_name, b.display_name, score))
+
+    def set_day(amount):
+        events.append(("set_day", amount))
+
+    def toggle_forest(unlocked):
+        state["forest_unlocked"] = unlocked
+        events.append(("toggle_forest", unlocked))
+
+    def spawn_decoration(kind):
+        if kind not in ("Castle", "Rock"):
+            raise ValueError(f"Unknown decoration: {kind!r}.")
+        events.append(("spawn_decoration", kind))
+        return kind
+
+    def remove_fish(f):
+        if f in fish:
+            fish.remove(f)
+        events.append(("remove_fish", f.display_name))
+
     commands = build_console_commands(
         state=state,
         fish=fish,
@@ -163,6 +205,16 @@ def _build_registry():
         give_dream=give_dream,
         grant_trait=grant_trait,
         advance_day=advance_day,
+        start_lost_adventure=start_lost_adventure,
+        advance_adventure_day=advance_adventure_day,
+        set_happiness=set_happiness,
+        set_speed=set_speed,
+        set_personality=set_personality,
+        force_relationship=force_relationship,
+        set_day=set_day,
+        toggle_forest=toggle_forest,
+        spawn_decoration=spawn_decoration,
+        remove_fish=remove_fish,
     )
     return commands, fish, state, events
 
@@ -331,6 +383,208 @@ def test_give_nightmare_and_give_dream_raise_for_an_unknown_fish():
         run_console_command(commands, 'give_nightmare("Ghost")')
     with pytest.raises(ConsoleError):
         run_console_command(commands, 'give_dream("Ghost")')
+
+
+def test_start_lost_adventure_command_targets_a_named_fish():
+    commands, fish, _state, events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    run_console_command(commands, 'start_lost_adventure(fish_name="Steve")')
+    assert ("start_lost_adventure", "Steve", None) in events
+    assert fish[0].lost_adventure is not None
+
+
+def test_start_lost_adventure_command_accepts_an_explicit_duration():
+    commands, _fish, _state, events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    run_console_command(
+        commands, 'start_lost_adventure(fish_name="Steve", duration=3)'
+    )
+    assert ("start_lost_adventure", "Steve", 3) in events
+
+
+def test_start_lost_adventure_command_rejects_a_non_positive_duration():
+    commands, _fish, _state, _events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    with pytest.raises(ConsoleError):
+        run_console_command(
+            commands, 'start_lost_adventure(fish_name="Steve", duration=0)'
+        )
+
+
+def test_start_lost_adventure_command_rejects_a_fish_already_lost():
+    commands, _fish, _state, _events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    run_console_command(commands, 'start_lost_adventure(fish_name="Steve")')
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'start_lost_adventure(fish_name="Steve")')
+
+
+def test_start_lost_adventure_command_raises_for_an_unknown_fish():
+    commands, _fish, _state, _events = _build_registry()
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'start_lost_adventure(fish_name="Ghost")')
+
+
+def test_advance_adventure_day_command_targets_a_named_fish_already_lost():
+    commands, _fish, _state, events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    run_console_command(commands, 'start_lost_adventure(fish_name="Steve")')
+    run_console_command(commands, 'advance_adventure_day(fish_name="Steve")')
+    assert ("advance_adventure_day", "Steve") in events
+
+
+def test_advance_adventure_day_command_rejects_a_fish_not_on_an_adventure():
+    commands, _fish, _state, _events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'advance_adventure_day(fish_name="Steve")')
+
+
+def test_set_happiness_command_clamps_to_0_100():
+    commands, fish, _state, _events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    run_console_command(commands, 'set_happiness(fish_name="Steve", amount=500)')
+    assert fish[0].happiness == 100.0
+
+
+def test_set_speed_command_targets_a_named_fish():
+    commands, fish, _state, events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    run_console_command(commands, 'set_speed(fish_name="Steve", amount=4.0)')
+    assert ("set_speed", "Steve", 4.0) in events
+    assert fish[0].speed == 4.0
+
+
+def test_set_personality_command_rejects_an_unknown_personality():
+    commands, _fish, _state, _events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    with pytest.raises(ConsoleError):
+        run_console_command(
+            commands, 'set_personality(fish_name="Steve", personality="Grumpy")'
+        )
+
+
+def test_set_personality_command_sets_a_valid_personality():
+    commands, fish, _state, _events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    run_console_command(
+        commands, 'set_personality(fish_name="Steve", personality="Greedy")'
+    )
+    assert fish[0].personality == "Greedy"
+
+
+def test_force_relationship_command_targets_two_named_fish():
+    commands, _fish, _state, events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Kitty")')
+    run_console_command(
+        commands, 'force_relationship(fish_a="Steve", fish_b="Kitty", score=80)'
+    )
+    assert ("force_relationship", "Steve", "Kitty", 80.0) in events
+
+
+def test_set_day_command_rejects_a_negative_amount():
+    commands, _fish, _state, _events = _build_registry()
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, "set_day(amount=-1)")
+
+
+def test_set_day_command_jumps_the_counter():
+    commands, _fish, _state, events = _build_registry()
+    run_console_command(commands, "set_day(amount=50)")
+    assert ("set_day", 50) in events
+
+
+def test_toggle_forest_command_rejects_a_non_boolean():
+    commands, _fish, _state, _events = _build_registry()
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'toggle_forest(unlocked="yes")')
+
+
+def test_toggle_forest_command_sets_state():
+    commands, _fish, state, _events = _build_registry()
+    run_console_command(commands, "toggle_forest(unlocked=True)")
+    assert state["forest_unlocked"] is True
+    run_console_command(commands, "toggle_forest(unlocked=False)")
+    assert state["forest_unlocked"] is False
+
+
+def test_spawn_decoration_command_rejects_an_unknown_kind():
+    commands, _fish, _state, _events = _build_registry()
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'spawn_decoration(kind="Throne")')
+
+
+def test_spawn_decoration_command_spawns_a_known_kind():
+    commands, _fish, _state, events = _build_registry()
+    run_console_command(commands, 'spawn_decoration(kind="Castle")')
+    assert ("spawn_decoration", "Castle") in events
+
+
+def test_remove_fish_command_removes_it_from_the_tank():
+    commands, fish, _state, events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    assert len(fish) == 1
+    run_console_command(commands, 'remove_fish(fish_name="Steve")')
+    assert fish == []
+    assert ("remove_fish", "Steve") in events
+
+
+def test_remove_fish_command_raises_for_an_unknown_fish():
+    commands, _fish, _state, _events = _build_registry()
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'remove_fish(fish_name="Ghost")')
+
+
+# ── run(): RestrictedPython-sandboxed scripting ─────────────────────────────
+
+
+def test_run_command_can_loop_over_fish_and_call_another_command():
+    commands, _fish, _state, events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Kitty")')
+    run_console_command(
+        commands,
+        'run(code="for f in fish: give_dream(f.display_name, \'happy\')")',
+    )
+    assert ("give_dream", "Steve", "happy") in events
+    assert ("give_dream", "Kitty", "happy") in events
+
+
+def test_run_command_returns_printed_output():
+    commands, _fish, _state, _events = _build_registry()
+    result = run_console_command(commands, 'run(code="print(1 + 2)")')
+    assert "3" in result
+
+
+def test_run_command_rejects_a_dunder_escape_attempt_at_compile_time():
+    commands, _fish, _state, _events = _build_registry()
+    with pytest.raises(ConsoleError):
+        run_console_command(
+            commands,
+            'run(code="x = ().__class__.__base__.__subclasses__()")',
+        )
+
+
+def test_run_command_wraps_a_runtime_script_error():
+    commands, _fish, _state, _events = _build_registry()
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'run(code="1 / 0")')
+
+
+def test_run_command_requires_a_code_argument():
+    commands, _fish, _state, _events = _build_registry()
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, "run()")
+
+
+def test_run_command_reports_missing_restrictedpython_clearly(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "RestrictedPython", None)
+    commands, _fish, _state, _events = _build_registry()
+    with pytest.raises(ConsoleError, match="RestrictedPython"):
+        run_console_command(commands, 'run(code="print(1)")')
 
 
 def test_help_command_lists_every_command():
