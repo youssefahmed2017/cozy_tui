@@ -1567,4 +1567,229 @@ I like that."
 ```
 🥺🥺
 
+---
+
+# MEMORIES UPDATED
+
+# 🐠 Stage 1 — Birth Memories
+
+Every fish starts with a handful of innocent memories.
+
+```text
+[Day 1]
+I was born.
+
+[Day 3]
+Mom stayed beside me while I slept.
+
+[Day 5]
+I discovered that my fins belong to me.
+I moved them for the first time.
+
+[Day 8]
+Dad helped me swim today.
+
+[Day 11]
+I slept next to Mom and Dad.
+```
+
+These happen automatically as the fish grows.
+
+---
+
+# 🌱 Stage 2 — Childhood
+
+The fish begins discovering its world.
+
+```text
+[Day 18]
+I chased a bubble today.
+
+[Day 21]
+I found a shiny shell.
+
+[Day 26]
+I met Steve today.
+He seems nice.
+
+[Day 30]
+I got lost for a little while.
+Mom found me.
+```
+
+Simple, curious memories.
+
+---
+
+# 🐠 Stage 3 — Growing Up
+
+Now the fish starts making its own experiences.
+
+```text
+[Day 72]
+Bob challenged me to a race.
+
+[Day 83]
+I caught my first shrimp by myself.
+
+[Day 90]
+I explored the Forest.
+```
+
+---
+
+# ❤️ Stage 4 — Relationships
+
+Relationships begin shaping the fish's personality.
+
+```text
+[Day 140]
+Kitty became my best friend.
+
+[Day 167]
+Steve looked sad today.
+
+[Day 182]
+Bubbles shared some shrimp with me.
+
+[Day 190]
+We watched the sunset together.
+```
+
+---
+
+# 🌍 Stage 5 — Adventures
+
+The biggest moments of the fish's life.
+
+```text
+[Day 280]
+I visited Coral Valley.
+
+[Day 350]
+I got lost during an adventure.
+
+[Day 366]
+I slept inside the Tree House.
+
+[Day 401]
+I discovered a hidden cave.
+```
+
+---
+
+# 🧠 Active Memories
+
+Each fish only keeps a limited number of **active memories** (for example, 40–60).
+
+These affect behavior:
+
+* Friends
+* Best friends
+* Favorite places
+* Fears
+* Recent adventures
+* Things they recently learned
+
+Older memories gradually leave active memory as new experiences replace them.
+
+---
+
+# 📖 Full History
+
+Nothing is ever deleted.
+
+The player can always open:
+
+```text
+═══════════════════
+Steve's Full History
+═══════════════════
+```
+
+and scroll from:
+
+```text
+[Day 1]
+I was born.
+```
+
+all the way to:
+
+```text
+[Day 1024]
+Today I visited Coral Valley with Kitty.
+```
+
+It's the fish's complete autobiography.
+
+---
+
+# ⭐ Lifelong Memories
+
+Some memories are too important to ever leave active memory.
+
+Examples:
+
+* Birth
+* Becoming Best Friends
+* First Adventure
+* First Child
+* Death of a Best Friend
+* Player Adoption
+* First Visit to Coral Valley
+
+---
+
+# 📅 Reflection Memories
+
+Occasionally, fish can reflect on their lives.
+
+```text
+[Day 365]
+I've been alive for one whole year.
+```
+
+```text
+[Day 700]
+I know this aquarium feels like home.
+```
+
+```text
+[Day 1000]
+I've met so many wonderful fish.
+```
+
+These don't change gameplay—they simply make older fish feel like they've lived a long life.
+
+---
+
+# 👶 Baby Personality
+
+Babies shouldn't think like adults.
+
+Their memories should be tiny discoveries.
+
+```text
+[Day 4]
+I made lots of bubbles today.
+```
+
+```text
+[Day 6]
+Dad is really fast.
+```
+
+```text
+[Day 7]
+I like sleeping next to Mom.
+```
+
+```text
+[Day 10]
+The big rock is really big.
+```
+
+🥺
+
 

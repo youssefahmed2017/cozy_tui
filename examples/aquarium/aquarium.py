@@ -1658,7 +1658,7 @@ def main() -> None:
 
     def _give_dream(f: Fish, category: str = None) -> str:
         key = (category or "happy").strip().lower()
-        if key in ("bad", "reunion"):
+        if key == "bad":
             raise ValueError(
                 "give_dream is for nice dreams -- use give_nightmare for a bad one."
             )
