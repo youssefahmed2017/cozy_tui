@@ -2,6 +2,8 @@ import colorsys
 import math
 import time
 import random
+import sys
+from typing import Iterator, Tuple, Optional, List
 
 from cozy_tui.markup import render
 from cozy_tui.style import Style
@@ -24,11 +26,21 @@ class Animation:
         self.speed = speed
         self._start = time.monotonic()
 
-    def frame(self) -> int:
-        """Current integer frame index, advancing by 1 every ``speed`` seconds."""
-        return int((time.monotonic() - self._start) / self.speed)
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} speed={self.speed!r}>"
 
-    def cells(self, text: str, style: Style):
+    def frame(self, now: Optional[float] = None) -> int:
+        """Current integer frame index, advancing by 1 every ``speed`` seconds.
+
+        Optional *now* can be provided (a monotonic timestamp) so callers can
+        compute a single timestamp per draw and pass it through to keep all
+        animations in a single frame consistent.
+        """
+        if now is None:
+            now = time.monotonic()
+        return int((now - self._start) / self.speed)
+
+    def cells(self, text: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
         """Yield ``(dx, dy, char, cell_style)`` for each glyph of *text*, where
         ``dx``/``dy`` are cell offsets from the label's top-left origin."""
         raise NotImplementedError
@@ -50,7 +62,7 @@ class GlitchAnimation(Animation):
         super().__init__(speed)
         self.intensity = intensity  # how many diacritics per char
 
-    def cells(self, text, style):
+    def cells(self, text: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
         frame = self.frame()
         for i, ch in enumerate(text):
             if ch == " ":
@@ -75,6 +87,7 @@ class GlitchAnimation(Animation):
 
             yield i, 0, glitched, style
 
+
 class TypewriterAnimation(Animation):
     """Types through a list of phrases, erasing and retyping each one.
 
@@ -83,6 +96,9 @@ class TypewriterAnimation(Animation):
         speed:     Seconds between each character add/remove.
         pause:     Frames to hold the fully-typed phrase before erasing.
         cursor:    Show the terminal cursor blinking at the typing position.
+        cursor_output: optional file-like object to write cursor show/hide
+            escape sequences to (default sys.stdout). Pass None to suppress
+            printing entirely (useful for tests/headless).
     """
 
     vertical_span: int = 0
@@ -93,17 +109,20 @@ class TypewriterAnimation(Animation):
 
     def __init__(
         self,
-        phrases: list[str],
+        phrases: List[str],
         *,
         speed: float = 0.08,
         pause: int = 15,
         cursor: bool = True,
+        cursor_output: Optional[object] = sys.stdout,
     ):
         super().__init__(speed)
         self.phrases = phrases
         self.pause = pause
         self.cursor = cursor
         self._cursor_hidden = False
+        # allow callers (tests) to disable/redirect the escape sequence output
+        self.cursor_output = cursor_output
 
     def _current(self, frame: int):
         """Return (text, visible_count, state) for the current frame."""
@@ -131,17 +150,30 @@ class TypewriterAnimation(Animation):
             f -= cycle
             idx += 1
 
-    def _hide_cursor(self):
+    def _write_cursor_seq(self, seq: str) -> None:
+        if self.cursor_output is not None:
+            try:
+                # file-like objects (stdout) support write/flush
+                self.cursor_output.write(seq)
+                try:
+                    self.cursor_output.flush()
+                except Exception:
+                    pass
+            except Exception:
+                # best-effort: don't let cursor output failures break the app
+                pass
+
+    def _hide_cursor(self) -> None:
         if not self._cursor_hidden:
-            print(self._HIDE, end="", flush=True)
+            self._write_cursor_seq(self._HIDE)
             self._cursor_hidden = True
 
-    def _show_cursor(self):
+    def _show_cursor(self) -> None:
         if self._cursor_hidden:
-            print(self._SHOW, end="", flush=True)
+            self._write_cursor_seq(self._SHOW)
             self._cursor_hidden = False
 
-    def cells(self, text_hint, style):
+    def cells(self, text_hint: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
         frame = self.frame()
         text, visible, state = self._current(frame)
 
@@ -166,11 +198,13 @@ class TypewriterAnimation(Animation):
                 yield visible, 0, cursor_char, style
 
     def __del__(self):
-        """Always restore the terminal cursor on cleanup 😎"""
+        """Always restore the terminal cursor on cleanup — best-effort, silence errors."""
         try:
-            print(self._SHOW, end="", flush=True)
+            # May be called during interpreter shutdown; guard aggressively.
+            self._write_cursor_seq(self._SHOW)
         except Exception:
             pass
+
 
 class GlowAnimation(Animation):
     """Cycles a color gradient across each character of an AnimatedLabel.
@@ -296,8 +330,8 @@ class GlowAnimation(Animation):
     def __init__(
         self,
         *,
-        colors: list[str | tuple[int, int, int]] | None = None,
-        color_template: str | None = None,
+        colors: Optional[List[str | Tuple[int, int, int]]] = None,
+        color_template: Optional[str] = None,
         speed: float = 0.06,
     ):
         if color_template is not None:
@@ -313,20 +347,20 @@ class GlowAnimation(Animation):
             raise ValueError("Provide either colors or color_template.")
 
         super().__init__(speed)
-        self._colors: list[tuple[int, int, int]] = [
+        self._colors: List[Tuple[int, int, int]] = [
             c if isinstance(c, tuple) else self._hex_to_rgb(c) for c in hex_colors
         ]
 
     @property
-    def colors(self) -> list[tuple[int, int, int]]:
+    def colors(self) -> List[Tuple[int, int, int]]:
         return self._colors
 
     @staticmethod
-    def _hex_to_rgb(color: str) -> tuple[int, int, int]:
+    def _hex_to_rgb(color: str) -> Tuple[int, int, int]:
         h = color.lstrip("#")
         return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
 
-    def cells(self, text, style):
+    def cells(self, text: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
         colors = self._colors
         n = len(colors)
         frame = self.frame()
@@ -364,7 +398,7 @@ class RainbowAnimation(Animation):
         self.saturation = saturation
         self.value = value
 
-    def cells(self, text, style):
+    def cells(self, text: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
         frame = self.frame()
         raw_bg = style.raw_bg
         extra = list(style.styles)
@@ -411,7 +445,7 @@ class LevitateAnimation(Animation):
         self.rate = rate
         self.vertical_span = amplitude * 2  # travels 0..2*amplitude
 
-    def cells(self, text, style):
+    def cells(self, text: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
         frame = self.frame()
         for i, ch in enumerate(text):
             if self.mode == "word":
@@ -446,7 +480,8 @@ class AnimatedLabel(Widget):
         self._char_styles: list = []
 
     def _sync(self) -> None:
-        key = (self.text, self.style.fg, self.style.bg, self.style.styles)
+        # Use a hashable key (tuple) — style.styles may be a list, so convert.
+        key = (self.text, self.style.fg, self.style.bg, tuple(self.style.styles))
         if self._markup_key == key:
             return
         self._markup_key = key
@@ -492,6 +527,9 @@ class AnimatedLabel(Widget):
 
     def draw(self, canvas) -> None:
         text = self._visible()
+        # Let the animation decide a consistent frame itself; we could also
+        # compute now=time.monotonic() once and pass into animation.frame(now)
+        # if needed to keep multiple animations in perfect sync.
         cells = self.animation.cells(text, self.style)
         if self.markup:
             styles = self._char_styles
