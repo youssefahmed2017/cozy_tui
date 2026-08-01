@@ -4,6 +4,8 @@ from .animated_label import (
     GlowAnimation,
     LevitateAnimation,
     RainbowAnimation,
+    GlitchAnimation,
+    TypewriterAnimation,
 )
 from .bindings import Bindings
 from .charts import BarChart, Sparkline
@@ -45,4 +47,6 @@ __all__ = [
     "Toast",
     "Tooltip",
     "TracebackView",
+    "GlitchAnimation",
+    "TypewriterAnimation",
 ]

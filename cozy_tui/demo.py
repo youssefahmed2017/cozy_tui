@@ -31,7 +31,7 @@ from cozy_tui.widgets import (
     ColorPicker,
     Diff,
     Dropdown,
-    GlowAnimation,
+    TypewriterAnimation,
     HBox,
     Hyperlink,
     Image,

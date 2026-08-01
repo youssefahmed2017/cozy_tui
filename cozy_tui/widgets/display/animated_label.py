@@ -1,6 +1,7 @@
 import colorsys
 import math
 import time
+import random
 
 from cozy_tui.markup import render
 from cozy_tui.style import Style
@@ -32,6 +33,144 @@ class Animation:
         ``dx``/``dy`` are cell offsets from the label's top-left origin."""
         raise NotImplementedError
 
+
+ZALGO_UP = ['̍', '̎', '̄', '̅', '̿', '̑', '̆', '̐', '͒', '͗', '͑', '̇', '̈', '̊', '͂', '̓', '̈́', '͊', '͋', '͌', '̃',
+            '̂', '̌', '͐', '̀', '́', '̋', '̏', '̽', '̾', '͛', '͆', '̚']
+ZALGO_MID = ['̕', '̛', '̀', '́', '͘', '̡', '̢', '̧', '̨', '̴', '̵', '̶', '͜', '͝', '͞', '͟', '͠', '͢', '̸', '̷', '͡']
+ZALGO_DOWN = ['̖', '̗', '̘', '̙', '̜', '̝', '̞', '̟', '̠', '̤', '̥', '̦', '̩', '̪', '̫', '̬', '̭', '̮', '̯', '̰', '̱',
+              '̲', '̳', '̹', '̺', '̻', '̼', 'ͅ', '͇', '͈', '͉', '͍', '͎', '͓', '͔', '͕', '͖', '͙', '͚', '̣']
+
+
+class GlitchAnimation(Animation):
+    """Zalgo-style glitch — stacks combining diacritics on each character.
+    WARNING: May not work in non-Zalgo supported terminals
+    """
+
+    def __init__(self, *, intensity: int = 3, speed: float = 0.08):
+        super().__init__(speed)
+        self.intensity = intensity  # how many diacritics per char
+
+    def cells(self, text, style):
+        frame = self.frame()
+        for i, ch in enumerate(text):
+            if ch == " ":
+                yield i, 0, ch, style
+                continue
+
+            rng = random.Random(frame * 997 + i * 131)
+
+            glitched = ch
+            glitched += "".join(
+                rng.choice(ZALGO_UP)
+                for _ in range(rng.randint(0, self.intensity))
+            )
+            glitched += "".join(
+                rng.choice(ZALGO_MID)
+                for _ in range(rng.randint(0, self.intensity))
+            )
+            glitched += "".join(
+                rng.choice(ZALGO_DOWN)
+                for _ in range(rng.randint(0, self.intensity))
+            )
+
+            yield i, 0, glitched, style
+
+class TypewriterAnimation(Animation):
+    """Types through a list of phrases, erasing and retyping each one.
+
+    Args:
+        phrases:   List of strings to cycle through.
+        speed:     Seconds between each character add/remove.
+        pause:     Frames to hold the fully-typed phrase before erasing.
+        cursor:    Show the terminal cursor blinking at the typing position.
+    """
+
+    vertical_span: int = 0
+
+    # Cursor blink via ANSI — show/hide the real terminal cursor
+    _SHOW = "\033[?25h"
+    _HIDE = "\033[?25l"
+
+    def __init__(
+        self,
+        phrases: list[str],
+        *,
+        speed: float = 0.08,
+        pause: int = 15,
+        cursor: bool = True,
+    ):
+        super().__init__(speed)
+        self.phrases = phrases
+        self.pause = pause
+        self.cursor = cursor
+        self._cursor_hidden = False
+
+    def _current(self, frame: int):
+        """Return (text, visible_count, state) for the current frame."""
+        f = frame
+        idx = 0
+
+        while True:
+            text = self.phrases[idx % len(self.phrases)]
+            total = len(text)
+            # one full cycle: type in + pause + type out
+            cycle = total + self.pause + total
+
+            if f < cycle:
+                if f < total:
+                    # typing in
+                    return text, f + 1, "typing_in"
+                elif f < total + self.pause:
+                    # holding
+                    return text, total, "pausing"
+                else:
+                    # typing out
+                    gone = f - total - self.pause
+                    return text, max(0, total - gone), "typing_out"
+
+            f -= cycle
+            idx += 1
+
+    def _hide_cursor(self):
+        if not self._cursor_hidden:
+            print(self._HIDE, end="", flush=True)
+            self._cursor_hidden = True
+
+    def _show_cursor(self):
+        if self._cursor_hidden:
+            print(self._SHOW, end="", flush=True)
+            self._cursor_hidden = False
+
+    def cells(self, text_hint, style):
+        frame = self.frame()
+        text, visible, state = self._current(frame)
+
+        # cursor management
+        if self.cursor:
+            if state in ("typing_in", "typing_out"):
+                self._hide_cursor()
+            else:
+                self._show_cursor()
+
+        # yield visible characters
+        for i, ch in enumerate(text[:visible]):
+            yield i, 0, ch, style
+
+        # fake cursor block at end of visible text
+        # only shown while actively typing (not during pause — real cursor handles that)
+        if self.cursor and state in ("typing_in", "typing_out"):
+            cursor_char = "▏"
+            # blink: on for 6 frames, off for 6 frames
+            blink_on = (frame // 6) % 2 == 0
+            if blink_on:
+                yield visible, 0, cursor_char, style
+
+    def __del__(self):
+        """Always restore the terminal cursor on cleanup 😎"""
+        try:
+            print(self._SHOW, end="", flush=True)
+        except Exception:
+            pass
 
 class GlowAnimation(Animation):
     """Cycles a color gradient across each character of an AnimatedLabel.
@@ -368,3 +507,4 @@ class AnimatedLabel(Widget):
         request = getattr(canvas, "request_frame", None)
         if request is not None:
             request(self.animation.speed)
+
