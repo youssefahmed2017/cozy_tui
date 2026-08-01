@@ -99,6 +99,16 @@ class TypewriterAnimation(Animation):
         cursor_output: optional file-like object to write cursor show/hide
             escape sequences to (default sys.stdout). Pass None to suppress
             printing entirely (useful for tests/headless).
+        colors:    optional list of `Style` fg colors (e.g. "red", "#ff8800"),
+            one per phrase (cycled with `%` if shorter than `phrases`) --
+            *not* raw ANSI escape codes or `[red]...[/]` markup embedded in
+            the phrase text itself: this animation manages its own
+            `phrases` list and ignores AnimatedLabel's `markup`/text
+            entirely (see `cells()`), so a phrase-level color has to be
+            supplied this way. `canvas.write()` never parses escape
+            sequences or markup out of the text it's given -- every
+            character is a single already-resolved `Style`, decided before
+            drawing, not embedded in the string.
     """
 
     vertical_span: int = 0
@@ -115,6 +125,7 @@ class TypewriterAnimation(Animation):
         pause: int = 15,
         cursor: bool = True,
         cursor_output: Optional[object] = sys.stdout,
+        colors: Optional[List[str]] = None,
     ):
         super().__init__(speed)
         self.phrases = phrases
@@ -123,9 +134,10 @@ class TypewriterAnimation(Animation):
         self._cursor_hidden = False
         # allow callers (tests) to disable/redirect the escape sequence output
         self.cursor_output = cursor_output
+        self.colors = colors
 
     def _current(self, frame: int):
-        """Return (text, visible_count, state) for the current frame."""
+        """Return (text, visible_count, state, phrase_index) for the current frame."""
         f = frame
         idx = 0
 
@@ -138,14 +150,14 @@ class TypewriterAnimation(Animation):
             if f < cycle:
                 if f < total:
                     # typing in
-                    return text, f + 1, "typing_in"
+                    return text, f + 1, "typing_in", idx
                 elif f < total + self.pause:
                     # holding
-                    return text, total, "pausing"
+                    return text, total, "pausing", idx
                 else:
                     # typing out
                     gone = f - total - self.pause
-                    return text, max(0, total - gone), "typing_out"
+                    return text, max(0, total - gone), "typing_out", idx
 
             f -= cycle
             idx += 1
@@ -175,7 +187,7 @@ class TypewriterAnimation(Animation):
 
     def cells(self, text_hint: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
         frame = self.frame()
-        text, visible, state = self._current(frame)
+        text, visible, state, idx = self._current(frame)
 
         # cursor management
         if self.cursor:
@@ -184,9 +196,17 @@ class TypewriterAnimation(Animation):
             else:
                 self._show_cursor()
 
+        phrase_style = style
+        if self.colors:
+            phrase_style = Style(
+                fg=self.colors[idx % len(self.colors)],
+                bg=style.raw_bg,
+                styles=style.styles,
+            )
+
         # yield visible characters
         for i, ch in enumerate(text[:visible]):
-            yield i, 0, ch, style
+            yield i, 0, ch, phrase_style
 
         # fake cursor block at end of visible text
         # only shown while actively typing (not during pause — real cursor handles that)
@@ -195,7 +215,7 @@ class TypewriterAnimation(Animation):
             # blink: on for 6 frames, off for 6 frames
             blink_on = (frame // 6) % 2 == 0
             if blink_on:
-                yield visible, 0, cursor_char, style
+                yield visible, 0, cursor_char, phrase_style
 
     def __del__(self):
         """Always restore the terminal cursor on cleanup — best-effort, silence errors."""
@@ -205,6 +225,163 @@ class TypewriterAnimation(Animation):
         except Exception:
             pass
 
+class DecodeAnimation(Animation):
+    """Decodes text from binary/hex/morse, then re-encodes it if loop=True.
+
+    Args:
+        speed:     Seconds between each decode step.
+        mode:      "hex", "binary", or "morse"
+        randomize: If True, undecoded bytes show random digits.
+        loop:      If True, re-encodes back to binary/hex after decoding.
+        pause:     Frames to hold the fully decoded text before re-encoding.
+    """
+
+    vertical_span: int = 0
+
+    def __init__(
+        self,
+        *,
+        mode: str = "binary",
+        speed: float = 0.08,
+        randomize: bool = True,
+        loop: bool = False,
+        pause: int = 10,
+    ):
+        super().__init__(speed)
+        self.randomize = randomize
+        self.mode = mode
+        self.loop = loop
+        self.pause = pause
+        self._rng = random.Random()
+
+        if mode not in ("binary", "hex", "morse"):
+            raise ValueError(f"mode must be 'binary', 'hex' or 'morse', got {mode!r}")
+
+    MORSE = {
+        'A': '.-', 'B': '-...', 'C': '-.-.', 'D': '-..',
+        'E': '.', 'F': '..-.', 'G': '--.', 'H': '....',
+        'I': '..', 'J': '.---', 'K': '-.-', 'L': '.-..',
+        'M': '--', 'N': '-.', 'O': '---', 'P': '.--.',
+        'Q': '--.-', 'R': '.-.', 'S': '...', 'T': '-',
+        'U': '..-', 'V': '...-', 'W': '.--', 'X': '-..-',
+        'Y': '-.--', 'Z': '--..',
+        '0': '-----', '1': '.----', '2': '..---',
+        '3': '...--', '4': '....-', '5': '.....',
+        '6': '-....', '7': '--...', '8': '---..',
+        '9': '----.', ' ': '/'
+    }
+
+    def _to_morse(self, text: str) -> list[str]:
+        return [self.MORSE.get(ch.upper(), "?") for ch in text]
+
+    def _to_binary(self, text: str) -> list[str]:
+        return [format(ord(ch), "08b") for ch in text]
+
+    def _to_hex(self, text: str) -> list[str]:
+        return [format(ord(ch), "02X") for ch in text]
+
+    def _encode(self, text: str):
+        if self.mode == "hex":
+            return self._to_hex(text)
+        elif self.mode == "morse":
+            return self._to_morse(text)
+        else:
+            return self._to_binary(text)
+
+    def cells(self, text, style):
+        frame = self.frame()
+        chars = self._encode(text)
+        pool = (
+            "01" if self.mode == "binary"
+            else ".-" if self.mode == "morse"
+            else "0123456789ABCDEF"
+        )
+        dim = Style(fg="bright_black", bg=style.raw_bg, styles=style.styles)
+
+        # build a flat list of (char_index, bit_index, code_char)
+        # so we can track progress across variable-length codes
+        flat = []
+        for i, code in enumerate(chars):
+            for j, c in enumerate(code):
+                flat.append((i, j, c, len(code)))
+
+        total_chunks = len(flat)
+
+        # figure out current state
+        if self.loop:
+            cycle = total_chunks + self.pause + total_chunks
+            f = frame % cycle
+            if f < total_chunks:
+                chunks_consumed = f * 2
+                phase = "decode"
+            elif f < total_chunks + self.pause:
+                chunks_consumed = total_chunks * 2
+                phase = "pause"
+            else:
+                encode_progress = f - total_chunks - self.pause
+                chunks_consumed = total_chunks * 2 - encode_progress * 2
+                phase = "encode"
+        else:
+            chunks_consumed = min(frame * 2, total_chunks * 2)
+            phase = "decode"
+
+        col = 0
+        prev_char_idx = -1
+
+        # track how many chunks belong to each char
+        char_totals = [len(code) for code in chars]
+        char_starts = []
+        acc = 0
+        for total in char_totals:
+            char_starts.append(acc)
+            acc += total
+
+        for i, (ch, code) in enumerate(zip(text, chars)):
+            char_start = char_starts[i] * 2
+            char_end = char_start + len(code) * 2
+
+            if chunks_consumed >= char_end:
+                # fully decoded
+                yield col, 0, ch, style
+                col += 1
+
+            elif chunks_consumed > char_start:
+                # partially decoded
+                bits_done = (chunks_consumed - char_start) // 2
+                remaining = code[bits_done:]
+
+                yield col, 0, ch, style
+                col += 1
+
+                if self.randomize:
+                    self._rng.seed(frame * 997 + i * 131)
+                    display = "".join(
+                        self._rng.choice(pool) for _ in remaining
+                    )
+                else:
+                    display = remaining
+
+                for c in display:
+                    yield col, 0, c, dim
+                    col += 1
+
+            else:
+                # fully encoded
+                if self.randomize:
+                    self._rng.seed(frame * 997 + i * 131)
+                    display = "".join(
+                        self._rng.choice(pool) for _ in code
+                    )
+                else:
+                    display = code
+
+                for c in display:
+                    yield col, 0, c, dim
+                    col += 1
+
+                if i != len(chars) - 1:
+                    yield col, 0, " ", style
+                    col += 1
 
 class GlowAnimation(Animation):
     """Cycles a color gradient across each character of an AnimatedLabel.
@@ -497,9 +674,6 @@ class AnimatedLabel(Widget):
         self._sync()
         return self._plain
 
-    def natural_width(self, scale) -> int:
-        return len(self._visible())
-
     def natural_height(self, scale) -> int:
         # Motion animations (e.g. Levitate) occupy extra rows below the baseline.
         return 1 + self.animation.vertical_span
@@ -545,4 +719,10 @@ class AnimatedLabel(Widget):
         request = getattr(canvas, "request_frame", None)
         if request is not None:
             request(self.animation.speed)
+
+    def natural_width(self, scale) -> int:
+        text = self._visible()
+        if hasattr(self.animation, 'natural_width_hint'):
+            return self.animation.natural_width_hint(text)
+        return len(text)
 

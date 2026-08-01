@@ -6,6 +6,7 @@ from .animated_label import (
     RainbowAnimation,
     GlitchAnimation,
     TypewriterAnimation,
+    DecodeAnimation,
 )
 from .bindings import Bindings
 from .charts import BarChart, Sparkline
@@ -49,4 +50,5 @@ __all__ = [
     "TracebackView",
     "GlitchAnimation",
     "TypewriterAnimation",
+    "DecodeAnimation",
 ]
