@@ -1,7 +1,7 @@
 {
-  "version": "1.5.0",
-  "url": "https://github.com/youssefahmed2017/TermQuarium/releases/download/v1.5.0/TermQuarium.exe",
-  "sha256": "ce8cad5413ffa0b5e7a77c2fcba724a5bde26f17cc37737aed06ee2c2a287b93",
+  "version": "1.6.0",
+  "url": "https://github.com/youssefahmed2017/TermQuarium/releases/download/v1.6.0/TermQuarium.exe",
+  "sha256": "25466518d916c8e0c223d5605fe8b631c85489435e7ebaa99ce9db1fe14f9ecb",
   "mandatory": false,
   "min_supported": "1.0.0",
   "notes": "See the changelog at https://termquarium.vercel.app/changelog"

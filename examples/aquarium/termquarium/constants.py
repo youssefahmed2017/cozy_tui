@@ -7,7 +7,7 @@ from collections import namedtuple
 # compare against the published manifest -- see termquarium/updater.py.
 # Keep this in step with MyAppVersion in TermQuarium.iss and the "version"
 # field published in website/version.json.
-GAME_VERSION = "1.5.0"
+GAME_VERSION = "1.6.0"
 
 # Scale (updates.md): 0 = starving, 100 = full -- flipped from the
 # original 0=full/100=starving, which read backwards ("100% hungry" meaning
