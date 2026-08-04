@@ -283,7 +283,9 @@ def _build_fish_history(app, f: Fish) -> Box:
     return box
 
 
-def _build_decoration_inspector(app, d: Decoration, fish, on_sell, on_enter) -> Box:
+def _build_decoration_inspector(
+    app, d: Decoration, fish, on_sell, on_enter
+) -> Box:
     """Decorations are sellable too -- an emergency option (per the user's
     own framing: "instead of game over, I guess the castle has to go...")
     rather than just cosmetic. Sell asks for confirmation first, same
@@ -293,7 +295,13 @@ def _build_decoration_inspector(app, d: Decoration, fish, on_sell, on_enter) -> 
     inside right now, plus an "Enter {kind}" button into the dedicated,
     quieter Castle Interior view (_build_castle_interior) -- a deliberate
     choice to actually go look, rather than this stat list being the only
-    way to see them."""
+    way to see them.
+
+    `on_sell=None` (the Forest's shelter fixtures -- Tree House/Hidden
+    Cave/Dense Plants Thicket) omits the Sell row entirely: those are
+    scenery the player finds already there, never bought from the Shop
+    and not in the `decorations` list a real sale would remove from, so
+    there's no sale to offer (and no $0 "Sell value" to show for it)."""
     box = Box(0, 0, "340x220", title=d.kind, border="rounded", style=app.style)
     y = 1
     if d.is_container:
@@ -313,17 +321,21 @@ def _build_decoration_inspector(app, d: Decoration, fish, on_sell, on_enter) -> 
             )
         )
         y += 2
-    box.add(Label(2, y, f"Sell value: ${d.sell_value}"))
-    y += 2
 
-    def _on_sell(_widget):
-        app.confirm(
-            f"Sell this {d.kind} for ${d.sell_value}?",
-            on_yes=lambda: (on_sell(d), app.close_overlay(box)),
-        )
+    if on_sell is not None:
+        box.add(Label(2, y, f"Sell value: ${d.sell_value}"))
+        y += 2
 
-    box.add(Button(2, y, "Sell").on_click(_on_sell))
-    box.add(Button(12, y, "Close").on_click(lambda _w: app.close_overlay(box)))
+        def _on_sell(_widget):
+            app.confirm(
+                f"Sell this {d.kind} for ${d.sell_value}?",
+                on_yes=lambda: (on_sell(d), app.close_overlay(box)),
+            )
+
+        box.add(Button(2, y, "Sell").on_click(_on_sell))
+        box.add(Button(12, y, "Close").on_click(lambda _w: app.close_overlay(box)))
+    else:
+        box.add(Button(2, y, "Close").on_click(lambda _w: app.close_overlay(box)))
     return box
 
 

@@ -20,3 +20,7 @@ FOREST_LEAF_STYLES = (
 # bright-yellow for a tiger's stripes, which also reads as alarm against the
 # green scenery and stands apart from the plain-yellow trunk/wood via bold.
 TIGER_SHARK_STYLE = Style(fg="bright_yellow", styles=["bold"])
+# A storm's lightning flash (see weather.py's LightningField) -- bright
+# white/bold so it genuinely reads as a flash against the water, distinct
+# from every other yellow-toned accent above.
+LIGHTNING_STYLE = Style(fg="bright_white", styles=["bold"])

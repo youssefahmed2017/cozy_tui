@@ -635,6 +635,14 @@ RELATIONSHIP_FRIENDLY_BONUS = 1.3  # multiplies a *positive* delta only
 # friends drift apart, rivals eventually forgive -- checked once a day
 # (see main()'s _daily_tick()).
 RELATIONSHIP_DECAY_PER_DAY = 1.0
+# Hysteresis for the "became friends"/"became rivals" milestone announcement
+# (see aquarium.py's _relationship_tier()) -- once a pair has crossed into
+# Friend/Rival, decay/noise has to carry the score at least this far back
+# past the threshold before that tier is considered actually lost, so a
+# bond hovering right at the line doesn't re-announce itself every time a
+# routine event (even SLEPT_TOGETHER_SCORE's own small +1.0) nudges it back
+# over. 5x RELATIONSHIP_DECAY_PER_DAY -- several undecayed days, not one.
+RELATIONSHIP_TIER_HYSTERESIS = 5.0
 
 # How close a homeless fish must be to a housed one at the Night -> Morning
 # transition to count as "nearby enough that it plausibly wanted that spot
@@ -795,6 +803,25 @@ STORM_HUNGER_BUMP = 15.0  # flat, one-time -- not a decaying effect
 # it's active, every awake fish heads for the nearest container and huddles
 # there (see main()'s _end_storm() for how/when it's cleared).
 STORM_DURATION_SECONDS = 25.0
+# A brief lightning flash for as long as environment["storm"] is True (see
+# bubbles.py/leaves.py's own ambient-particle shape, mirrored here by
+# weather.py's LightningField) -- purely decorative, no gameplay effect of
+# its own beyond what the storm itself already does. Randomized gap between
+# flashes so it never reads as metronomic; short duration so a flash is
+# genuinely a flash, not a lingering shape.
+LIGHTNING_FLASH_INTERVAL_RANGE = (2.0, 6.0)  # seconds between flashes
+LIGHTNING_FLASH_DURATION = 0.2  # seconds a flash stays visible
+LIGHTNING_ART = [
+    "  ///",
+    " ///",
+    " \\\\\\",
+    " ///",
+    "///",
+    "\\\\\\",
+    "///",
+    "\\\\\\",
+    "⚡",
+]
 LUCKY_FIND_RANGE = (5, 20)  # $ -- a small bonus, not a strategy
 
 # Dreams: rolled once per fish at the Day/Morning -> Night transition (see
@@ -1016,6 +1043,11 @@ LOST_ADVENTURE_DURATION_RANGE = (4, 8)  # days
 # fish off on a multi-day trip it can't spare the health/hunger budget for.
 LOST_ADVENTURE_HEALTH_MIN = 80.0
 LOST_ADVENTURE_HUNGER_MIN = HUNGER_WARNING_THRESHOLD
+# Below this, a fish carrying wood actively seeks out Bubbles to trade it
+# for food (see adventure.pick_event()) instead of leaving it to the plain
+# weighted roll -- a hungry fish with something to trade doesn't wander
+# aimlessly hoping to bump into someone.
+LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD = 60.0
 # Real, permanent Decoration fixtures in the Forest scene (see ui.py's
 # build_forest_scene(), TREE_HOUSE_ART/HIDDEN_CAVE_ART/DENSE_PLANTS_ART
 # below) -- one instance of each, built once at boot, never purchasable
@@ -1023,9 +1055,11 @@ LOST_ADVENTURE_HUNGER_MIN = HUNGER_WARNING_THRESHOLD
 # Rock's capacity mechanism exactly. A lost fish that finds/flees to one
 # briefly reappears standing at it, then vanishes "inside" (see aquarium.py's
 # _start_shelter_visit()) -- an appear-and-vanish moment, not continuous
-# steering: nothing in the Forest has ever needed to move continuously
-# (a forest fish is otherwise a static prop between discrete state changes),
-# so this matches that existing idiom rather than inventing new physics.
+# steering, matching the rest of the Forest's decorations/Tiger Shark (a
+# static prop between discrete state changes). A lost fish itself is the one
+# exception -- see FOREST_WANDER_SPEED below: sitting frozen between its
+# once-a-day events read as broken, not calm, so it drifts on its own timer
+# the rest of the time.
 LOST_ADVENTURE_SHELTERS = ("Tree House", "Hidden Cave", "Dense Plants Thicket")
 LOST_ADVENTURE_SHELTER_CAPACITY = {
     "Tree House": 2,
@@ -1033,6 +1067,14 @@ LOST_ADVENTURE_SHELTER_CAPACITY = {
     "Dense Plants Thicket": 3,
 }
 LOST_ADVENTURE_SHELTER_VISIT_SECONDS = 4.0
+# A lost fish's ambient wander (aquarium.py's _wander_lost_adventure_fish(),
+# called from the ordinary 1-second tick, not a smooth per-frame steer like
+# the tank's fish get) -- slower than MIN_SPEED and turning far less often
+# than a tank fish's MIN_TURN_DELAY/MAX_TURN_DELAY, since this is idle
+# ambience, not searching for anything.
+FOREST_WANDER_SPEED = 1.5  # cells/second
+FOREST_WANDER_TURN_RANGE = (3.0, 7.0)  # seconds between direction changes
+LOST_ADVENTURE_BUBBLES_FLASH_SECONDS = 4.0  # matches SHELTER_VISIT_SECONDS's beat
 
 TREE_HOUSE_ART = [
     " ,^.  ",

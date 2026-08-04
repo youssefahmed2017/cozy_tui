@@ -300,6 +300,7 @@ from examples.aquarium.termquarium.ui import (
     build_start_menu,
 )
 from examples.aquarium.termquarium.vignettes import MorningVignette
+from examples.aquarium.termquarium.weather import LightningField
 from examples.aquarium.termquarium.world import (
     compute_time_of_day,
     compute_water_temperature,
@@ -431,6 +432,10 @@ def main() -> None:
         "shop_out_of_stock": [],
     }
     hungry_warning_active = {"value": False}
+    # Accumulates real seconds between hunger applications -- see
+    # _per_second_tick(), which ticks every 1.0s but only spends this down
+    # (and applies a hunger step) once HUNGER_TICK_SECONDS has built up.
+    hunger_tick_accum = {"seconds": 0.0}
     day_count = {"n": 0}
     # Handle for the daily-tick timer (which the Shop's rotation rides on --
     # see _refresh_shop_stock()) so _load_snapshot() can resync it instead of
@@ -752,6 +757,15 @@ def main() -> None:
             _build_decoration_inspector(
                 app, d, fish, _sell_decoration, _enter_decoration
             ),
+            close_on_click_outside=True,
+        )
+
+    def _open_forest_shelter_inspector(d: Decoration) -> None:
+        # Same panel Castle/Rock use, minus Sell -- a Forest shelter isn't
+        # in `decorations`, was never bought, and can't be (see
+        # _build_decoration_inspector's on_sell=None docs).
+        app.open_overlay(
+            _build_decoration_inspector(app, d, fish, None, _enter_decoration),
             close_on_click_outside=True,
         )
 
@@ -1725,14 +1739,19 @@ def main() -> None:
         return item.kind
 
     def _console_remove_fish(f: Fish) -> None:
-        # A blunt removal -- no toast/memory flavor, matching set_health/
-        # set_hunger's bare style, not the natural-death/starvation paths.
+        # No removal toast of its own (matching set_health/set_hunger's
+        # bare style, not the natural-death/starvation paths) -- but bonded
+        # tankmates must still grieve and be eligible for a reunion dream,
+        # exactly like every other way a fish leaves (sold, eaten, starved,
+        # old age): _log_departure() before clear_relationships() erases
+        # the bond info it reads, same ordering those paths already use.
         if f in fish:
             fish.remove(f)
         if f in aquarium_widgets:
             aquarium_widgets.remove(f)
         if f in forest_widgets:
             forest_widgets.remove(f)
+        _log_departure(f)
         clear_relationships(f, fish)
         _refresh_stats()
 
@@ -1916,14 +1935,29 @@ def main() -> None:
             return False  # a modal (Shop/Inspector/prompt) is open -- let it handle its own clicks
         if in_forest["value"]:
             # The Forest isn't read-only -- clicking a fish there opens the
-            # exact same Inspector as in the tank -- but there's no water
-            # to feed and no decorations to sell here (yet), so nothing
-            # else in this handler applies.
+            # exact same Inspector as in the tank, and clicking a shelter
+            # (Tree House/Hidden Cave/Dense Plants Thicket) opens the same
+            # kind of Decoration Inspector Castle/Rock use (minus Sell --
+            # see _open_forest_shelter_inspector) -- but there's no water
+            # to feed here, so nothing else in this handler applies.
             if isinstance(event, MouseClick) and event.btn == 0:
-                forest_fish = [f for f in fish if f.biome == "forest"]
+                # Excludes a fish tucked into a shelter for the night
+                # (_entered, invisible -- see _settle_lost_adventure_fish_
+                # for_night()): its fx/fy is anchored exactly at the
+                # shelter's own position, so without this it would
+                # intercept clicks meant for the shelter itself.
+                forest_fish = [
+                    f for f in fish if f.biome == "forest" and not f._entered
+                ]
                 clicked = fish_at(forest_fish, event.col, event.row)
                 if clicked is not None:
                     _open_inspector(clicked)
+                    return True
+                clicked_shelter = decoration_at(
+                    forest_shelters.values(), event.col, event.row
+                )
+                if clicked_shelter is not None:
+                    _open_forest_shelter_inspector(clicked_shelter)
                     return True
             return False
         if isinstance(event, MouseClick) and event.btn == 0:
@@ -1953,6 +1987,11 @@ def main() -> None:
         return False
 
     app.on_mouse(_on_mouse)
+
+    # Added last (plain add-order z-layering) so a flash reads clearly over
+    # the water, decorations, and fish alike, rather than being tucked
+    # behind the furniture the way the ambient bubbles deliberately are.
+    app.add(LightningField(bounds, environment, lambda: paused["value"]))
 
     def _end_storm() -> None:
         environment["storm"] = False
@@ -2656,6 +2695,18 @@ def main() -> None:
             aquarium_widgets.remove(f)
         f.biome = "forest"
         f.lost_adventure = adventure.new_state(duration)
+        # Placed somewhere in the Forest and added to forest_widgets right
+        # away, same as any other arrival there -- "lost" means the player
+        # can't fetch it home, not that it's invisible for days at a time
+        # waiting on a rare find_shelter/danger roll. The appear-and-vanish
+        # choreography at an actual shelter (_start_shelter_visit) is still
+        # its own, separate flourish on top of this.
+        fx0, fy0, fx1, fy1 = forest_bounds
+        f.fx = random.uniform(fx0, fx1)
+        f.fy = random.uniform(fy0, fy1)
+        f.x, f.y = round(f.fx), round(f.fy)
+        if f not in forest_widgets:
+            forest_widgets.append(f)
         _log_memory(f, "Wandered off exploring and lost track of the way back.")
         app.toast(
             f"{f.display_name} has gone missing in the forest!",
@@ -2693,6 +2744,12 @@ def main() -> None:
         # where it's put). No new physics: just stand the fish at the real
         # Decoration for a few seconds, then _check_lost_adventure_
         # shelter_visits() below removes it again.
+        if f.sleeping_in is not None:
+            # Already tucked in for the night (_settle_lost_adventure_
+            # fish_for_night()) -- the daily event's other effects (memory,
+            # happiness) still apply, but there's no visible flash to add on
+            # top of a fish that's already snug at a shelter and invisible.
+            return
         shelter = forest_shelters.get(shelter_name)
         if shelter is None:
             return
@@ -2702,19 +2759,94 @@ def main() -> None:
             forest_widgets.append(f)
         f._shelter_visit_until = time.monotonic() + LOST_ADVENTURE_SHELTER_VISIT_SECONDS
 
+    def _wander_lost_adventure_fish() -> None:
+        # A lost fish otherwise just sits exactly where the last discrete
+        # event (arrival, a shelter visit ending, a daily event) left it --
+        # correct for everything else in the Forest (a static prop between
+        # state changes, see FOREST_WANDER_SPEED's own comment) but reads as
+        # broken here, since a whole in-game day can pass between events.
+        # Reuses _next_turn, the same per-fish random-direction-change timer
+        # a tank fish's own wander branch uses, and steering.py's plain
+        # steer() for the bounds-bounce -- against forest_bounds, not this
+        # fish's own self.bounds (the tank's), since Fish itself has no
+        # notion of "which scene" it's currently in.
+        now = time.monotonic()
+        for f in fish:
+            if f.lost_adventure is None:
+                continue
+            if f.sleeping_in is not None or f._shelter_visit_until is not None:
+                continue  # tucked in for the night, or mid a shelter-visit flash
+            if now >= f._next_turn:
+                f.vx, f.vy = random_velocity(FOREST_WANDER_SPEED)
+                f._next_turn = now + random.uniform(*FOREST_WANDER_TURN_RANGE)
+            f.fx, f.fy, f.vx, f.vy = steer(f.fx, f.fy, f.vx, f.vy, forest_bounds, 1.0)
+            f.x, f.y = round(f.fx), round(f.fy)
+
     def _check_lost_adventure_shelter_visits() -> None:
         now = time.monotonic()
         for f in fish:
             if f._shelter_visit_until is not None and now >= f._shelter_visit_until:
                 f._shelter_visit_until = None
-                if f in forest_widgets:
+                if f.lost_adventure is not None:
+                    # Still lost -- wanders off from the shelter into the
+                    # Forest at large rather than vanishing outright; only
+                    # _return_from_lost_adventure ever drops it from
+                    # forest_widgets, once the adventure itself ends.
+                    fx0, fy0, fx1, fy1 = forest_bounds
+                    f.fx = random.uniform(fx0, fx1)
+                    f.fy = random.uniform(fy0, fy1)
+                    f.x, f.y = round(f.fx), round(f.fy)
+                elif f in forest_widgets:
                     forest_widgets.remove(f)
+
+    def _settle_lost_adventure_fish_for_night() -> None:
+        # Called once, at the same Day/Morning -> Night edge that puts the
+        # main tank to sleep (_update_environment()) -- a lost fish is still
+        # a fish; night shouldn't just leave it standing wherever it was.
+        # Reuses sleeping_in/_entered, the exact same fields the tank's own
+        # Castle/Rock system uses, rather than inventing a parallel one: for
+        # free, this makes the Forest shelter Inspector's occupant list
+        # (occupants_of(), see _open_forest_shelter_inspector) show a real
+        # guest instead of always "(nobody home right now)", and draw()'s
+        # ordinary housed-fish invisibility applies with no new drawing code.
+        for f in fish:
+            if f.lost_adventure is None or f._shelter_visit_until is not None:
+                continue  # not lost, or already mid a narrative shelter-visit flash
+            shelter = next(
+                (
+                    s
+                    for s in forest_shelters.values()
+                    if len(occupants_of(s, fish)) < s.capacity
+                ),
+                None,
+            )
+            if shelter is None:
+                continue  # every shelter already full -- stays out overnight
+            f.sleeping_in = shelter
+            f.fx, f.fy = shelter.fx, shelter.fy
+            f.x, f.y = round(f.fx), round(f.fy)
+            f._entered = True
+
+    def _wake_lost_adventure_fish() -> None:
+        # The Morning counterpart -- releases anyone _settle_lost_adventure_
+        # fish_for_night() tucked in, back out into the Forest at large,
+        # same "wander off" reposition _check_lost_adventure_shelter_visits()
+        # already uses once an ordinary shelter-visit flash ends.
+        for f in fish:
+            if f.lost_adventure is None or f.sleeping_in is None:
+                continue
+            f.sleeping_in = None
+            f._entered = False
+            fx0, fy0, fx1, fy1 = forest_bounds
+            f.fx = random.uniform(fx0, fx1)
+            f.fy = random.uniform(fy0, fy1)
+            f.x, f.y = round(f.fx), round(f.fy)
 
     def _resolve_lost_adventure_event(f: Fish, adv: dict) -> None:
         # The actual decision (which event, and its effect on `adv`) is
         # pure logic in termquarium/adventure.py -- this just applies the
         # resulting effects to the live Fish/memory log.
-        event = adventure.pick_event(adv)
+        event = adventure.pick_event(adv, hunger=f.hunger)
         effects = adventure.apply_event(adv, event)
         if effects["feed"]:
             f.hunger, f.health = feed(f.hunger, f.health)
@@ -2723,6 +2855,15 @@ def main() -> None:
         _log_memory(f, effects["memory"])
         if event in ("find_shelter", "danger"):
             _start_shelter_visit(f, adv["shelter"])
+        elif event == "meet_bubbles":
+            # BUBBLES_GLYPH was defined in adventure.py but never actually
+            # drawn anywhere -- a brief flash beside the fish, same
+            # appear-and-vanish shape as a shelter visit (see fish.py's
+            # draw()), so the encounter the memory line describes is
+            # something you can actually see happen.
+            f._meeting_bubbles_until = (
+                time.monotonic() + LOST_ADVENTURE_BUBBLES_FLASH_SECONDS
+            )
 
     def _return_from_lost_adventure(f: Fish) -> None:
         duration = f.lost_adventure["duration"]
@@ -2732,6 +2873,14 @@ def main() -> None:
         # ended before the next daily tick, but clear it defensively so a
         # returned fish is never left lingering visibly in forest_widgets.
         f._shelter_visit_until = None
+        # Same defensiveness for a fish that happened to be settled in a
+        # Forest shelter for the night (see _settle_lost_adventure_fish_
+        # for_night()) right as the adventure itself ended -- sleeping_in
+        # would otherwise still point at a Forest Decoration once back in
+        # the tank, and the ordinary sleep-steering code has no idea that
+        # decoration isn't even in this fish's own `decorations` list.
+        f.sleeping_in = None
+        f._entered = False
         if f in forest_widgets:
             forest_widgets.remove(f)
         x0, y0, x1, y1 = bounds
@@ -3351,8 +3500,10 @@ def main() -> None:
             _check_night_events()
             _fire_morning_vignette()
             _start_sleepy_holds()
+            _wake_lost_adventure_fish()
         elif previous_phase != "Night" and environment["phase"] == "Night":
             _assign_dreams()
+            _settle_lost_adventure_fish_for_night()
 
     def _hunger_step() -> float:
         # Night: sleeping fish get hungry slower. Heat: a stressed fish
@@ -3369,6 +3520,16 @@ def main() -> None:
         if paused["value"]:
             return  # environment/hunger/breeding all frozen while paused
         _update_environment()
+        # _per_second_tick itself runs every 1.0s (app.every below), but
+        # hunger is meant to run on its own, slower HUNGER_TICK_SECONDS
+        # clock ("5 real minutes from full to starving") -- accumulate real
+        # ticks and only apply a hunger step once that many have passed,
+        # instead of applying HUNGER_STEP every single 1s tick (which was
+        # silently starving fish 3x faster than intended).
+        hunger_tick_accum["seconds"] += 1.0
+        apply_hunger = hunger_tick_accum["seconds"] >= HUNGER_TICK_SECONDS
+        if apply_hunger:
+            hunger_tick_accum["seconds"] -= HUNGER_TICK_SECONDS
         hunger_step = _hunger_step()
         dead = []
         for f in fish:
@@ -3381,12 +3542,13 @@ def main() -> None:
             # starts draining health while away. This is the fix for "I was
             # gone fishing for 3 minutes and Steve just died."
             away = f.biome == "forest" or f._travel_until is not None
-            f.hunger, f.health = decay_hunger(
-                f.hunger,
-                f.health,
-                hunger_step=hunger_step,
-                starve_loss=0.0 if away else STARVE_HEALTH_LOSS,
-            )
+            if apply_hunger:
+                f.hunger, f.health = decay_hunger(
+                    f.hunger,
+                    f.health,
+                    hunger_step=hunger_step,
+                    starve_loss=0.0 if away else STARVE_HEALTH_LOSS,
+                )
             if f.health <= 0:
                 dead.append(f)
         for f in dead:
@@ -3430,6 +3592,7 @@ def main() -> None:
         _check_foraging()
         _check_forest_danger()
         _check_lost_adventure_shelter_visits()
+        _wander_lost_adventure_fish()
 
         # Visitor donations pay out the moment they happen instead of being
         # bundled into the once-a-day summary -- see roll_visitor_donation()
@@ -3500,7 +3663,29 @@ def main() -> None:
             _log_memory(baby, "I was born today.")
         _refresh_stats()
 
-    def _relationship_tier(score: float) -> str:
+    def _relationship_tier(score: float, previous: str | None) -> str:
+        # Hysteresis around the plain thresholds: entering "friend"/"rival"
+        # still only takes crossing the real threshold, but *leaving* one
+        # needs RELATIONSHIP_TIER_HYSTERESIS of real distance back past it,
+        # not just a single day's decay (RELATIONSHIP_DECAY_PER_DAY) or dip.
+        # Without this, a pair sitting near RELATIONSHIP_FRIEND_THRESHOLD
+        # gets nudged under it by decay_relationships() (silently, no log --
+        # only entering a tier logs anything), then straight back over it by
+        # the next ordinary bonding event (even SLEPT_TOGETHER_SCORE's small
+        # +1.0), re-announcing "I became friends with X" every time -- the
+        # bond never meaningfully lapsed, decay + noise just kept
+        # re-crossing the same single line.
+        if previous == "friend":
+            if score < RELATIONSHIP_FRIEND_THRESHOLD - RELATIONSHIP_TIER_HYSTERESIS:
+                return _relationship_tier_from_score(score)
+            return "friend"
+        if previous == "rival":
+            if score > RELATIONSHIP_RIVAL_THRESHOLD + RELATIONSHIP_TIER_HYSTERESIS:
+                return _relationship_tier_from_score(score)
+            return "rival"
+        return _relationship_tier_from_score(score)
+
+    def _relationship_tier_from_score(score: float) -> str:
         if score <= RELATIONSHIP_RIVAL_THRESHOLD:
             return "rival"
         if score >= RELATIONSHIP_FRIEND_THRESHOLD:
@@ -3530,8 +3715,8 @@ def main() -> None:
                 _unlock_achievement("best_friends")
 
             key = frozenset((id(a), id(b)))
-            tier = _relationship_tier(rel.score)
             previous = relationship_tier_seen.get(key)
+            tier = _relationship_tier(rel.score, previous)
             if tier != previous:
                 if tier == "friend":
                     _log_memory(a, f"I became friends with {b.display_name}.")

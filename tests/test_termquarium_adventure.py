@@ -11,7 +11,10 @@ import random
 import pytest
 
 from examples.aquarium.termquarium import adventure
-from examples.aquarium.termquarium.constants import LOST_ADVENTURE_DURATION_RANGE
+from examples.aquarium.termquarium.constants import (
+    LOST_ADVENTURE_DURATION_RANGE,
+    LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD,
+)
 
 
 def test_roll_duration_stays_within_the_configured_range():
@@ -52,6 +55,41 @@ def test_pick_event_can_offer_every_event_when_nothing_is_known_yet():
     state = adventure.new_state(duration=100)
     seen = {adventure.pick_event(state) for _ in range(500)}
     assert seen == {"wander", "find_shelter", "meet_bubbles", "find_wood", "danger"}
+
+
+def test_pick_event_seeks_bubbles_outright_when_hungry_and_carrying_wood():
+    # Regression: a hungry fish with wood to trade just kept rolling the
+    # plain weighted event pool (a 15% chance of meet_bubbles at best) --
+    # nothing ever made it actively go looking, despite having both a
+    # reason (hunger) and the means (wood) to.
+    state = adventure.new_state(duration=100)
+    state["has_wood"] = True
+    hunger = LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD - 1.0
+    for _ in range(50):
+        assert adventure.pick_event(state, hunger=hunger) == "meet_bubbles"
+
+
+def test_pick_event_does_not_force_bubbles_without_wood_even_if_hungry():
+    state = adventure.new_state(duration=100)
+    state["has_wood"] = False
+    hunger = LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD - 1.0
+    seen = {adventure.pick_event(state, hunger=hunger) for _ in range(200)}
+    assert seen != {"meet_bubbles"}  # still the plain weighted roll
+
+
+def test_pick_event_does_not_force_bubbles_when_not_hungry():
+    state = adventure.new_state(duration=100)
+    state["has_wood"] = True
+    hunger = LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD + 1.0
+    seen = {adventure.pick_event(state, hunger=hunger) for _ in range(200)}
+    assert seen != {"meet_bubbles"}  # still the plain weighted roll
+
+
+def test_pick_event_ignores_hunger_when_not_given():
+    state = adventure.new_state(duration=100)
+    state["has_wood"] = True
+    seen = {adventure.pick_event(state) for _ in range(200)}
+    assert seen != {"meet_bubbles"}  # unchanged default behavior
 
 
 def test_apply_event_find_shelter_sets_shelter_and_has_no_mechanical_effect():

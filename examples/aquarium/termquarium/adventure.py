@@ -11,6 +11,7 @@ import random
 from .constants import (
     LOST_ADVENTURE_DANGER_HAPPINESS_LOSS,
     LOST_ADVENTURE_DURATION_RANGE,
+    LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD,
     LOST_ADVENTURE_SHELTERS,
     LOST_ADVENTURE_WANDER_LINES,
 )
@@ -47,10 +48,25 @@ def new_state(duration: int | None = None) -> dict:
     }
 
 
-def pick_event(adv: dict) -> str:
+def pick_event(adv: dict, hunger: float | None = None) -> str:
     """Weighted pick among this day's possible events -- calm "wander" days
     dominate ("99% cozy, occasional event"); find_shelter/find_wood are
-    only offered while there's still something new to find."""
+    only offered while there's still something new to find.
+
+    `hunger` is optional (aquarium.py's _resolve_lost_adventure_event()
+    always passes the fish's real hunger; direct/test callers that don't
+    care about this can omit it and get the plain weighted roll). A hungry
+    fish (< LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD) already carrying
+    wood to trade goes looking for Bubbles outright rather than leaving it
+    to chance -- it has both a reason and the means, so waiting on a 15%
+    daily roll to maybe bump into someone doesn't read as "actively
+    searching" the way the flavor implies."""
+    if (
+        hunger is not None
+        and hunger < LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD
+        and adv["has_wood"]
+    ):
+        return "meet_bubbles"
     events = ["wander"]
     weights = [50]
     if adv["shelter"] is None:

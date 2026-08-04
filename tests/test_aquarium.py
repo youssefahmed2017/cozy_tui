@@ -718,6 +718,7 @@ def _neutral_fish(
         **kw,
     )
     f.personality = "Explorer"  # least intrusive default; tests override as needed
+    f.is_sleepy = False  # ditto -- roll_is_sleepy() is random at construction
     return f
 
 
@@ -2452,6 +2453,38 @@ def test_find_eligible_waker_with_no_candidates_at_all():
     assert aq.find_eligible_waker(sleeper, []) == (None, None)
 
 
+def test_find_eligible_waker_excludes_a_sleepy_tankmate():
+    # Regression: a Sleepy tankmate sharing the same container overnight is
+    # itself about to be held asleep -- picking it as the designated waker
+    # let one sleeping fish "wake up" another sleeping fish. Checked via
+    # is_sleepy (not just is_asleep), since the only caller
+    # (_start_sleepy_holds) evaluates every Sleepy+housed tankmate in one
+    # synchronous pass -- a candidate not yet reached by that pass would
+    # still read is_asleep=False (its own _holding_asleep isn't set yet)
+    # despite being about to become held right alongside the sleeper.
+    sleeper = _neutral_fish(0.0, 0.0)
+    sleepy_mate = _neutral_fish(1.0, 0.0)
+    sleepy_mate.is_sleepy = True
+    aq.set_relationship(sleeper, sleepy_mate, aq.RELATIONSHIP_FRIEND_THRESHOLD)
+
+    waker, tier = aq.find_eligible_waker(sleeper, [sleepy_mate])
+
+    assert (waker, tier) == (None, None)
+
+
+def test_find_eligible_waker_excludes_a_currently_asleep_tankmate():
+    sleeper = _neutral_fish(0.0, 0.0)
+    drowsy_mate = _neutral_fish(
+        1.0, 0.0, environment={"phase": "Night", "temperature": 23.0}
+    )
+    aq.set_relationship(sleeper, drowsy_mate, aq.RELATIONSHIP_FRIEND_THRESHOLD)
+    assert drowsy_mate.is_asleep
+
+    waker, tier = aq.find_eligible_waker(sleeper, [drowsy_mate])
+
+    assert (waker, tier) == (None, None)
+
+
 def test_roll_wake_threshold_stays_in_the_tiers_own_range():
     for _ in range(100):
         assert (
@@ -2936,8 +2969,12 @@ def test_hungry_warning_toast_is_a_complete_message(tmp_path, monkeypatch):
     for f in [w for w in app.widgets if isinstance(w, aq.Fish)]:
         f.hunger = aq.HUNGER_WARNING_THRESHOLD + 1
 
+    # Hunger only actually decays once every HUNGER_TICK_SECONDS worth of
+    # 1.0s ticks (see _per_second_tick()'s hunger_tick_accum) -- three
+    # ticks is one hunger application.
     second_timer = next(t for t in app._timers if t.interval == 1.0)
-    second_timer.callback()
+    for _ in range(int(aq.HUNGER_TICK_SECONDS)):
+        second_timer.callback()
 
     hungry_toasts = [t for t in toasts if "hungry" in t]
     assert hungry_toasts
@@ -3289,6 +3326,24 @@ def test_storm_event_sets_the_live_flag_and_later_ends_with_a_toast(
     assert any("storm has ended" in t.lower() for t in toasts)
 
 
+def test_lightning_flashes_during_a_live_storm_and_stops_once_it_ends(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    lightning = next(w for w in app.widgets if isinstance(w, aq.LightningField))
+    _force_random_event(monkeypatch, "storm")
+    _fire_daily_tick(app)
+
+    lightning._next_flash = 0.0  # force an immediate flash
+    app._compose()
+    assert lightning._flash_until is not None
+
+    _find_end_storm_timer(app).callback()
+    app._compose()
+
+    assert lightning._flash_until is None
+
+
 def test_storm_cannot_restart_while_already_active(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
@@ -3631,6 +3686,7 @@ def test_a_successful_wake_attempt_logs_a_memory_entry_for_the_sleeper(
     )
     sleepy, friend = fishes[0], fishes[1]
     sleepy.is_sleepy = True
+    friend.is_sleepy = False  # must be a genuinely eligible (awake) waker
     sleepy.sleeping_in = castle
     friend.sleeping_in = castle
     aq.set_relationship(sleepy, friend, aq.RELATIONSHIP_FRIEND_THRESHOLD)
@@ -3769,11 +3825,14 @@ def test_a_fish_in_the_main_tank_can_still_starve_to_death(tmp_path, monkeypatch
     app = _headless_app(tmp_path, monkeypatch)
     f = next(w for w in app.widgets if isinstance(w, aq.Fish))
     f.hunger = 0.0
-    f.health = aq.STARVE_HEALTH_LOSS  # one more tick's worth of decay kills it
+    f.health = aq.STARVE_HEALTH_LOSS  # one more hunger application kills it
     assert f.biome == "aquarium" and f._travel_until is None
 
+    # Hunger only actually decays once every HUNGER_TICK_SECONDS worth of
+    # 1.0s ticks (see _per_second_tick()'s hunger_tick_accum).
     second_timer = next(t for t in app._timers if t.interval == 1.0)
-    second_timer.callback()
+    for _ in range(int(aq.HUNGER_TICK_SECONDS)):
+        second_timer.callback()
 
     assert f not in [w for w in app.widgets if isinstance(w, aq.Fish)]
 
@@ -4633,6 +4692,36 @@ def test_relationship_milestone_memories_do_not_repeat_every_day(tmp_path, monke
     assert sum("became friends" in e for e in a.memory_log) == count_after_first
 
 
+def test_became_friends_memory_does_not_spam_when_score_hovers_at_the_line(
+    tmp_path, monkeypatch
+):
+    # Regression: _relationship_tier() had no hysteresis, so a pair sitting
+    # right at RELATIONSHIP_FRIEND_THRESHOLD could get nudged under it by
+    # decay_relationships() (silently -- only *entering* a tier logs
+    # anything) and straight back over it by the next routine bonding event,
+    # re-announcing "I became friends with X" every single time even though
+    # the bond never meaningfully lapsed (reported as it repeating every
+    # ~10 days in real play).
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    a, b = fishes[0], fishes[1]
+    monkeypatch.setattr(aq.random, "random", lambda: 0.99)
+
+    aq.set_relationship(a, b, aq.RELATIONSHIP_FRIEND_THRESHOLD + 5.0)
+    _fire_daily_tick(app)
+    assert sum("became friends" in e for e in a.memory_log) == 1
+
+    # Dips just under the threshold (as a day of decay would), then a small
+    # reinforcing event nudges it right back over -- oscillating around the
+    # line without ever dropping RELATIONSHIP_TIER_HYSTERESIS points below it.
+    aq.set_relationship(a, b, aq.RELATIONSHIP_FRIEND_THRESHOLD - 1.0)
+    _fire_daily_tick(app)
+    aq.set_relationship(a, b, aq.RELATIONSHIP_FRIEND_THRESHOLD + 1.0)
+    _fire_daily_tick(app)
+
+    assert sum("became friends" in e for e in a.memory_log) == 1
+
+
 def test_dream_assignment_logs_a_dream_summary_memory(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
@@ -5298,6 +5387,27 @@ def test_remove_fish_command_wires_through_to_the_real_tank(tmp_path, monkeypatc
     _type_into_console(console, 'remove_fish(fish_name="Steve")')
 
     assert steve not in [w for w in app.widgets if isinstance(w, aq.Fish)]
+
+
+def test_remove_fish_command_grieves_a_bonded_friend(tmp_path, monkeypatch):
+    # Regression: the console's remove_fish used to call clear_relationships()
+    # directly, skipping _log_departure() -- so a bonded tankmate got no
+    # grief penalty and no memory line to trigger a reunion dream, unlike
+    # every other way a fish can leave (sold, eaten, starved, old age).
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    departing, friend = fishes[0], fishes[1]
+    departing.display_name = "Angelfish"
+    aq.set_relationship(departing, friend, aq.RELATIONSHIP_FRIEND_THRESHOLD)
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+
+    _type_into_console(console, 'remove_fish(fish_name="Angelfish")')
+
+    assert any(
+        "Angelfish" in entry and "isn't around anymore" in entry
+        for entry in friend.memory_log
+    )
 
 
 def test_run_command_wires_through_to_the_real_app(tmp_path, monkeypatch):
@@ -5975,6 +6085,37 @@ def test_sleeping_fish_settles_once_close_enough_to_its_friend():
     assert math.hypot(f.vx, f.vy) < math.hypot(3.0, 4.0)  # settling, not still chasing
 
 
+def test_nightmare_seeking_fish_is_not_auto_claimed_into_a_different_home():
+    # Regression: draw()'s "if sleeping_in is None: auto-claim a home" ran
+    # unconditionally, so the very next frame after _trigger_nightmare_
+    # relocation() deliberately left sleeping_in=None (to steer this fish
+    # toward a companion instead), it silently grabbed some other nearby
+    # container and short-circuited the seek before the fish ever moved --
+    # the "went to sleep beside X" toast/log then fired even though the
+    # fish never actually went anywhere near its companion.
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    castle = _castle(6.0, 5.0)  # right next to the fish -- an easy auto-claim
+    companion = _neutral_fish(40.0, 5.0, bounds)
+    f = _neutral_fish(
+        5.0,
+        5.0,
+        bounds,
+        decorations=[castle],
+        environment={"phase": "Night", "temperature": 23.0},
+    )
+    f._next_turn = float("inf")
+    f.vx, f.vy = 0.0, 0.0
+    f._seeking_friend_after_nightmare = True
+    f._nightmare_seek_target = companion
+
+    _age(f)
+    f.draw(_FakeCanvas())
+
+    assert f.sleeping_in is None  # not auto-claimed into the castle
+    assert not f._entered
+    assert f.vx > 0.0  # steering toward the companion at higher x instead
+
+
 def test_rivals_sleep_far_apart():
     bounds = (0.0, 0.0, 50.0, 50.0)
     f = _neutral_fish(
@@ -6644,6 +6785,35 @@ def test_a_live_storm_settles_a_fish_once_it_reaches_shelter():
     # Damped toward zero (IDLE_DAMPING < 1), not blended toward the target --
     # same "already arrived" shape as the relaxing/home-steering tests.
     assert math.hypot(f.vx, f.vy) < math.hypot(3.0, 4.0)
+    # Regression: arrival never set _entered, so a sheltering fish stayed
+    # fully visible, idling next to the shelter instead of tucking inside
+    # it the way a sleeping/shark-hiding fish does.
+    assert f._entered
+    assert f._storm_sheltering is castle
+
+
+def test_a_storm_sheltering_fish_reappears_once_the_storm_ends():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    castle = _castle(6.0, 5.0)
+    environment = {"phase": "Day", "temperature": 23.0, "storm": True}
+    f = _neutral_fish(
+        5.0, 5.0, bounds, decorations=[castle], environment=environment
+    )
+    f._next_turn = float("inf")
+    f.hunger = 0.0
+    f.fish_list = [f]
+    f.vx, f.vy = 3.0, 4.0
+
+    _age(f)
+    f.draw(_FakeCanvas())
+    assert f._entered  # tucked in for the storm
+
+    environment["storm"] = False  # mirrors aquarium.py's _end_storm()
+    _age(f)
+    f.draw(_FakeCanvas())
+
+    assert not f._entered
+    assert f._storm_sheltering is None
 
 
 def test_no_storm_means_no_shelter_seeking():
@@ -6774,6 +6944,7 @@ def test_wake_attempt_sets_a_boop_flash_on_the_waker(tmp_path, monkeypatch):
     )
     sleepy, friend = fishes[0], fishes[1]
     sleepy.is_sleepy = True
+    friend.is_sleepy = False  # must be a genuinely eligible (awake) waker
     sleepy.sleeping_in = castle
     friend.sleeping_in = castle
     aq.set_relationship(sleepy, friend, aq.RELATIONSHIP_FRIEND_THRESHOLD)
@@ -6807,6 +6978,7 @@ def test_resisted_wake_attempt_sets_a_zzz_flash_on_the_sleeper(tmp_path, monkeyp
     )
     sleepy, friend = fishes[0], fishes[1]
     sleepy.is_sleepy = True
+    friend.is_sleepy = False  # must be a genuinely eligible (awake) waker
     sleepy.sleeping_in = castle
     friend.sleeping_in = castle
     aq.set_relationship(sleepy, friend, aq.RELATIONSHIP_FRIEND_THRESHOLD)
@@ -7565,6 +7737,7 @@ def test_sleepy_fish_stays_held_past_morning_with_an_eligible_tankmate(
     )
     sleepy, friend = fishes[0], fishes[1]
     sleepy.is_sleepy = True
+    friend.is_sleepy = False  # must be a genuinely eligible (awake) waker
     sleepy.sleeping_in = castle
     friend.sleeping_in = castle
     aq.set_relationship(sleepy, friend, aq.RELATIONSHIP_FRIEND_THRESHOLD)
@@ -7593,6 +7766,7 @@ def test_a_successful_wake_attempt_clears_the_hold_and_records_a_wake_up(
     )
     sleepy, friend = fishes[0], fishes[1]
     sleepy.is_sleepy = True
+    friend.is_sleepy = False  # must be a genuinely eligible (awake) waker
     sleepy.sleeping_in = castle
     friend.sleeping_in = castle
     aq.set_relationship(sleepy, friend, aq.RELATIONSHIP_FRIEND_THRESHOLD)
@@ -8227,6 +8401,231 @@ def test_traveling_fish_is_in_neither_scenes_widget_list(tmp_path, monkeypatch):
     assert steve not in app.widgets  # still mid-transit, hasn't arrived yet
 
 
+def test_lost_adventure_fish_actually_appears_in_the_forest(tmp_path, monkeypatch):
+    # Regression: _begin_lost_adventure set biome="forest" but never added
+    # the fish to forest_widgets, so it stayed invisible in the Forest scene
+    # for the entire multi-day trip unless a rare find_shelter/danger event
+    # happened to flash it into view.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+
+    assert steve not in app.widgets  # gone from the aquarium
+
+    enter_btn = next(
+        c
+        for c in app.widgets
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Enter Forest"
+    )
+    enter_btn.on_mouse_click()
+
+    assert steve in app.widgets  # but visible right away in the Forest
+
+
+def test_lost_adventure_fish_settles_into_a_forest_shelter_at_night(
+    tmp_path, monkeypatch
+):
+    # Regression: a lost-adventure fish never slept anywhere -- night simply
+    # left it standing wherever it last was, forever, with no day/night
+    # handling at all for a Forest-biome fish.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+
+    monkeypatch.setattr(aq, "compute_time_of_day", lambda *a, **k: 0.9)  # -> Night
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert steve.sleeping_in is not None
+    assert steve.sleeping_in.kind in aq.LOST_ADVENTURE_SHELTERS
+    assert steve.fx == steve.sleeping_in.fx and steve.fy == steve.sleeping_in.fy
+    assert steve._entered is True  # tucked in and invisible, see fish.py's draw()
+
+    # The shelter's own Inspector now shows a real occupant.
+    enter_btn = next(
+        c
+        for c in app.widgets
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Enter Forest"
+    )
+    enter_btn.on_mouse_click()
+    shelter = steve.sleeping_in
+    app._mouse_handler(aq.MouseClick(shelter.x, shelter.y, 0))
+    decoration_box = app._overlays[-1].widget
+    labels = [c.text for c in decoration_box.children if c.__class__.__name__ == "Label"]
+    assert any("Steve" in t for t in labels)
+
+
+def test_a_forest_biome_fish_tucked_into_a_shelter_draws_nothing():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    f = _neutral_fish(5.0, 5.0, bounds)
+    f.biome = "forest"
+    f._entered = True
+
+    canvas = _FakeCanvas()
+    writes = []
+    canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
+    f.draw(canvas)
+
+    assert writes == []
+
+
+def test_a_forest_fish_meeting_bubbles_draws_its_glyph():
+    # Regression: adventure.py's BUBBLES_GLYPH was defined but never
+    # actually drawn anywhere -- the meet_bubbles event only ever logged a
+    # memory line, with nothing to see happening in the Forest.
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    f = _neutral_fish(5.0, 5.0, bounds)
+    f.biome = "forest"
+    f._meeting_bubbles_until = time.monotonic() + 10.0
+
+    canvas = _FakeCanvas()
+    writes = []
+    canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
+    f.draw(canvas)
+
+    assert any(aq.adventure.BUBBLES_GLYPH in text for _x, _y, text in writes)
+
+
+def test_meet_bubbles_event_flashes_the_glyph_on_the_real_fish(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+    monkeypatch.setattr(
+        aq.adventure, "pick_event", lambda adv, hunger=None: "meet_bubbles"
+    )
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'advance_adventure_day(fish_name="Steve")')
+
+    assert steve._meeting_bubbles_until is not None
+
+
+def test_a_hungry_lost_adventure_fish_with_wood_trades_with_bubbles_for_food(
+    tmp_path, monkeypatch
+):
+    # Regression: _resolve_lost_adventure_event() never told pick_event()
+    # the fish's actual hunger, so a hungry fish carrying wood just kept
+    # rolling the plain weighted pool instead of actively seeking Bubbles
+    # out to trade for food.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+
+    steve.hunger = aq.LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD - 1.0
+    steve.lost_adventure["has_wood"] = True
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'advance_adventure_day(fish_name="Steve")')
+
+    assert steve.hunger > aq.LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD - 1.0
+    assert steve.lost_adventure["has_wood"] is False
+    assert any(aq.adventure.BUBBLES_TRADE_LINE in m for m in steve.memory_log)
+
+
+def test_lost_adventure_fish_wakes_and_leaves_the_shelter_by_morning(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+
+    fractions = iter([0.9, 0.2])  # Day -> Night, then Night -> Morning
+    monkeypatch.setattr(aq, "compute_time_of_day", lambda *a, **k: next(fractions))
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+    assert steve.sleeping_in is not None
+
+    second_timer.callback()
+
+    assert steve.sleeping_in is None
+    assert steve._entered is False
+
+
+def test_lost_adventure_fish_wanders_the_forest_between_events(tmp_path, monkeypatch):
+    # Regression: a lost fish just sat exactly where the last discrete event
+    # left it, potentially for a whole in-game day between events -- reading
+    # as frozen/broken rather than calm.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+
+    steve._next_turn = 0.0  # force an immediate direction pick
+    start_x, start_y = steve.fx, steve.fy
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert (steve.fx, steve.fy) != (start_x, start_y)
+
+
+def test_forest_shelter_is_clickable_and_opens_an_inspector_without_sell(
+    tmp_path, monkeypatch
+):
+    # Regression: the Forest's mouse handler only ever checked for fish
+    # clicks -- clicking the Tree House/Hidden Cave/Dense Plants Thicket
+    # did nothing at all, unlike Castle/Rock in the tank.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    enter_btn = next(
+        c
+        for c in app.widgets
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Enter Forest"
+    )
+    enter_btn.on_mouse_click()
+    tree_house = next(
+        w
+        for w in app.widgets
+        if isinstance(w, aq.Decoration) and w.kind == "Tree House"
+    )
+
+    app._mouse_handler(aq.MouseClick(tree_house.x, tree_house.y, 0))
+
+    decoration_box = app._overlays[-1].widget
+    assert decoration_box.title == "Tree House"
+    # Never bought, never sellable -- no Sell button (see
+    # _open_forest_shelter_inspector/_build_decoration_inspector's
+    # on_sell=None docs).
+    assert not any(
+        c.__class__.__name__ == "Button" and c.text.strip() == "Sell"
+        for c in decoration_box.children
+    )
+    assert any(
+        c.__class__.__name__ == "Button" and c.text.strip() == "Enter Tree House"
+        for c in decoration_box.children
+    )
+
+
 def test_fish_arriving_in_forest_is_positioned_within_the_visible_terminal(
     tmp_path, monkeypatch
 ):
@@ -8524,7 +8923,7 @@ def test_welcome_back_toast_when_a_hungry_fish_returns_from_the_forest(
     f.biome = "forest"
     f._travel_until = time.monotonic() - 1.0  # about to arrive home
     f._travel_target = "aquarium"
-    f.hunger = aq.HUNGER_WARNING_THRESHOLD  # "Hungry" band
+    f.hunger = aq.HUNGER_WARNING_THRESHOLD - 1  # "Hungry" band
     toasts = []
     monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
 
@@ -8545,7 +8944,7 @@ def test_welcome_back_toast_wording_for_a_low_energy_fish(tmp_path, monkeypatch)
     f.biome = "forest"
     f._travel_until = time.monotonic() - 1.0
     f._travel_target = "aquarium"
-    f.hunger = aq.HUNGER_LOW_ENERGY_THRESHOLD
+    f.hunger = aq.HUNGER_LOW_ENERGY_THRESHOLD - 1  # "Low energy" band
     toasts = []
     monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
 

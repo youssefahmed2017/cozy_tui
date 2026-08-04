@@ -78,11 +78,27 @@ def find_eligible_waker(sleeper, candidates):
     the one best placed to attempt waking it -- Friend/Best Friend or
     Neutral tier only, picking the strongest bond if more than one
     qualifies. A Rival or a fish that Dislikes the sleeper never attempts
-    at all; it wouldn't bother. Returns (waker, tier) where tier is
-    "Friend" or "Neutral", or (None, None) if nobody here is willing."""
+    at all; it wouldn't bother.
+
+    A tankmate that's itself asleep can't attempt anything either --
+    excluded the same as a Rival, rather than a sleeping fish somehow
+    *boop*-ing another one awake. `other.is_sleepy` (not just
+    `other.is_asleep`) is the reliable half of that check: the only caller
+    (aquarium.py's _start_sleepy_holds()) evaluates every Sleepy+housed
+    tankmate in one synchronous pass over the whole fish list, so a
+    same-container Sleepy candidate not yet reached by that pass would
+    still read `is_asleep=False` this instant (its own `_holding_asleep`
+    hasn't been set yet) despite being about to become held right alongside
+    `sleeper` -- `is_sleepy` catches that regardless of iteration order,
+    since every Sleepy tankmate sharing this container overnight ends up
+    held every single time. `is_asleep` remains a second, general check
+    (e.g. an already-hungry-exempt non-Sleepy tankmate never legitimately
+    applies here, but a defensive one costs nothing extra).
+    Returns (waker, tier) where tier is "Friend" or "Neutral", or
+    (None, None) if nobody here is willing (or able)."""
     best, best_score = None, None
     for other in candidates:
-        if other is sleeper:
+        if other is sleeper or other.is_sleepy or other.is_asleep:
             continue
         score = get_relationship(sleeper, other).score
         if score <= RELATIONSHIP_DISLIKE_THRESHOLD:

@@ -9,6 +9,7 @@ from cozy_tui import Style
 from cozy_tui._width import text_width
 from cozy_tui.widget import Widget
 
+from .adventure import BUBBLES_GLYPH
 from .constants import (
     AVOID_MARGIN,
     AVOID_STEER_RATE,
@@ -349,6 +350,14 @@ class Fish(Widget):
         # of draw() to release it after HIDE_DURATION_SECONDS.
         self._hiding_in = None
         self._hide_until = None
+        # The container this fish is currently storm-sheltering in, once
+        # arrived, or None -- same overloaded use of `_entered` as sleeping/
+        # shark-hiding above (tucked in, invisible). Unlike `_hide_until`,
+        # there's no per-fish timer: environment["storm"] is one shared
+        # flag every fish reads (aquarium.py's _end_storm()), so release
+        # happens the moment draw() next sees the storm has ended, at the
+        # top of draw() alongside the `_hide_until` release below.
+        self._storm_sheltering = None
         # Nightmare reaction (see aquarium.py's _process_nightmares()), a
         # two-phase timer: _nightmare_wake_at is when Phase 1 (the scare --
         # 😨, still in the same bed) fires; _nightmare_relocate_at is when
@@ -403,6 +412,11 @@ class Fish(Widget):
         # shelter_visits()) -- an appear-and-vanish moment, not persisted
         # and not part of Fish.lost_adventure's own saved state.
         self._shelter_visit_until = None
+        # Same appear-and-vanish shape as _shelter_visit_until above, for
+        # the meet_bubbles Lost Adventure event (see aquarium.py's
+        # _resolve_lost_adventure_event()) -- a few seconds of BUBBLES_GLYPH
+        # drawn beside this fish, not a real second Fish/Widget of its own.
+        self._meeting_bubbles_until = None
         # Set on Forest arrival, cleared on departure -- gates how soon a
         # fish is allowed to roll for a successful forage (see
         # FOREST_MIN_DWELL_SECONDS) so it's reliably visible in the scene
@@ -841,8 +855,19 @@ class Fish(Widget):
             # the wrong context for a fish physically in the Forest right
             # now. Just draw it where it is; _check_foraging() handles
             # everything else about its stay there.
+            if self._entered:
+                # Tucked into a Forest shelter for the night (see
+                # aquarium.py's _settle_lost_adventure_fish_for_night()) --
+                # invisible for the same reason a housed tank fish is: see
+                # the _entered branch further down for a Castle/Rock guest.
+                return
             canvas.write(self.abs_x, self.abs_y, self._glyph(), self.style)
             self._draw_carried_wood(canvas)
+            if (
+                self._meeting_bubbles_until is not None
+                and time.monotonic() < self._meeting_bubbles_until
+            ):
+                canvas.write(self.abs_x, max(0, self.abs_y - 1), BUBBLES_GLYPH, MUTED)
             return
 
         if self._hide_until is not None and now >= self._hide_until:
@@ -854,6 +879,15 @@ class Fish(Widget):
             self._hide_until = None
             self._entered = False
             self._shark_scare_active = False
+
+        if self._storm_sheltering is not None and not (
+            self.environment is not None and self.environment.get("storm")
+        ):
+            # The storm passed while this fish was tucked inside -- come
+            # back out right where it took shelter, same as a Shark-hide
+            # release above.
+            self._storm_sheltering = None
+            self._entered = False
 
         speed = self._effective_speed()
         mouse_pos = self._mouse_point()
@@ -872,7 +906,14 @@ class Fish(Widget):
             # `sleeping` somehow flips back True mid-linger (day-cycle
             # timing makes this very unlikely, but the invariant "asleep
             # implies not shown awake" should hold regardless of path).
-            if self.sleeping_in is None:
+            if self.sleeping_in is None and not self._seeking_friend_after_nightmare:
+                # The nightmare-relocation exception: _trigger_nightmare_
+                # relocation() can deliberately leave sleeping_in None (no
+                # room in the companion's home) so the floor-settle branch
+                # below steers this fish toward _nightmare_seek_target --
+                # without this guard, the very next frame's auto-claim
+                # would immediately grab some other container and short-
+                # circuit that seek before the fish ever moved.
                 self.sleeping_in = self._claim_home()
             if self.sleeping_in is not None:
                 home = self.sleeping_in
@@ -1206,8 +1247,14 @@ class Fish(Widget):
                                 blend,
                             )
                         else:
+                            # Arrived -- tucked inside like a sleeping/
+                            # shark-hiding fish (see draw()'s _entered
+                            # early return below); released once the storm
+                            # ends (see the top-of-draw() check above).
                             self.vx *= IDLE_DAMPING
                             self.vy *= IDLE_DAMPING
+                            self._entered = True
+                            self._storm_sheltering = shelter
                 elif self.personality == "Friendly" and mouse_pos is not None:
                     blend = min(1.0, FOLLOW_MOUSE_RATE * dt)
                     self.vx, self.vy, _ = steer_toward_food(
