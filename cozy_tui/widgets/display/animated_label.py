@@ -3,7 +3,7 @@ import math
 import time
 import random
 import sys
-from typing import Iterator, Tuple, Optional, List
+from collections.abc import Iterator
 
 from cozy_tui.markup import render
 from cozy_tui.style import Style
@@ -29,7 +29,7 @@ class Animation:
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} speed={self.speed!r}>"
 
-    def frame(self, now: Optional[float] = None) -> int:
+    def frame(self, now: float | None = None) -> int:
         """Current integer frame index, advancing by 1 every ``speed`` seconds.
 
         Optional *now* can be provided (a monotonic timestamp) so callers can
@@ -40,7 +40,7 @@ class Animation:
             now = time.monotonic()
         return int((now - self._start) / self.speed)
 
-    def cells(self, text: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
+    def cells(self, text: str, style: Style) -> Iterator[tuple[int, int, str, Style]]:
         """Yield ``(dx, dy, char, cell_style)`` for each glyph of *text*, where
         ``dx``/``dy`` are cell offsets from the label's top-left origin."""
         raise NotImplementedError
@@ -62,7 +62,7 @@ class GlitchAnimation(Animation):
         super().__init__(speed)
         self.intensity = intensity  # how many diacritics per char
 
-    def cells(self, text: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
+    def cells(self, text: str, style: Style) -> Iterator[tuple[int, int, str, Style]]:
         frame = self.frame()
         for i, ch in enumerate(text):
             if ch == " ":
@@ -119,13 +119,13 @@ class TypewriterAnimation(Animation):
 
     def __init__(
         self,
-        phrases: List[str],
+        phrases: list[str],
         *,
         speed: float = 0.08,
         pause: int = 15,
         cursor: bool = True,
-        cursor_output: Optional[object] = sys.stdout,
-        colors: Optional[List[str]] = None,
+        cursor_output: object | None = sys.stdout,
+        colors: list[str] | None = None,
     ):
         super().__init__(speed)
         self.phrases = phrases
@@ -185,7 +185,7 @@ class TypewriterAnimation(Animation):
             self._write_cursor_seq(self._SHOW)
             self._cursor_hidden = False
 
-    def cells(self, text_hint: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
+    def cells(self, text_hint: str, style: Style) -> Iterator[tuple[int, int, str, Style]]:
         frame = self.frame()
         text, visible, state, idx = self._current(frame)
 
@@ -288,57 +288,52 @@ class DecodeAnimation(Animation):
         else:
             return self._to_binary(text)
 
+    def _current_state(self, frame: int, total_chunks: int):
+        """Returns (chunks_consumed, phase) where phase is 'decode', 'pause', 'encode'"""
+        if not self.loop:
+            return min(frame * 2, total_chunks), "decode"
+
+        # one full cycle: decode + pause + encode
+        cycle = total_chunks + self.pause + total_chunks
+
+        f = frame % cycle
+
+        if f < total_chunks:
+            return f * 2, "decode"
+        elif f < total_chunks + self.pause:
+            return total_chunks, "pause"
+        else:
+            # encode phase — reverse progress
+            encode_progress = f - total_chunks - self.pause
+            return total_chunks - encode_progress * 2, "encode"
+
     def cells(self, text, style):
         frame = self.frame()
         chars = self._encode(text)
-        pool = (
-            "01" if self.mode == "binary"
-            else ".-" if self.mode == "morse"
-            else "0123456789ABCDEF"
-        )
-        dim = Style(fg="bright_black", bg=style.raw_bg, styles=style.styles)
-
-        # build a flat list of (char_index, bit_index, code_char)
-        # so we can track progress across variable-length codes
-        flat = []
-        for i, code in enumerate(chars):
-            for j, c in enumerate(code):
-                flat.append((i, j, c, len(code)))
-
-        total_chunks = len(flat)
-
-        # figure out current state
-        if self.loop:
-            cycle = total_chunks + self.pause + total_chunks
-            f = frame % cycle
-            if f < total_chunks:
-                chunks_consumed = f * 2
-                phase = "decode"
-            elif f < total_chunks + self.pause:
-                chunks_consumed = total_chunks * 2
-                phase = "pause"
-            else:
-                encode_progress = f - total_chunks - self.pause
-                chunks_consumed = total_chunks * 2 - encode_progress * 2
-                phase = "encode"
-        else:
-            chunks_consumed = min(frame * 2, total_chunks * 2)
-            phase = "decode"
-
-        col = 0
-        prev_char_idx = -1
-
-        # track how many chunks belong to each char
-        char_totals = [len(code) for code in chars]
+        # Per-character code length, not a single uniform chunk_size: binary
+        # (8 bits) and hex (2 digits) happen to be fixed-width, but morse
+        # isn't -- 'E' is "." (1 char), '5' is "....." (5 chars). Using just
+        # len(chars[0]) for every character broke position/offset math for
+        # any text whose morse codes aren't all the same length as the first.
+        char_lengths = [len(code) for code in chars]
         char_starts = []
         acc = 0
-        for total in char_totals:
+        for length in char_lengths:
             char_starts.append(acc)
-            acc += total
+            acc += length
+        total_chunks = acc
 
-        for i, (ch, code) in enumerate(zip(text, chars)):
-            char_start = char_starts[i] * 2
-            char_end = char_start + len(code) * 2
+        chunks_consumed, phase = self._current_state(frame, total_chunks)
+
+        col = 0
+        pool = "01" if self.mode == "binary" else \
+            "0123456789ABCDEF" if self.mode == "hex" else \
+                ".-"
+        dim = Style(fg="bright_black", bg=style.raw_bg, styles=style.styles)
+
+        for i, (ch, bits) in enumerate(zip(text, chars)):
+            char_start = char_starts[i]
+            char_end = char_start + char_lengths[i]
 
             if chunks_consumed >= char_end:
                 # fully decoded
@@ -346,18 +341,16 @@ class DecodeAnimation(Animation):
                 col += 1
 
             elif chunks_consumed > char_start:
-                # partially decoded
-                bits_done = (chunks_consumed - char_start) // 2
-                remaining = code[bits_done:]
+                # partially decoded/encoded
+                bits_done = chunks_consumed - char_start
+                remaining = bits[bits_done:]
 
                 yield col, 0, ch, style
                 col += 1
 
                 if self.randomize:
                     self._rng.seed(frame * 997 + i * 131)
-                    display = "".join(
-                        self._rng.choice(pool) for _ in remaining
-                    )
+                    display = "".join(self._rng.choice(pool) for _ in remaining)
                 else:
                     display = remaining
 
@@ -366,14 +359,12 @@ class DecodeAnimation(Animation):
                     col += 1
 
             else:
-                # fully encoded
+                # fully encoded (binary/hex)
                 if self.randomize:
                     self._rng.seed(frame * 997 + i * 131)
-                    display = "".join(
-                        self._rng.choice(pool) for _ in code
-                    )
+                    display = "".join(self._rng.choice(pool) for _ in bits)
                 else:
-                    display = code
+                    display = bits
 
                 for c in display:
                     yield col, 0, c, dim
@@ -382,6 +373,13 @@ class DecodeAnimation(Animation):
                 if i != len(chars) - 1:
                     yield col, 0, " ", style
                     col += 1
+
+    def natural_width_hint(self, text: str) -> int:
+        encoded = self._encode(text)
+        # Sum of each character's actual code length (not a uniform
+        # chunk_size -- see cells()'s own comment on morse's variable-length
+        # codes), plus one separator column per character.
+        return sum(len(code) for code in encoded) + len(text)
 
 class GlowAnimation(Animation):
     """Cycles a color gradient across each character of an AnimatedLabel.
@@ -507,8 +505,8 @@ class GlowAnimation(Animation):
     def __init__(
         self,
         *,
-        colors: Optional[List[str | Tuple[int, int, int]]] = None,
-        color_template: Optional[str] = None,
+        colors: list[str | tuple[int, int, int]] | None = None,
+        color_template: str | None = None,
         speed: float = 0.06,
     ):
         if color_template is not None:
@@ -524,20 +522,20 @@ class GlowAnimation(Animation):
             raise ValueError("Provide either colors or color_template.")
 
         super().__init__(speed)
-        self._colors: List[Tuple[int, int, int]] = [
+        self._colors: list[tuple[int, int, int]] = [
             c if isinstance(c, tuple) else self._hex_to_rgb(c) for c in hex_colors
         ]
 
     @property
-    def colors(self) -> List[Tuple[int, int, int]]:
+    def colors(self) -> list[tuple[int, int, int]]:
         return self._colors
 
     @staticmethod
-    def _hex_to_rgb(color: str) -> Tuple[int, int, int]:
+    def _hex_to_rgb(color: str) -> tuple[int, int, int]:
         h = color.lstrip("#")
         return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
 
-    def cells(self, text: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
+    def cells(self, text: str, style: Style) -> Iterator[tuple[int, int, str, Style]]:
         colors = self._colors
         n = len(colors)
         frame = self.frame()
@@ -575,7 +573,7 @@ class RainbowAnimation(Animation):
         self.saturation = saturation
         self.value = value
 
-    def cells(self, text: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
+    def cells(self, text: str, style: Style) -> Iterator[tuple[int, int, str, Style]]:
         frame = self.frame()
         raw_bg = style.raw_bg
         extra = list(style.styles)
@@ -622,7 +620,7 @@ class LevitateAnimation(Animation):
         self.rate = rate
         self.vertical_span = amplitude * 2  # travels 0..2*amplitude
 
-    def cells(self, text: str, style: Style) -> Iterator[Tuple[int, int, str, Style]]:
+    def cells(self, text: str, style: Style) -> Iterator[tuple[int, int, str, Style]]:
         frame = self.frame()
         for i, ch in enumerate(text):
             if self.mode == "word":
@@ -649,7 +647,7 @@ class AnimatedLabel(Widget):
         self, x, y, text: str, *, animation: Animation, markup: bool = False, style=None
     ):
         super().__init__(x, y, style)
-        self.text = text
+        self.bind("text", text)  # text may be a State
         self.animation = animation
         self.markup = markup
         self._markup_key = None

@@ -402,6 +402,13 @@ def _read_csi():
             cp = int(fields[0].split(":")[0])  # key code (ignore any :alternate)
         except (ValueError, IndexError):
             return None
+        if not (0 <= cp <= 0x10FFFF):  # chr()'s own valid range
+            # A malformed/corrupted sequence (e.g. off a flaky serial line or
+            # a misbehaving proxy) can carry an arbitrarily large codepoint
+            # here -- chr() below raises OverflowError, not ValueError, for
+            # anything outside this range, so it isn't caught by a plain
+            # except-ValueError the way the sibling parse failures above are.
+            return None
         mod, event = 1, 1
         if len(fields) >= 2:
             mparts = fields[1].split(":")

@@ -37,6 +37,23 @@ def test_narrow_width_reports_viewport_and_shows_bar():
     assert not tbl.contains(20, tbl.abs_y)  # past the viewport, not the full content
 
 
+def test_select_index_moves_the_selected_row_and_clamps():
+    tbl = Table(0, 0)
+    tbl.add_column("C0")
+    for i in range(5):
+        tbl.add_row(f"r{i}")
+
+    tbl.select_index(3)
+    assert tbl.selected_index == 3
+    assert tbl.selected_row.values == ("r3",)
+
+    tbl.select_index(99)  # out of range -- clamps to the last row
+    assert tbl.selected_index == 4
+
+    tbl.select_index(-5)  # clamps to the first row
+    assert tbl.selected_index == 0
+
+
 def test_column_cursor_autoscrolls_into_view():
     tbl = make_wide_table(width=20)
     assert tbl._col_scroll_off == 0

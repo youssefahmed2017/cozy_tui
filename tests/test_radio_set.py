@@ -17,6 +17,13 @@ def test_selected_param_picks_initial():
     assert r.selected == "C"
 
 
+def test_clear_returns_self_so_calls_chain():
+    r = make()
+    result = r.clear()
+    assert result is r
+    assert r.selected is None
+
+
 def test_arrow_moves_cursor_without_changing_selection():
     r = make()
     r.on_key(Key.DOWN)

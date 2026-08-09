@@ -5,7 +5,7 @@
 The root of every cozy_tui application. Manages the render loop, focus, scrolling, and global key handlers.
 
 ```python
-App(full=True, size="800x600", style=Style(...), catch_errors=True,
+App(style=None, size=None, full=True, title="Cozy TUI App", catch_errors=True,
     debug=None, debug_log_path=None, default_logs=True)
 ```
 
@@ -77,7 +77,7 @@ Label(
 
 The snippet is a [`CodeInput`](#codeinput), so it reads as highlighted Python whenever it isn't focused and falls back to plain text with a cursor while you type in it. Change a value, press **Apply**, and the running UI updates on the next frame; **Revert** re-reads the widget and throws your edit away. The snippet is not the widget's source — nothing reads the file it was constructed in — it's rebuilt from the widget's current attributes, so it always describes what the widget *is now*, and applying it just assigns those attributes on the live object. After an apply it re-synthesizes, so you see the values the widget actually ended up with (a `progress=500` on a 0–100 bar echoes back as `100`).
 
-Which fields appear depends on what the widget has: `x`/`y` always, then whichever of `text`, `title`, `link`, `value`, `placeholder`, `checked`, `progress`, `width`, `height`, `align`, `gap` it carries with a plain literal value, then `style`.
+Which fields appear depends on what the widget has: `x`/`y` always, then whichever of `text`, `title`, `link`, `value`, `placeholder`, `checked`, `progress`, `width`, `height`, `align`, `justify`, `padding`, `gap` it carries with a plain literal value, then `style`.
 
 A few deliberate limits:
 
@@ -369,12 +369,15 @@ AnimatedLabel(x, y, text, *, animation, markup=False, style=None)
 
 With `markup=True` the text is parsed for [inline style tags](styling.md#inline-markup), and each character's tag becomes the base the animation composes over. **The animation keeps the foreground only if it actually sets one** — `GlowAnimation` and `RainbowAnimation` do, so a tag contributes its background and attributes there but not its color; `LevitateAnimation` passes the base through, so `"[red]RED[/]"` bobs in red.
 
-Three built-in animations (all keyword-only args):
+Six built-in animations (all keyword-only args except `TypewriterAnimation`'s `phrases`):
 
 ```python
 GlowAnimation(*, colors=None, color_template=None, speed=0.06)
 RainbowAnimation(*, spread=18, saturation=1.0, value=1.0, speed=0.06)
 LevitateAnimation(*, mode="char", amplitude=4, phase=0.6, rate=0.15, speed=0.03)
+GlitchAnimation(*, intensity=3, speed=0.08)
+TypewriterAnimation(phrases, *, speed=0.08, pause=15, cursor=True, cursor_output=sys.stdout, colors=None)
+DecodeAnimation(*, mode="binary", speed=0.08, randomize=True, loop=False, pause=10)
 ```
 
 **`GlowAnimation`** — a fixed palette cycled across the characters as a color wave.
@@ -403,6 +406,39 @@ color; your own `style` is preserved).
 | `amplitude` | Peak rise in cells; text travels `0`–`2*amplitude` rows. The label sizes itself for this. |
 | `phase` | Per-character phase shift in `"char"` mode. |
 | `rate`, `speed` | Wave angular speed per frame / seconds between frames. |
+
+**`GlitchAnimation`** — stacks random combining diacritics (Zalgo-style) on each
+character. May not render as intended in terminals without good combining-mark
+support.
+
+| Parameter | Description |
+|-----------|-------------|
+| `intensity` | Max diacritics stacked per character (above/mid/below each rolled independently). |
+| `speed` | Seconds between frames. |
+
+**`TypewriterAnimation`** — types through a list of phrases one character at a
+time, pauses, then erases and moves to the next. Ignores `AnimatedLabel`'s
+`markup`/text entirely — it manages its own `phrases` list.
+
+| Parameter | Description |
+|-----------|-------------|
+| `phrases` | List of strings to cycle through. |
+| `speed` | Seconds between each character add/remove. |
+| `pause` | Frames to hold the fully-typed phrase before erasing. |
+| `cursor` | Blink the real terminal cursor at the typing position while typing. |
+| `cursor_output` | File-like object to write cursor show/hide escapes to (default `sys.stdout`); pass `None` to suppress (tests/headless). |
+| `colors` | Optional list of `Style` fg colors, one per phrase (cycled if shorter than `phrases`) — a phrase can't carry `[red]...[/]` markup since this animation doesn't parse `text`. |
+
+**`DecodeAnimation`** — reveals text by decoding it from binary/hex/morse one
+step at a time, optionally re-encoding it afterward to loop.
+
+| Parameter | Description |
+|-----------|-------------|
+| `mode` | `"binary"`, `"hex"`, or `"morse"`. |
+| `speed` | Seconds between decode steps. |
+| `randomize` | Undecoded characters show random digits instead of the raw code, for a "decrypting" look. |
+| `loop` | Re-encode back to `mode` after fully decoding, instead of stopping. |
+| `pause` | Frames to hold the fully-decoded text before re-encoding (only relevant when `loop=True`). |
 
 > Color animations use **truecolor (RGB)**. Because `LevitateAnimation` occupies
 > up to `2*amplitude` extra rows, `AnimatedLabel.natural_height` grows to match —
@@ -1220,7 +1256,7 @@ box.add(dd)
 A non-interactive horizontal progress bar. Displays `[====    ] NNN%`.
 
 ```python
-ProgressBar(x, y, fill="=", empty=" ", progress=0, *, width=20, min=0, max=100, style=None)
+ProgressBar(x, y, fill="=", empty=" ", progress=0, *, width=20, minimum=0, maximum=100, style=None)
 ```
 
 | Parameter | Description |
@@ -1230,13 +1266,13 @@ ProgressBar(x, y, fill="=", empty=" ", progress=0, *, width=20, min=0, max=100, 
 | `empty` | Character for the empty portion (default `" "`) |
 | `progress` | Initial value (default `0`) |
 | `width` | Total width in characters including the `[ ] NNN%` frame (default `20`) |
-| `min` | Minimum value (default `0`) |
-| `max` | Maximum value (default `100`) |
+| `minimum` | Minimum value (default `0`) |
+| `maximum` | Maximum value (default `100`) |
 
 **Methods:**
 
 ```python
-bar.set(value)           # set the value directly (clamped to min–max)
+bar.set(value)           # set the value directly (clamped to minimum–maximum)
 bar.increment(amount=1)  # add amount to current value
 bar.decrement(amount=1)  # subtract amount from current value
 bar.get()                # return current value

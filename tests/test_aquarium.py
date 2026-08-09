@@ -2860,6 +2860,55 @@ def test_save_then_load_round_trip_preserves_names_species_and_friendship(
     assert steve.species_name in [s.name for s in aq.SHOP_ITEMS]
 
 
+def test_save_then_load_round_trip_keeps_a_lost_adventure_fish_visible_in_the_forest(
+    tmp_path, monkeypatch
+):
+    # Regression: _load_snapshot() correctly restored f.lost_adventure and
+    # set f.biome="forest", and correctly skipped app.add(f) (never put the
+    # fish back in the tank) -- but never added it to forest_widgets either,
+    # the same gap _begin_lost_adventure() itself used to have (see that
+    # fix's own comment). A reloaded lost fish was invisible in *both*
+    # scenes until its adventure happened to end on its own, which read as
+    # it "randomly reappearing" back in the aquarium days later.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    kitty = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    kitty.display_name = "Kitty"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Kitty")')
+    app.close_overlay(console)
+    assert kitty not in app.widgets
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "MidAdventure"
+    prompt.on_key(aq.Key.ENTER)
+
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+    assert not any(
+        isinstance(w, aq.Fish) and w.display_name == "Kitty" for w in app.widgets
+    )  # not back in the tank
+
+    enter_forest_btn = next(
+        c for c in app.widgets
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Enter Forest"
+    )
+    enter_forest_btn.on_mouse_click()
+    kitty_after = next(
+        f for f in app.widgets if isinstance(f, aq.Fish) and f.display_name == "Kitty"
+    )
+    assert kitty_after.lost_adventure is not None
+    assert kitty_after.biome == "forest"
+
+
 def test_save_then_load_round_trip_preserves_relationship_score_and_memories(
     tmp_path, monkeypatch
 ):
@@ -4947,6 +4996,10 @@ def test_nightmare_relocation_seeks_a_living_parent_over_a_friend(
     friend.sleeping_in = castle
     child.sleeping_in = None
     child._nightmare_relocate_at = time.monotonic()
+    # Isolated from unrelated same-tick rolls (e.g. a real chance death for
+    # `parent`, which would make _find_living_parent() correctly, but
+    # confusingly, fall back to `friend` instead).
+    monkeypatch.setattr(aq.random, "random", lambda: 0.99)
 
     second_timer = next(t for t in app._timers if t.interval == 1.0)
     second_timer.callback()
@@ -8464,6 +8517,54 @@ def test_lost_adventure_fish_settles_into_a_forest_shelter_at_night(
     assert any("Steve" in t for t in labels)
 
 
+def test_a_lost_adventure_fish_mid_nightmare_seek_is_not_resolved_while_away(
+    tmp_path, monkeypatch
+):
+    # Regression: unlike _assign_dreams() (gated on _in_tank()) and
+    # _check_forest_danger() (excludes lost_adventure fish outright),
+    # _process_nightmares() ran for every fish unconditionally. A fish swept
+    # into a Lost Adventure mid-seek (scared, then looking for a companion)
+    # kept being checked against SLEEP_CLOSE_DISTANCE using its stale/Forest
+    # fx,fy against the companion's real tank coordinates -- two unrelated
+    # coordinate spaces that can spuriously land "close enough", logging a
+    # "slept beside X" memory/toast for a fish that's actually motionless in
+    # a Forest shelter and never went anywhere near its companion.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    steve, companion = fishes[0], fishes[1]
+    steve.display_name = "Steve"
+    companion.display_name = "Kitty"
+    aq.set_relationship(steve, companion, aq.RELATIONSHIP_BEST_FRIEND_THRESHOLD)
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+
+    steve._seeking_friend_after_nightmare = True
+    steve._nightmare_seek_target = companion
+    steve._nightmare_relocate_at = None
+    steve.fx, steve.fy = companion.fx, companion.fy  # coincidental collision
+
+    # Isolated from unrelated same-tick rolls (e.g. a brand new Lost
+    # Adventure starting for Kitty herself, which would also toast her name
+    # and make the assertion below meaningless).
+    monkeypatch.setattr(aq.random, "random", lambda: 0.99)
+    toasts = []
+    monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
+    memory_before = list(steve.memory_log)
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert steve._seeking_friend_after_nightmare is True  # still pending, not resolved
+    assert steve.sleeping_in is None  # not silently claimed into Kitty's tank home
+    assert steve.biome == "forest"
+    assert steve.memory_log == memory_before
+    assert not any("Kitty" in t for t in toasts)
+
+
 def test_a_forest_biome_fish_tucked_into_a_shelter_draws_nothing():
     bounds = (0.0, 0.0, 50.0, 50.0)
     f = _neutral_fish(5.0, 5.0, bounds)
@@ -8478,69 +8579,242 @@ def test_a_forest_biome_fish_tucked_into_a_shelter_draws_nothing():
     assert writes == []
 
 
-def test_a_forest_fish_meeting_bubbles_draws_its_glyph():
-    # Regression: adventure.py's BUBBLES_GLYPH was defined but never
-    # actually drawn anywhere -- the meet_bubbles event only ever logged a
-    # memory line, with nothing to see happening in the Forest.
-    bounds = (0.0, 0.0, 50.0, 50.0)
-    f = _neutral_fish(5.0, 5.0, bounds)
-    f.biome = "forest"
-    f._meeting_bubbles_until = time.monotonic() + 10.0
-
+def test_bubbles_npc_draws_its_glyph():
+    bubbles = aq.BubblesNPC(5.0, 5.0)
     canvas = _FakeCanvas()
     writes = []
     canvas.write = lambda x, y, text, style=None: writes.append((x, y, text))
-    f.draw(canvas)
 
-    assert any(aq.adventure.BUBBLES_GLYPH in text for _x, _y, text in writes)
+    bubbles.draw(canvas)
+
+    assert any(aq.BubblesNPC.GLYPH in text for _x, _y, text in writes)
 
 
-def test_meet_bubbles_event_flashes_the_glyph_on_the_real_fish(tmp_path, monkeypatch):
+def test_bubbles_is_visible_at_his_home_shelter_by_default(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     _unlock_forest(app)
-    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
-    steve.display_name = "Steve"
-    app._key_handlers["`"]()
-    console = app._overlays[-1].widget
-    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
-    app.close_overlay(console)
-    monkeypatch.setattr(
-        aq.adventure, "pick_event", lambda adv, hunger=None: "meet_bubbles"
+    enter_forest_btn = next(
+        c for c in app.widgets
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Enter Forest"
+    )
+    enter_forest_btn.on_mouse_click()
+
+    bubbles = next(w for w in app.widgets if isinstance(w, aq.BubblesNPC))
+    dense_plants = next(
+        w for w in app.widgets
+        if isinstance(w, aq.Decoration) and w.kind == "Dense Plants Thicket"
+    )
+    assert bubbles.visible is True
+    assert abs(bubbles.fx - dense_plants.fx) < 5 and abs(bubbles.fy - dense_plants.fy) < 5
+
+
+def test_bubbles_visits_the_cave_at_night_then_vanishes_and_returns_by_morning(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    enter_forest_btn = next(
+        c for c in app.widgets
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Enter Forest"
+    )
+    enter_forest_btn.on_mouse_click()
+    bubbles = next(w for w in app.widgets if isinstance(w, aq.BubblesNPC))
+    hidden_cave = next(
+        w for w in app.widgets
+        if isinstance(w, aq.Decoration) and w.kind == "Hidden Cave"
+    )
+    dense_plants = next(
+        w for w in app.widgets
+        if isinstance(w, aq.Decoration) and w.kind == "Dense Plants Thicket"
     )
 
-    app._key_handlers["`"]()
-    console = app._overlays[-1].widget
-    _type_into_console(console, 'advance_adventure_day(fish_name="Steve")')
+    fractions = iter([0.9, 0.9, 0.2])  # Day -> Night, still Night, Night -> Morning
+    monkeypatch.setattr(aq, "compute_time_of_day", lambda *a, **k: next(fractions))
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(aq.time, "monotonic", lambda: clock["t"])
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
 
-    assert steve._meeting_bubbles_until is not None
+    second_timer.callback()  # -> Night: heads to the cave, briefly visible
+    assert bubbles.visible is True
+    assert abs(bubbles.fx - hidden_cave.fx) < 3 and abs(bubbles.fy - hidden_cave.fy) < 3
+
+    clock["t"] += aq.BUBBLES_NIGHT_VISIT_SECONDS + 1.0
+    second_timer.callback()  # still Night -- the cave-visit window has closed
+    assert bubbles.visible is False  # vanished for the night
+
+    second_timer.callback()  # -> Morning: back home, visible again
+    assert bubbles.visible is True
+    assert abs(bubbles.fx - dense_plants.fx) < 5 and abs(bubbles.fy - dense_plants.fy) < 5
 
 
 def test_a_hungry_lost_adventure_fish_with_wood_trades_with_bubbles_for_food(
     tmp_path, monkeypatch
 ):
-    # Regression: _resolve_lost_adventure_event() never told pick_event()
-    # the fish's actual hunger, so a hungry fish carrying wood just kept
-    # rolling the plain weighted pool instead of actively seeking Bubbles
-    # out to trade for food.
+    # Regression: the old design rolled a random "meet_bubbles" event --
+    # now a hungry fish with wood to trade visits Bubbles deterministically,
+    # no luck involved.
     app = _headless_app(tmp_path, monkeypatch)
     _unlock_forest(app)
     steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
     steve.display_name = "Steve"
+    steve.favorite_foods = ()  # no favorite -- plain "normal food" outcome
     app._key_handlers["`"]()
     console = app._overlays[-1].widget
     _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
     app.close_overlay(console)
 
-    steve.hunger = aq.LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD - 1.0
+    steve.hunger = aq.BUBBLES_TRADE_THRESHOLD - 1.0
     steve.lost_adventure["has_wood"] = True
 
     app._key_handlers["`"]()
     console = app._overlays[-1].widget
     _type_into_console(console, 'advance_adventure_day(fish_name="Steve")')
 
-    assert steve.hunger > aq.LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD - 1.0
+    assert steve.hunger > aq.BUBBLES_TRADE_THRESHOLD - 1.0
     assert steve.lost_adventure["has_wood"] is False
     assert any(aq.adventure.BUBBLES_TRADE_LINE in m for m in steve.memory_log)
+
+
+def test_a_hungry_lost_adventure_fish_without_wood_is_told_to_go_find_some(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+
+    steve.hunger = aq.BUBBLES_TRADE_THRESHOLD - 1.0
+    assert steve.lost_adventure["has_wood"] is False
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'advance_adventure_day(fish_name="Steve")')
+
+    assert any(aq.adventure.BUBBLES_NO_WOOD_LINE in m for m in steve.memory_log)
+
+
+def test_a_hungry_wood_less_fish_can_still_find_wood_and_then_trades(
+    tmp_path, monkeypatch
+):
+    # Regression: routing *every* hungry day straight to Bubbles (even
+    # empty-handed) meant a wood-less hungry fish could never again reach
+    # _resolve_lost_adventure_event() -- the only place find_wood is ever
+    # rolled -- so it stayed hungry forever even with wood sitting right
+    # there in the Forest. Bubbles should only get one reminder visit; every
+    # day after that is a real search (with a real chance at find_wood),
+    # and the trade should resolve on the very first day it actually has
+    # wood in hand.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    steve.favorite_foods = ()  # pin the plain "normal food" trade outcome
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+    steve.hunger = aq.BUBBLES_TRADE_THRESHOLD - 1.0
+
+    def advance():
+        app._key_handlers["`"]()
+        console = app._overlays[-1].widget
+        _type_into_console(console, 'advance_adventure_day(fish_name="Steve")')
+
+    advance()  # day 1: the one-shot reminder
+    assert any(aq.adventure.BUBBLES_NO_WOOD_LINE in m for m in steve.memory_log)
+    assert steve.lost_adventure["told_to_find_wood"] is True
+
+    original_pick_event = aq.adventure.pick_event
+    monkeypatch.setattr(aq.adventure, "pick_event", lambda adv: "find_wood")
+    advance()  # day 2: a real search day -- must reach pick_event(), not Bubbles again
+    assert steve.lost_adventure["has_wood"] is True
+
+    monkeypatch.setattr(aq.adventure, "pick_event", original_pick_event)
+    advance()  # day 3: still hungry, now has wood -- trades immediately
+    assert steve.lost_adventure["has_wood"] is False
+    assert steve.lost_adventure["told_to_find_wood"] is False  # reset for next time
+    assert any(aq.adventure.BUBBLES_TRADE_LINE in m for m in steve.memory_log)
+
+
+def test_a_well_fed_lost_adventure_fish_does_not_force_a_bubbles_visit(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+
+    steve.hunger = aq.BUBBLES_TRADE_THRESHOLD + 1.0
+    steve.lost_adventure["has_wood"] = True
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'advance_adventure_day(fish_name="Steve")')
+
+    assert steve.lost_adventure["has_wood"] is True  # untouched -- no trade forced
+    assert not any(
+        aq.adventure.BUBBLES_TRADE_LINE in m or aq.adventure.BUBBLES_NO_WOOD_LINE in m
+        for m in steve.memory_log
+    )
+
+
+def test_bubbles_gives_a_fishs_own_favorite_food_when_it_is_in_stock(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    steve.favorite_foods = ("Brine Shrimp",)  # in BUBBLES_STOCK
+    happiness_before = steve.happiness
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+
+    steve.hunger = aq.BUBBLES_TRADE_THRESHOLD - 1.0
+    steve.lost_adventure["has_wood"] = True
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'advance_adventure_day(fish_name="Steve")')
+
+    assert any(
+        "Brine Shrimp" in m and "favorite" in m for m in steve.memory_log
+    )
+    assert steve.happiness > happiness_before
+
+
+def test_bubbles_falls_back_to_a_friends_favorite_food(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    steve, friend = fishes[0], fishes[1]
+    steve.display_name = "Steve"
+    steve.favorite_foods = ()  # nothing of its own in BUBBLES_STOCK
+    friend.favorite_foods = ("Worms",)  # in BUBBLES_STOCK
+    aq.set_relationship(steve, friend, aq.RELATIONSHIP_FRIEND_THRESHOLD)
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+
+    steve.hunger = aq.BUBBLES_TRADE_THRESHOLD - 1.0
+    steve.lost_adventure["has_wood"] = True
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'advance_adventure_day(fish_name="Steve")')
+
+    assert any("Worms" in m for m in steve.memory_log)
 
 
 def test_lost_adventure_fish_wakes_and_leaves_the_shelter_by_morning(
@@ -8587,6 +8861,135 @@ def test_lost_adventure_fish_wanders_the_forest_between_events(tmp_path, monkeyp
     second_timer.callback()
 
     assert (steve.fx, steve.fy) != (start_x, start_y)
+
+
+def test_a_hungry_lost_adventure_fish_steers_toward_bubbles_instead_of_wandering(
+    tmp_path, monkeypatch
+):
+    # Regression: the actual Bubbles visit only resolves once a day (the
+    # daily tick -- up to AGE_SECONDS_PER_DAY real seconds away), so a
+    # hungry fish left to the plain random wander in the meantime just
+    # drifted aimlessly with no visible sense of purpose -- "so slow to
+    # reach Bubbles" it read as broken.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+    enter_forest_btn = next(
+        c for c in app.widgets
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Enter Forest"
+    )
+    enter_forest_btn.on_mouse_click()
+
+    bubbles = next(w for w in app.widgets if isinstance(w, aq.BubblesNPC))
+    steve.hunger = aq.BUBBLES_TRADE_THRESHOLD - 1.0
+    steve.lost_adventure["has_wood"] = True  # something to actually trade
+    steve.fx, steve.fy = bubbles.fx - 20.0, bubbles.fy
+    steve.vx, steve.vy = 0.0, 0.0
+    start_dist = abs(steve.fx - bubbles.fx)
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert abs(steve.fx - bubbles.fx) < start_dist  # closed in on Bubbles, not random
+
+
+def test_a_hungry_wood_less_lost_adventure_fish_keeps_wandering_instead_of_camping(
+    tmp_path, monkeypatch
+):
+    # Regression: the wander branch above only ever checked hunger, so a
+    # hungry fish with nothing to trade yet still beelined to Bubbles and
+    # then just sat there indefinitely -- looking stuck, since _visit_
+    # bubbles() with empty hands does nothing but log a "no wood" line, and
+    # the real find_wood roll it actually needs only ever happens through
+    # _resolve_lost_adventure_event() on the daily tick, decoupled entirely
+    # from where the fish is standing.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+    enter_forest_btn = next(
+        c for c in app.widgets
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Enter Forest"
+    )
+    enter_forest_btn.on_mouse_click()
+
+    bubbles = next(w for w in app.widgets if isinstance(w, aq.BubblesNPC))
+    steve.hunger = aq.BUBBLES_TRADE_THRESHOLD - 1.0
+    assert steve.lost_adventure["has_wood"] is False
+    # Bubbles sits due *east*; the patched wander below always turns north
+    # -- two directions that can't produce the same velocity by
+    # coincidence, so whichever one steve actually takes is unambiguous.
+    steve.fx, steve.fy = bubbles.fx - 20.0, bubbles.fy
+    steve.vx, steve.vy = 0.0, 0.0
+    steve._next_turn = 0.0  # due for a random-direction wander turn right away
+
+    # Isolated from wood-search noise: a real WOOD_SPAWN_CHANCE_PER_CHECK
+    # roll succeeding this same tick would give steve an actual piece of
+    # wood to walk toward instead of the plain wander this test targets.
+    monkeypatch.setattr(aq.random, "random", lambda: 0.99)
+    monkeypatch.setattr(aq.random, "uniform", lambda a, b: a)
+    monkeypatch.setattr(aq, "random_velocity", lambda speed: (0.0, speed))
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    # Only the vx axis is asserted -- forest_bounds' own wall-bounce can flip
+    # vy's sign this frame depending on Bubbles' exact y, but it never touches
+    # vx: the plain (patched) wander keeps vx at 0.0, while steer_toward_food
+    # would instead point east, toward Bubbles, giving a nonzero vx.
+    assert steve.vx == 0.0
+
+
+def test_a_wood_less_lost_adventure_fish_walks_to_and_picks_up_real_wood(
+    tmp_path, monkeypatch
+):
+    # A hungry-and-wood-less lost fish used to have no real way to get wood
+    # short of an invisible daily coin flip (pick_event()'s find_wood roll,
+    # only checked once every AGE_SECONDS_PER_DAY real seconds). It now
+    # steers straight to the nearest actual Wood widget in the Forest --
+    # the same forest_wood pool _check_foraging() spawns into -- and picks
+    # it up deterministically once it arrives.
+    app = _headless_app(tmp_path, monkeypatch)
+    _unlock_forest(app)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve")')
+    app.close_overlay(console)
+    assert steve.lost_adventure["has_wood"] is False
+    enter_forest_btn = next(
+        c for c in app.widgets
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Enter Forest"
+    )
+    enter_forest_btn.on_mouse_click()  # forest_widgets is only on-screen from here
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+
+    # Tick 1: force a real Wood widget to spawn via _check_foraging()'s own
+    # replenish step (random.random() < WOOD_SPAWN_CHANCE_PER_CHECK).
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)
+    second_timer.callback()
+    wood = next(w for w in app.widgets if isinstance(w, aq.Wood))
+
+    # Tick 2: put Steve right on top of it and let the wander pass run.
+    steve.fx, steve.fy = wood.fx, wood.fy
+    steve.vx, steve.vy = 0.0, 0.0
+    monkeypatch.setattr(aq.random, "random", lambda: 0.99)  # no *second* spawn
+    second_timer.callback()
+
+    assert steve.lost_adventure["has_wood"] is True
+    assert wood not in app.widgets
+    assert any(aq.adventure.FOUND_WOOD_LINE in m for m in steve.memory_log)
 
 
 def test_forest_shelter_is_clickable_and_opens_an_inspector_without_sell(
@@ -9692,6 +10095,39 @@ def test_eating_food_a_closer_tankmate_wanted_sets_stole_food_from():
     assert thief._stole_food_from is victim
 
 
+def test_eating_food_already_removed_from_widgets_does_not_crash(tmp_path, monkeypatch):
+    # Regression: a live crash report -- fish.py's own self.foods.remove(target)
+    # can succeed (target really was still in the *foods* list) while the
+    # matching app.widgets.remove(food) inside _on_eat_food raises
+    # ValueError: x not in list, because something removed it from
+    # app.widgets without also removing it from foods. The exact upstream
+    # trigger wasn't pinned down, but a food/fish that's already gone from
+    # app.widgets must never crash the eater regardless of how it got that
+    # way -- same "might already be gone" guard the morning vignette's own
+    # removal already uses (see _fire_morning_vignette()).
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'spawn("Pizza", 1)')  # real foods.append()+app.add()
+    app.close_overlay(console)  # the console auto-pauses the game while open
+
+    food = next(w for w in app.widgets if isinstance(w, aq.Food))
+    f = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    f.personality = "Explorer"
+    f._next_turn = float("inf")
+    f.fx, f.fy = food.fx, food.fy  # guaranteed within EAT_RADIUS
+    f.x, f.y = round(f.fx), round(f.fy)
+    # Simulate the desync directly: the food is still in `foods` (fish.py's
+    # own tracking list, not exposed here, but implied by it still being
+    # findable by _nearest_food()) but no longer in app.widgets.
+    app.widgets.remove(food)
+
+    _age(f)
+    f.draw(app)  # must not raise
+
+    assert food not in app.widgets
+
+
 def test_a_steal_can_grow_mischievous_and_dents_the_relationship(tmp_path, monkeypatch):
     app = _headless_app(tmp_path, monkeypatch)
     thief, victim = [w for w in app.widgets if isinstance(w, aq.Fish)][:2]
@@ -10090,6 +10526,29 @@ def test_loading_a_save_from_before_dreams_persisted_defaults_to_no_dream(
     path.write_text(json.dumps(data))
 
     _load_the_one_save(app, tmp_path)
+
+    reloaded = next(f for f in app.widgets if isinstance(f, aq.Fish))
+    assert reloaded.dream is None
+
+
+def test_loading_a_save_with_a_partial_dream_does_not_crash(tmp_path, monkeypatch):
+    # Regression: every other field in this loop uses .get() with a fallback
+    # to tolerate a hand-edited/partial/corrupted save, but the dream block
+    # indexed straight into saved_dream[...] -- a dream dict missing any one
+    # of its five keys raised KeyError, and _load()'s own exception handler
+    # only catches (OSError, ValueError), so it wasn't caught there either.
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Partial Dream Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    path = tmp_path / ".termquarium" / "saves" / "Partial Dream Save.json"
+    data = json.loads(path.read_text())
+    data["aquarium"]["fish"][0]["dream"] = {"category": "good"}  # missing 4 keys
+    path.write_text(json.dumps(data))
+
+    _load_the_one_save(app, tmp_path)  # must not raise
 
     reloaded = next(f for f in app.widgets if isinstance(f, aq.Fish))
     assert reloaded.dream is None

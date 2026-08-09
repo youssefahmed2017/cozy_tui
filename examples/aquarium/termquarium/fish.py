@@ -9,7 +9,6 @@ from cozy_tui import Style
 from cozy_tui._width import text_width
 from cozy_tui.widget import Widget
 
-from .adventure import BUBBLES_GLYPH
 from .constants import (
     AVOID_MARGIN,
     AVOID_STEER_RATE,
@@ -399,7 +398,7 @@ class Fish(Widget):
         self.carrying = None
         # Lost Adventure (ROADMAP.md): None, or a dict while a fish is off
         # on a rare multi-day trip -- {"day", "duration", "shelter",
-        # "has_wood", "awaiting_bubbles_trade"}. Unlike the routine forage
+        # "has_wood", "told_to_find_wood"}. Unlike the routine forage
         # state above, this one *is* persisted across save/load (see
         # aquarium.py's _snapshot()/_load_snapshot()) -- a deliberate
         # exception, since a multi-day adventure silently vanishing on
@@ -412,11 +411,6 @@ class Fish(Widget):
         # shelter_visits()) -- an appear-and-vanish moment, not persisted
         # and not part of Fish.lost_adventure's own saved state.
         self._shelter_visit_until = None
-        # Same appear-and-vanish shape as _shelter_visit_until above, for
-        # the meet_bubbles Lost Adventure event (see aquarium.py's
-        # _resolve_lost_adventure_event()) -- a few seconds of BUBBLES_GLYPH
-        # drawn beside this fish, not a real second Fish/Widget of its own.
-        self._meeting_bubbles_until = None
         # Set on Forest arrival, cleared on departure -- gates how soon a
         # fish is allowed to roll for a successful forage (see
         # FOREST_MIN_DWELL_SECONDS) so it's reliably visible in the scene
@@ -863,11 +857,6 @@ class Fish(Widget):
                 return
             canvas.write(self.abs_x, self.abs_y, self._glyph(), self.style)
             self._draw_carried_wood(canvas)
-            if (
-                self._meeting_bubbles_until is not None
-                and time.monotonic() < self._meeting_bubbles_until
-            ):
-                canvas.write(self.abs_x, max(0, self.abs_y - 1), BUBBLES_GLYPH, MUTED)
             return
 
         if self._hide_until is not None and now >= self._hide_until:

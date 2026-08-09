@@ -449,13 +449,84 @@ def build_console_commands(
     def _find_fish_or_none(name):
         return next((f for f in fish if f.display_name == name), None)
 
+    class _ReadOnlyState:
+        """A read-only view onto the live `state` dict, exposed to run()
+        scripts. Reads (state["money"], state.get(...), "money" in state,
+        iteration) all see the same live values as every other command --
+        only *writes* are blocked. Without this, `state["money"] = -999`
+        (or any type at all -- a string, None) would land directly in the
+        real economy dict, bypassing every clamp/type-check the named
+        commands (set_money, set_food, ...) apply, and later crash whatever
+        code first does arithmetic on it. Change state through those
+        commands instead -- they're callable from run() too."""
+
+        def __init__(self, real):
+            self._real = real
+
+        def __getitem__(self, key):
+            return self._real[key]
+
+        def get(self, key, default=None):
+            return self._real.get(key, default)
+
+        def __contains__(self, key):
+            return key in self._real
+
+        def __iter__(self):
+            return iter(self._real)
+
+        def __len__(self):
+            return len(self._real)
+
+        def __setitem__(self, key, value):
+            raise ConsoleError(
+                "state is read-only in run() -- change it with the matching "
+                "command (set_money, set_food, toggle_forest, ...) instead "
+                "of assigning state[...] directly."
+            )
+
+    class _ReadOnlyFish:
+        """A read-only view onto the live `fish` list, exposed to run()
+        scripts. Reads (indexing, iteration, len, membership) all see the
+        same live fish as every other command -- only *writes* are blocked.
+        Without this, `fish[0] = "oops"` (or `.append`/`.clear`/...) would
+        land directly in the real tank list, and the next frame's draw loop
+        would crash trying to treat a non-Fish value as one. Change the tank
+        through spawn_fish/remove_fish instead -- they're callable from
+        run() too."""
+
+        def __init__(self, real):
+            self._real = real
+
+        def __getitem__(self, key):
+            return self._real[key]
+
+        def __iter__(self):
+            return iter(self._real)
+
+        def __len__(self):
+            return len(self._real)
+
+        def __contains__(self, item):
+            return item in self._real
+
+        def __setitem__(self, key, value):
+            raise ConsoleError(
+                "fish is read-only in run() -- change the tank with "
+                "spawn_fish/remove_fish instead of assigning fish[...] "
+                "directly."
+            )
+
     # Built once per console session (matches every other closure here) --
-    # run() scripts get the *same* fish/state and the *same* commands as
+    # run() scripts get the *same* fish and the *same* commands as
     # everything else typed into this console, just callable as real
-    # function calls instead of one line of structural text each.
+    # function calls instead of one line of structural text each. `state`
+    # and `fish` are read-only views (see _ReadOnlyState/_ReadOnlyFish) --
+    # scripts change them through the named commands, same as every other
+    # console command does.
     script_globals = {
-        "fish": fish,
-        "state": state,
+        "fish": _ReadOnlyFish(fish),
+        "state": _ReadOnlyState(state),
         "random": random,
         "math": math,
         "find_fish": _find_fish_or_none,

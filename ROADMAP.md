@@ -13,7 +13,7 @@ I/O-bound work) without spinning up one OS thread per call, the way
 
 ### Where things stand today
 
-`App.run()` (`cozy_tui/app.py:2264-2420`) is a single-threaded loop that
+`App.run()` (`cozy_tui/app.py:2271-2427`) is a single-threaded loop that
 blocks in `wait_input(timeout)` — `select.select` on POSIX, `WaitForSingleObject`
 on Windows, both isolated in `cozy_tui/_console.py` — waking for input, timers
 (`after`/`every`, hand-rolled `_Timer` + `_drain_timers` on `time.monotonic()`),
@@ -114,21 +114,21 @@ personality is currently checked.
 ### Where things stand today
 
 `PERSONALITIES = ("Friendly", "Explorer", "Shy", "Greedy", "Lazy", "Playful")`
-(`termquarium/constants.py:101`) is a fixed tuple; `random_personality()`
-(`termquarium/relationships.py:43-45`) rolls exactly **one**, uniformly, once
+(`termquarium/constants.py:104`) is a fixed tuple; `random_personality()`
+(`termquarium/relationships.py:45`) rolls exactly **one**, uniformly, once
 at birth, stored as a plain `self.personality: str`
-(`termquarium/fish.py:176`). It's then read via `self.personality == "X"`
+(`termquarium/fish.py:185`). It's then read via `self.personality == "X"`
 scattered across **~28 call sites** in `fish.py`, `relationships.py`, and
 `aquarium.py` (steering priority, `_claim_home()`'s container-choice
 reordering, wake-up score, forage chance/opt-out, food-seeking speed, …), and
 persisted as that same plain string in every save
-(`"personality": f.personality`, `aquarium.py:1021`). `tests/test_aquarium.py`
+(`"personality": f.personality`, `aquarium.py:1104`). `tests/test_aquarium.py`
 references `.personality` **81 times**. Any change here has to keep old saves
 loading and not force a rewrite of that whole test surface just to add one
 new trait.
 
 **A stackable trait already exists, and is the template to generalize:**
-`Sleepy` (`roll_is_sleepy()`, `termquarium/relationships.py:48-53`) is already
+`Sleepy` (`roll_is_sleepy()`, `termquarium/relationships.py:50`) is already
 an independent yes/no trait, rolled separately from `personality` and
 explicitly documented as stacking with it ("a Greedy fish can also be
 Sleepy"). It only ever gates two things (`find_eligible_waker`/
@@ -188,7 +188,7 @@ never had to touch the other 28 call sites. Personality System 2.0 is really
    without one (every existing save) loads as `traits=frozenset()` — a fish
    that simply hasn't earned anything yet, the same default a save-file
    migration elsewhere in this codebase already uses (`shop_out_of_stock`
-   backfilled the same way in `_load_snapshot`, `aquarium.py:1098-1102`).
+   backfilled the same way in `_load_snapshot`, `aquarium.py:1220-1223`).
    `personality` itself doesn't move or change shape, so none of the 81
    existing test references need to change.
 5. **Cheat Console support**, matching `console.py`'s existing structural
@@ -232,10 +232,10 @@ bearing in any real design, not get lost the moment implementation starts.
 
 There is exactly **one** optional extra scene (the Forest), and the
 mechanism that shows it is a hand-rolled two-way toggle, not a general
-N-scene system: `_enter_forest()`/`_leave_forest()` (`aquarium.py:1338-1358`)
-just swap `app.widgets` between `aquarium_widgets` and `forest_widgets`
+N-scene system: `_enter_forest()`/`_leave_forest()` (`aquarium.py:1524` and
+`:1540`) just swap `app.widgets` between `aquarium_widgets` and `forest_widgets`
 based on one `in_forest["value"]` boolean. `state["forest_unlocked"]` gates
-a single Shop row (`FOREST_UNLOCK_PRICE`, `constants.py:894`) and a single
+a single Shop row (`FOREST_UNLOCK_PRICE`, `constants.py:925`) and a single
 "Enter Forest" button. Notably, **cozy_tui already has a real, general
 primitive for exactly this** — `app.screen(name)`/`app.show(name)`
 (`cozy_tui/screen.py`) — and `aquarium.py` doesn't use it anywhere; the
@@ -250,19 +250,19 @@ existing engine**, not new systems:
 
 - **Memories** ("Visited Coral Valley for the first time," "Slept in the
   Coral Castle," "Watched Coral Valley from the Coral Bridge") are exactly
-  `_log_memory()` (`aquarium.py:571`) — the same call already behind every
+  `_log_memory()` (`aquarium.py:598`) — the same call already behind every
   Forest/dream/relationship memory line. No new logging mechanism needed,
   just new call sites and new strings.
 - **One fish explores, the other relaxes** (Steve investigates the Castle
   while Kitty finds a quiet corner) is exactly the personality-weighted
   behavior split the Forest already has (`FOREST_EXPLORER_CHANCE_MULT` vs.
   a Shy/Lazy fish's own reduced eagerness, `_check_foraging()` at
-  `aquarium.py:2126`, the weighting itself at `2156`) — this narrative would
+  `aquarium.py:2422`, the weighting itself at `2456`) — this narrative would
   fall out for free from reusing that same weighting against Coral Valley's
   own travel roll, rather than needing bespoke scripting per personality.
 - **A discrete room you can look inside** (a Coral Room, the Coral Garden
   Room) is closest to `_build_castle_interior()`
-  (`termquarium/inspectors.py:330`) — a read-only, live-refreshing peek
+  (`termquarium/inspectors.py:342`) — a read-only, live-refreshing peek
   view reached by choice from an Inspector, not a real navigable space. It
   is the right *shape* of interaction (quiet, deliberate, opt-in), but the
   playthrough's rooms are chained together (Gardens → Castle → its rooms →
@@ -275,7 +275,7 @@ existing engine**, not new systems:
   isn't hardcoded to a `Decoration`.
 - **No danger system needed.** Deliberately: Coral Valley's whole point is
   the *absence* of a Tiger-Shark-style threat. `_check_forest_danger()`
-  (`aquarium.py:2468`) should have no Coral Valley equivalent — resist the
+  (`aquarium.py:3126`) should have no Coral Valley equivalent — resist the
   urge to give every biome a danger mechanic just because the Forest has
   one.
 

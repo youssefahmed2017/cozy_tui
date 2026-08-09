@@ -572,6 +572,44 @@ def test_run_command_wraps_a_runtime_script_error():
         run_console_command(commands, 'run(code="1 / 0")')
 
 
+def test_run_command_can_read_state_but_not_assign_into_it():
+    # Regression: state["money"] = ... used to write straight into the real
+    # economy dict, bypassing set_money's clamp/type-check entirely -- a
+    # script could set state["money"] to a negative number or a string
+    # (e.g. a typo), later crashing whatever code first does arithmetic on
+    # it (state["money"] += sell_value). Reading state must still work.
+    commands, _fish, state, _events = _build_registry()
+    state["money"] = 100
+    result = run_console_command(
+        commands, 'run(code="print(state[\'money\'])")'
+    )
+    assert "100" in result
+
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'run(code="state[\'money\'] = -999")')
+    assert state["money"] == 100  # untouched -- the real dict, not a copy
+
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'run(code="state[\'money\'] = \'oops\'")')
+    assert state["money"] == 100
+
+
+def test_run_command_can_read_fish_but_not_assign_into_it():
+    # Regression: fish[0] = ... used to write straight into the real tank
+    # list, and the next frame's draw loop would crash trying to treat a
+    # non-Fish value as one. Reading/iterating fish must still work.
+    commands, fish, _state, _events = _build_registry()
+    run_console_command(commands, 'spawn_fish(species="Goldfish", name="Steve")')
+    result = run_console_command(
+        commands, 'run(code="print(fish[0].display_name)")'
+    )
+    assert "Steve" in result
+
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'run(code="fish[0] = None")')
+    assert fish[0].display_name == "Steve"  # untouched -- the real list
+
+
 def test_run_command_requires_a_code_argument():
     commands, _fish, _state, _events = _build_registry()
     with pytest.raises(ConsoleError):

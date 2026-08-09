@@ -1043,11 +1043,6 @@ LOST_ADVENTURE_DURATION_RANGE = (4, 8)  # days
 # fish off on a multi-day trip it can't spare the health/hunger budget for.
 LOST_ADVENTURE_HEALTH_MIN = 80.0
 LOST_ADVENTURE_HUNGER_MIN = HUNGER_WARNING_THRESHOLD
-# Below this, a fish carrying wood actively seeks out Bubbles to trade it
-# for food (see adventure.pick_event()) instead of leaving it to the plain
-# weighted roll -- a hungry fish with something to trade doesn't wander
-# aimlessly hoping to bump into someone.
-LOST_ADVENTURE_HUNGER_SEEK_BUBBLES_THRESHOLD = 60.0
 # Real, permanent Decoration fixtures in the Forest scene (see ui.py's
 # build_forest_scene(), TREE_HOUSE_ART/HIDDEN_CAVE_ART/DENSE_PLANTS_ART
 # below) -- one instance of each, built once at boot, never purchasable
@@ -1074,7 +1069,27 @@ LOST_ADVENTURE_SHELTER_VISIT_SECONDS = 4.0
 # ambience, not searching for anything.
 FOREST_WANDER_SPEED = 1.5  # cells/second
 FOREST_WANDER_TURN_RANGE = (3.0, 7.0)  # seconds between direction changes
-LOST_ADVENTURE_BUBBLES_FLASH_SECONDS = 4.0  # matches SHELTER_VISIT_SECONDS's beat
+
+# Bubbles -- a fixed Forest merchant (see tank_objects.py's BubblesNPC), not
+# a random encounter: he's always found relaxing at BUBBLES_HOME_SHELTER
+# during the day. Below BUBBLES_TRADE_THRESHOLD, a lost fish deterministically
+# visits him each day (aquarium.py's _visit_bubbles()) -- no luck involved,
+# same "a hungry fish with something to trade doesn't wander aimlessly hoping
+# to bump into someone" reasoning as before, just no longer gated on chance.
+BUBBLES_TRADE_THRESHOLD = 60.0
+BUBBLES_HOME_SHELTER = "Dense Plants Thicket"
+# At night he heads through BUBBLES_NIGHT_SHELTER, visible there just long
+# enough to notice (same appear-and-vanish beat as LOST_ADVENTURE_SHELTER_
+# VISIT_SECONDS), then "disappears" -- deliberately left as unexplained lore
+# for now, not a real cave-interior mechanic.
+BUBBLES_NIGHT_SHELTER = "Hidden Cave"
+BUBBLES_NIGHT_VISIT_SECONDS = 4.0
+# What he actually carries to trade for a piece of driftwood -- a subset of
+# TREAT_SHOP_ITEMS (no Bloodworms, no Pizza), matching the brainstorm's "he
+# only has shrimp, worms, plankton, and normal food" -- "normal food" is the
+# implicit fallback (plain feed(), no specific kind) when neither the fish's
+# own favorite_foods nor its friend's overlap this stock.
+BUBBLES_STOCK = ("Brine Shrimp", "Worms", "Plankton")
 
 TREE_HOUSE_ART = [
     " ,^.  ",

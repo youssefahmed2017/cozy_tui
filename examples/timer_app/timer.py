@@ -1,5 +1,8 @@
+import hashlib
+import hmac
 import json
 import os
+import secrets
 import sys
 import time
 from datetime import date
@@ -32,6 +35,14 @@ def load_data():
 def save_data():
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+
+def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
+    """PBKDF2-HMAC-SHA256, stdlib only -- no reason a login demo should store
+    passwords in the clear just because it's a demo."""
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 200_000)
+    return digest.hex(), salt
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -99,6 +110,13 @@ class CountdownTimer(Widget):
 
     def draw(self, canvas):
         self._tick()
+        if self.running:
+            # The render loop is event-driven and idles at zero CPU between
+            # frames -- without this, a running timer's draw() (and the
+            # _tick() call above) would never fire again until some other
+            # event (a keypress, mouse move, resize) happened to trigger a
+            # redraw, so the displayed time would visibly freeze.
+            canvas.request_frame(0.25)
         w = self.width
         m, s = divmod(int(self.remaining), 60)
 
@@ -242,7 +260,9 @@ def do_login():
     users = data.get("users", {})
     if user not in users:
         return show_error(login_error, "Account not found. Register first.")
-    if users[user]["password"] != password:
+    record = users[user]
+    expected, _ = hash_password(password, record["salt"])
+    if not hmac.compare_digest(expected, record["password_hash"]):
         return show_error(login_error, "Incorrect password.")
     current_user[0] = user
     app.show(timer_screen)
@@ -264,7 +284,8 @@ def do_register():
     users = data.setdefault("users", {})
     if user in users:
         return show_error(reg_error, f"Username '{user}' is already taken.")
-    users[user] = {"password": password, "records": []}
+    password_hash, salt = hash_password(password)
+    users[user] = {"password_hash": password_hash, "salt": salt, "records": []}
     save_data()
     current_user[0] = user
     app.show(timer_screen)
@@ -411,4 +432,6 @@ timer_screen.on_key(Key.ESC, app.quit, description="Quit", section="Actions")
 # ─────────────────────────────────────────────────────────────────────────────
 
 app.show(welcome)
-app.run()
+
+if __name__ == "__main__":
+    app.run()

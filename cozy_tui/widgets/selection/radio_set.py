@@ -4,6 +4,8 @@ from cozy_tui.events import Key
 from cozy_tui.style import selection_style
 from cozy_tui.widget import Widget
 
+from ._indexed_list import _IndexedListMixin
+
 
 class RadioItem:
     """A radio entry with display text and an optional return value."""
@@ -16,7 +18,7 @@ class RadioItem:
         return f"RadioItem({self.text!r})"
 
 
-class RadioSet(Widget):
+class RadioSet(_IndexedListMixin, Widget):
     """A single-select list of options — exactly one is chosen at a time.
 
     Navigation (Up/Down/Home/End) moves the cursor; Enter or Space selects the
@@ -25,9 +27,20 @@ class RadioSet(Widget):
 
     ``on_change`` fires with the newly selected value whenever the selection
     changes (not on mere cursor movement).
+
+    Programmatic selection is ``select(value)``/``select_index(i)``, not
+    ``ListView``/``Dropdown``/``Slider``'s ``set(value)`` -- named
+    differently on purpose: unlike those, RadioSet has a cursor separate
+    from the committed selection, so "set" would be ambiguous about which
+    one moves. ``get()`` still matches the others and returns ``selected``.
     """
 
     focusable = True
+    # Cursor movement alone never fires on_change here -- only _select_current
+    # (Enter/Space/click) does, since RadioSet's "selection" is a separate
+    # concept from the highlighted cursor (unlike ListView/CheckList, where
+    # the highlighted item just *is* the current value).
+    _fire_change_on_move = False
 
     def __init__(
         self,
@@ -117,29 +130,15 @@ class RadioSet(Widget):
             self._selected = 0
             self._index = 0
 
-    def clear(self) -> None:
+    def clear(self) -> "RadioSet":
         self._items.clear()
         self._index = 0
         self._selected = None
         self._scroll_off = 0
         self._label_width_cache = None
+        return self
 
     # ── internals ─────────────────────────────────────────────────────────────
-
-    def _clamp_scroll(self) -> None:
-        vis = self.height or len(self._items)
-        if vis <= 0:
-            return
-        if self._index < self._scroll_off:
-            self._scroll_off = self._index
-        elif self._index >= self._scroll_off + vis:
-            self._scroll_off = self._index - vis + 1
-
-    def _move(self, new_index: int) -> None:
-        if not self._items:
-            return
-        self._index = max(0, min(new_index, len(self._items) - 1))
-        self._clamp_scroll()
 
     def _select_current(self) -> None:
         if not self._items:
@@ -160,18 +159,9 @@ class RadioSet(Widget):
             self._label_width_cache = max(len(item.text) for item in self._items)
         return self._label_width_cache + 6  # "> (•) " = 6 chars
 
-    def natural_height(self, scale) -> int:
-        return self.height or max(1, len(self._items))
-
     def on_key(self, key) -> None:
-        if key == Key.UP:
-            self._move(self._index - 1)
-        elif key == Key.DOWN:
-            self._move(self._index + 1)
-        elif key == Key.HOME:
-            self._move(0)
-        elif key == Key.END:
-            self._move(len(self._items) - 1)
+        if self._handle_nav_key(key):
+            return
         elif key in (Key.ENTER, " "):
             self._select_current()
 
@@ -182,15 +172,6 @@ class RadioSet(Widget):
                 self._index = idx
                 self._clamp_scroll()
                 self._select_current()
-
-    def on_mouse_move(self, col=None, row=None) -> None:
-        # Hover highlights the option under the cursor (like arrow-key movement),
-        # without selecting it. Only fires when mouse_moves is enabled on this widget.
-        if row is not None and self._items:
-            idx = self._scroll_off + (row - self.abs_y)
-            if 0 <= idx < len(self._items) and idx != self._index:
-                self._move(idx)
-        self._fire_hover(col, row)
 
     def draw(self, canvas) -> None:
         is_focused = canvas.focused is self

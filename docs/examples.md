@@ -132,3 +132,11 @@ A persistent todo list using `CheckList` and `Input`; items are saved to `todo_d
 ```bash
 python examples/todo_app/todo.py
 ```
+
+### `examples/aquarium/aquarium.py` — TermQuarium
+
+The flagship example: a full aquarium-sim game, and the main place this library gets exercised at scale — thousands of lines, hundreds of live widgets, a continuous `tick_interval` game loop. Fish are independently-steering widgets with hunger, personality, sleep, aging, and relationships; a Forest area adds foraging and lost-adventure mechanics; a Shop, Cheat Console, and optional cloud saves round it out. See [`examples/aquarium/README.md`](../examples/aquarium/README.md) for controls and [`examples/aquarium/CLAUDE.md`](../examples/aquarium/CLAUDE.md) for a module-by-module map.
+
+```bash
+python examples/aquarium/aquarium.py
+```

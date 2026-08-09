@@ -226,7 +226,10 @@ class FileManager(Widget):
             try:
                 e.path.rename(e.path.with_name(new))
                 self.status = f"Renamed → {new}"
-            except OSError as err:
+            except (OSError, ValueError) as err:
+                # with_name() raises ValueError (not OSError) for a name
+                # containing a path separator -- an easy typo to make in the
+                # rename prompt, not just an OS-level failure.
                 self.status = f"Rename failed: {err}"
             self.load(self.cwd)
 
@@ -262,6 +265,13 @@ class FileManager(Widget):
             if not name:
                 return
             target = self.cwd / name
+            if name in (".", "..") or target.parent != self.cwd:
+                # A name containing a path separator, "..", or (on POSIX) an
+                # absolute path would otherwise create/touch outside the
+                # current directory -- e.g. "../../secret.txt", "sub/x.txt",
+                # or "/etc/passwd" -- instead of just naming an entry here.
+                self.status = f"Invalid {label} name: {name!r}"
+                return
             try:
                 if target.exists():
                     self.status = f"{name} already exists"

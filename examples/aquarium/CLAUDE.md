@@ -133,4 +133,4 @@ Same house rules as the rest of the repo (see root `CLAUDE.md`), plus:
   that actually needs to drive the running `App` (input dispatch, focus,
   screens) rather than the math underneath it.
 - Current coverage: `test_aquarium.py` (steering/movement), `_world`,
-  `_save`, `_console`, `_cloud`, `_cloud_api`, `_updater`.
+  `_save`, `_console`, `_adventure`, `_cloud`, `_cloud_api`, `_updater`.

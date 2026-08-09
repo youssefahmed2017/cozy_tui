@@ -77,6 +77,11 @@ class Log(ScrollView):
         return self
 
     def _append(self, line: str) -> None:
+        if self._lines.maxlen == 0:
+            # max_lines=0 means "keep no history" -- a deque(maxlen=0) always
+            # discards on append, which made `over` true even on the very
+            # first call (0 == 0) with no child yet to pop.
+            return
         over = len(self._lines) == self._lines.maxlen
         self._lines.append(line)
         if over:
@@ -91,6 +96,7 @@ class Log(ScrollView):
                 child.y -= 1
         self.add(Label(0, len(self._children), line, self.style, markup=self.markup))
 
-    def clear(self) -> None:
+    def clear(self) -> "Log":
         super().clear()
         self._lines.clear()
+        return self

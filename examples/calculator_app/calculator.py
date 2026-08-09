@@ -1,3 +1,4 @@
+import ast
 import math
 import re
 import sys
@@ -54,6 +55,44 @@ box.add(lbl_sep)
 
 _NS = {"__builtins__": {}, "sqrt": math.sqrt, "factorial": math.factorial}
 
+# eval() below runs on the app's single render-loop thread -- a chain like
+# "9**9**9" (9 ^ 387420489) is valid Python and would have eval() itself
+# compute a result hundreds of millions of digits long, freezing the whole
+# UI. _pow_result_bits sizes up every ** in the expression *before* eval()
+# ever runs, entirely in cheap floating-point math, so a result this
+# explosive is rejected instead of actually being computed.
+_MAX_POW_RESULT_BITS = 100_000  # ~30,000 decimal digits -- generous for any
+# real calculation, far short of anything that would visibly stall.
+
+
+class _ResultTooLarge(Exception):
+    pass
+
+
+def _pow_result_bits(node) -> float:
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        v = abs(node.value)
+        return math.log2(v) if v > 1 else 0.0
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        return _pow_result_bits(node.operand)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+        base_bits = _pow_result_bits(node.left)
+        if isinstance(node.right, ast.Constant) and isinstance(
+            node.right.value, (int, float)
+        ):
+            exponent = abs(node.right.value)
+        else:
+            # The exponent is itself a Pow chain -- 2**bits recovers its
+            # (equally estimated) magnitude without ever computing it.
+            exponent = 2 ** _pow_result_bits(node.right)
+        bits = base_bits * exponent
+        if bits > _MAX_POW_RESULT_BITS:
+            raise _ResultTooLarge()
+        return bits
+    if isinstance(node, ast.BinOp):
+        return max(_pow_result_bits(node.left), _pow_result_bits(node.right))
+    return 0.0  # calls (sqrt/factorial), names, etc. -- not a ** chain
+
 
 def _eval(e: str) -> str:
     e = e.replace("×", "*").replace("÷", "/")
@@ -62,6 +101,15 @@ def _eval(e: str) -> str:
     open_p = e.count("(") - e.count(")")
     if open_p > 0:
         e += ")" * open_p  # auto-close e.g. √(9  →  sqrt(9)
+    try:
+        tree = ast.parse(e, mode="eval")
+    except SyntaxError:
+        tree = None  # eval() below will raise & report its own "Error"
+    if tree is not None:
+        try:
+            _pow_result_bits(tree.body)
+        except _ResultTooLarge:
+            raise OverflowError("result too large to compute")
     result = eval(e, _NS)
     if isinstance(result, int):
         return str(result)
@@ -224,4 +272,5 @@ app.on_key("c", do_clear, description="Clear", section="Calculator")
 app.on_key("C", do_clear)
 app.on_key(Key.ESC, app.quit, description="Quit", section="Calculator")
 
-app.run()
+if __name__ == "__main__":
+    app.run()

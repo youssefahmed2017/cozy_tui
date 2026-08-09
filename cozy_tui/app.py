@@ -345,6 +345,13 @@ class App:
             self.width = self.cols * self.SCALE
             self.height = self.rows * self.SCALE
         else:
+            # A caller building a headless App(full=False) with no explicit
+            # size= is a plausible slip (easy to remember `full=False`, easy
+            # to forget its required companion) -- the same default
+            # testing.Harness already falls back to for exactly this reason,
+            # so it's a real, deliberate size, not an arbitrary placeholder.
+            if size is None:
+                size = "800x240"
             self.width, self.height = map(int, size.split("x"))
             self.cols = self.width // self.SCALE
             self.rows = self.height // self.SCALE

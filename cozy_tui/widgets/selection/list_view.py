@@ -4,6 +4,8 @@ from cozy_tui.events import Key
 from cozy_tui.style import selection_style
 from cozy_tui.widget import Widget
 
+from ._indexed_list import _IndexedListMixin
+
 
 class ListItem:
     """A list entry with separate display text and return value."""
@@ -24,7 +26,7 @@ def _value(item):
     return item.value if isinstance(item, ListItem) else item
 
 
-class ListView(Widget):
+class ListView(_IndexedListMixin, Widget):
     focusable = True
 
     def __init__(
@@ -72,6 +74,9 @@ class ListView(Widget):
         self._index = max(0, min(int(index), len(self._items) - 1))
         self._clamp_scroll()
 
+    def __len__(self) -> int:
+        return len(self._items)
+
     def get(self):
         return self.selected
 
@@ -98,21 +103,32 @@ class ListView(Widget):
             self._label_width_cache = dw
 
     def remove(self, item) -> None:
+        """Remove the first item whose value equals *item*. For a list that may
+        hold two equal-valued items (e.g. duplicate card names), removing the
+        one currently at `selected_index` needs `remove_at` instead -- this
+        method has no way to tell them apart."""
         try:
             idx = self._items.index(item)
-            self._items.pop(idx)
-            if self._items:
-                self._index = min(self._index, len(self._items) - 1)
-            else:
-                self._index = 0
-            # If the removed item was the widest, the cache is stale.
-            if (
-                self._label_width_cache is not None
-                and len(_display(item)) >= self._label_width_cache
-            ):
-                self._label_width_cache = None
         except ValueError:
-            pass
+            return
+        self.remove_at(idx)
+
+    def remove_at(self, index: int) -> None:
+        """Remove the item at *index*, unambiguous even when two items share
+        an equal value (unlike `remove`, which matches by value)."""
+        if not (0 <= index < len(self._items)):
+            return
+        item = self._items.pop(index)
+        if self._items:
+            self._index = min(self._index, len(self._items) - 1)
+        else:
+            self._index = 0
+        # If the removed item was the widest, the cache is stale.
+        if (
+            self._label_width_cache is not None
+            and len(_display(item)) >= self._label_width_cache
+        ):
+            self._label_width_cache = None
 
     def set_item(self, index: int, item) -> None:
         """Replace the item at *index* in place, keeping selection and scroll."""
@@ -120,11 +136,12 @@ class ListView(Widget):
             self._items[index] = item
             self._label_width_cache = None  # display width may have changed
 
-    def clear(self) -> None:
+    def clear(self) -> "ListView":
         self._items.clear()
         self._index = 0
         self._scroll_off = 0
         self._label_width_cache = None
+        return self
 
     # ── callbacks ────────────────────────────────────────────────────────────
 
@@ -134,22 +151,6 @@ class ListView(Widget):
         return self
 
     # ── internals ────────────────────────────────────────────────────────────
-
-    def _clamp_scroll(self) -> None:
-        vis = self.height or len(self._items)
-        if vis <= 0:
-            return
-        if self._index < self._scroll_off:
-            self._scroll_off = self._index
-        elif self._index >= self._scroll_off + vis:
-            self._scroll_off = self._index - vis + 1
-
-    def _move(self, new_index: int) -> None:
-        if not self._items:
-            return
-        self._index = max(0, min(new_index, len(self._items) - 1))
-        self._clamp_scroll()
-        self._fire_change(self.selected)
 
     def _activate(self, from_click: bool = False) -> None:
         if not self._items:
@@ -169,18 +170,9 @@ class ListView(Widget):
             self._label_width_cache = max(len(_display(item)) for item in self._items)
         return self._label_width_cache + 2  # room for "> "
 
-    def natural_height(self, scale) -> int:
-        return self.height or max(1, len(self._items))
-
     def on_key(self, key) -> None:
-        if key == Key.UP:
-            self._move(self._index - 1)
-        elif key == Key.DOWN:
-            self._move(self._index + 1)
-        elif key == Key.HOME:
-            self._move(0)
-        elif key == Key.END:
-            self._move(len(self._items) - 1)
+        if self._handle_nav_key(key):
+            return
         elif key == Key.ENTER:
             self._activate(from_click=False)
 
@@ -194,15 +186,6 @@ class ListView(Widget):
                 if idx != old:
                     self._fire_change(self.selected)
         self._activate(from_click=True)
-
-    def on_mouse_move(self, col=None, row=None) -> None:
-        # Hover highlights the item under the cursor (like arrow-key movement),
-        # without activating it. Only fires when mouse_moves is enabled on this widget.
-        if row is not None and self._items:
-            idx = self._scroll_off + (row - self.abs_y)
-            if 0 <= idx < len(self._items) and idx != self._index:
-                self._move(idx)
-        self._fire_hover(col, row)
 
     def draw(self, canvas) -> None:
         is_focused = canvas.focused is self

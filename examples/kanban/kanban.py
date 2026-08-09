@@ -77,29 +77,31 @@ def main():
         if ci is None:
             return
         src = lists[ci]
+        idx = src.selected_index
         card = src.selected
         target = ci + delta
-        if card is None or not (0 <= target < len(lists)):
+        if idx is None or not (0 <= target < len(lists)):
             return
-        src.remove(card)
-        lists[target].append(card)
-        app.focus(lists[target])
-        lists[target].set(card)  # keep the moved card selected
+        src.remove_at(idx)  # by index, not value -- two cards can share a name
+        dst = lists[target]
+        dst.append(card)
+        app.focus(dst)
+        dst.selected_index = len(dst) - 1  # keep the moved card selected
 
     def add_card():
         ci = focused_column()
         if ci is None:
             return
         card_counter[0] += 1
-        name = f"New card {card_counter[0]}"  # unique, so set() lands on it
+        name = f"New card {card_counter[0]}"
         lists[ci].append(name)
-        lists[ci].set(name)
+        lists[ci].selected_index = len(lists[ci]) - 1  # select the new card
         start_rename()  # immediately let the user name it
 
     def delete_card():
         ci = focused_column()
-        if ci is not None and lists[ci].selected is not None:
-            lists[ci].remove(lists[ci].selected)
+        if ci is not None and lists[ci].selected_index is not None:
+            lists[ci].remove_at(lists[ci].selected_index)
 
     def show_help():
         panel = Box(0, 0, "440x160", title="Help", border="rounded")

@@ -77,7 +77,7 @@ iscc TermQuarium.iss           # -&gt; Output/TermQuarium-Setup.exe</div>
             <p>The game's pure logic — steering, hunger, economy, relationships, the save format, and the updater — is unit-tested independently of any real terminal:</p>
             <div class="plate-frame" style="max-width:640px">
               <div class="plate-titlebar"><span class="tab"><span class="led"></span>shell</span></div>
-              <div class="tank" style="min-height:auto">python -m pytest tests/test_aquarium.py tests/test_termquarium_save.py tests/test_termquarium_world.py tests/test_termquarium_updater.py -q</div>
+              <div class="tank" style="min-height:auto">python -m pytest tests/test_aquarium.py tests/test_termquarium_*.py -q</div>
             </div>
 
           </div>

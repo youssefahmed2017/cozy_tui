@@ -8,7 +8,7 @@ from cozy_tui.widgets import Box, Button, Label, AnimatedLabel, TypewriterAnimat
 
 app = App(full=True)
 
-box = Box(2, 1, "600x300", title="JetBrains Sponsor", border="rounded")
+box = Box(2, 1, "600x300", title="JetBrains Sponsor", border="single")
 
 box.add(Label(2, 2, "No matter whether you do"))
 
@@ -31,7 +31,7 @@ box.add(Label(2, 4, "we have a solution for you."))
 
 box.add(AnimatedLabel(
     2, 7, "Hello World!",
-    animation=DecodeAnimation(randomize=True, mode="hex", loop=True, speed=0.06),
+    animation=DecodeAnimation(randomize=True, mode=__import__("random").choice(["morse", "hex", "binary"]), loop=True, speed=0.5),
 ))
 
 btn = Button(4, 10, "Quit")

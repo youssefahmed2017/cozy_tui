@@ -5,7 +5,17 @@ import gc
 
 from cozy_tui import App, State, Style
 from cozy_tui.testing import Harness
-from cozy_tui.widgets import Box, Button, Checkbox, Hyperlink, Label, ProgressBar, Text
+from cozy_tui.widgets import (
+    AnimatedLabel,
+    Box,
+    Button,
+    Checkbox,
+    Hyperlink,
+    Label,
+    LevitateAnimation,
+    ProgressBar,
+    Text,
+)
 
 
 def make_ui():
@@ -215,6 +225,18 @@ def test_button_text_is_reactive():
     button = Button(0, 0, caption)
     caption.value = "Stop"
     assert button.text == "Stop"
+
+
+def test_animated_label_text_is_reactive():
+    # Regression: __init__ did a bare `self.text = text` instead of
+    # `self.bind("text", text)` (what every sibling display widget uses),
+    # so a State handed to AnimatedLabel silently rendered as static text
+    # forever -- no error, just never following state.value again.
+    caption = State("Working...")
+    label = AnimatedLabel(0, 0, caption, animation=LevitateAnimation())
+    assert label.text == "Working..."
+    caption.value = "Done!"
+    assert label.text == "Done!"
 
 
 def test_checkbox_text_is_reactive():

@@ -75,7 +75,13 @@ class Splitter(Widget):
         usable = max(0, self._span - 1)
         lo = self.min_size
         hi = max(lo, usable - self.min_size)
-        return max(lo, min(hi, pos))
+        pos = max(lo, min(hi, pos))
+        # When the pane is squeezed smaller than 2*min_size, lo/hi above can
+        # both exceed usable (e.g. min_size=5 in a 3-cell span) -- without
+        # this, the divider (and the clip region built from it) lands past
+        # the Splitter's own bounds, letting a pane draw over whatever's
+        # beside it on screen instead of just being visually cramped.
+        return max(0, min(usable, pos))
 
     def _resize_by(self, delta) -> None:
         if self._span <= 1:

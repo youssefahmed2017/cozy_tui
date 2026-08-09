@@ -120,6 +120,16 @@ def test_csi_u_modified_keys_still_map():
     assert feed("\x1b[97;5u") == Key.ctrl("a")  # Ctrl+A
 
 
+def test_csi_u_out_of_range_codepoint_does_not_crash():
+    # Regression: chr() raises OverflowError (not ValueError) for a codepoint
+    # outside its valid range, so a malformed/corrupted CSI-u sequence (e.g.
+    # off a flaky serial line or a misbehaving proxy) with an oversized code
+    # used to crash read_key() with an uncaught OverflowError instead of
+    # being treated like any other unparseable sequence.
+    assert feed("\x1b[9999999999u") is None
+    assert feed("\x1b[99999999999999999999u") is None
+
+
 def test_ctrl_byte_passthrough():
     assert feed("\x06") == Key.ctrl("f")  # Ctrl+F arrives as raw 0x06
 

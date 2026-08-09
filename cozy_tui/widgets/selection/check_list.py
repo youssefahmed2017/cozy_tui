@@ -4,6 +4,8 @@ from cozy_tui.events import Key
 from cozy_tui.style import Style, selection_style
 from cozy_tui.widget import Widget
 
+from ._indexed_list import _IndexedListMixin
+
 
 class CheckItem:
     """A list entry with a checked state, display text, and optional return value."""
@@ -17,7 +19,7 @@ class CheckItem:
         return f"CheckItem({self.text!r}, checked={self.checked})"
 
 
-class CheckList(Widget):
+class CheckList(_IndexedListMixin, Widget):
     """A scrollable list where each item can be individually checked/unchecked.
 
     Navigation (Up/Down/Home/End) moves the cursor. Enter or Space toggles the
@@ -123,11 +125,12 @@ class CheckList(Widget):
         except ValueError:
             pass
 
-    def clear(self) -> None:
+    def clear(self) -> "CheckList":
         self._items.clear()
         self._index = 0
         self._scroll_off = 0
         self._label_width_cache = None
+        return self
 
     def set_checked(self, value, checked: bool) -> None:
         """Set the checked state of the first item whose value equals *value*."""
@@ -163,25 +166,8 @@ class CheckList(Widget):
     def on_toggle(self, func):
         """Register a callback called with (value, checked) when an item is toggled."""
         self._toggle_handler = func
-        return self
 
     # ── internals ─────────────────────────────────────────────────────────────
-
-    def _clamp_scroll(self) -> None:
-        vis = self.height or len(self._items)
-        if vis <= 0:
-            return
-        if self._index < self._scroll_off:
-            self._scroll_off = self._index
-        elif self._index >= self._scroll_off + vis:
-            self._scroll_off = self._index - vis + 1
-
-    def _move(self, new_index: int) -> None:
-        if not self._items:
-            return
-        self._index = max(0, min(new_index, len(self._items) - 1))
-        self._clamp_scroll()
-        self._fire_change(self.selected)
 
     def _toggle_current(self) -> None:
         if not self._items:
@@ -203,18 +189,9 @@ class CheckList(Widget):
             self._label_width_cache = max(len(item.text) for item in self._items)
         return self._label_width_cache + 6  # "> [✔] " = 6 chars
 
-    def natural_height(self, scale) -> int:
-        return self.height or max(1, len(self._items))
-
     def on_key(self, key) -> None:
-        if key == Key.UP:
-            self._move(self._index - 1)
-        elif key == Key.DOWN:
-            self._move(self._index + 1)
-        elif key == Key.HOME:
-            self._move(0)
-        elif key == Key.END:
-            self._move(len(self._items) - 1)
+        if self._handle_nav_key(key):
+            return
         elif key in (Key.ENTER, " "):
             self._toggle_current()
 
@@ -227,15 +204,6 @@ class CheckList(Widget):
                     self._clamp_scroll()
                     self._fire_change(self.selected)
                 self._toggle_current()
-
-    def on_mouse_move(self, col=None, row=None) -> None:
-        # Hover highlights the item under the cursor (like arrow-key movement),
-        # without toggling it. Only fires when mouse_moves is enabled on this widget.
-        if row is not None and self._items:
-            idx = self._scroll_off + (row - self.abs_y)
-            if 0 <= idx < len(self._items) and idx != self._index:
-                self._move(idx)
-        self._fire_hover(col, row)
 
     def draw(self, canvas) -> None:
         is_focused = canvas.focused is self

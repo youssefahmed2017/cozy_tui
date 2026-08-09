@@ -24,3 +24,7 @@ TIGER_SHARK_STYLE = Style(fg="bright_yellow", styles=["bold"])
 # white/bold so it genuinely reads as a flash against the water, distinct
 # from every other yellow-toned accent above.
 LIGHTNING_STYLE = Style(fg="bright_white", styles=["bold"])
+# Bubbles, the Lost Adventure's fixed Forest merchant (see tank_objects.py's
+# BubblesNPC) -- distinct from BUBBLE_STYLE above (the ambient water
+# particles), a different character entirely.
+BUBBLES_NPC_STYLE = Style(fg="bright_cyan")

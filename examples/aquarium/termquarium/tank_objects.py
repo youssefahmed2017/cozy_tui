@@ -8,7 +8,7 @@ from cozy_tui._width import text_width
 from cozy_tui.widget import Widget
 
 from .constants import DECORATION_SELL_MULT
-from .styles import FOOD_STYLE, TIGER_SHARK_STYLE, WOOD_STYLE
+from .styles import BUBBLES_NPC_STYLE, FOOD_STYLE, TIGER_SHARK_STYLE, WOOD_STYLE
 
 
 class Food(Widget):
@@ -106,6 +106,33 @@ class TigerShark(Widget):
             self.fx += self.vx * dt
             self.x, self.y = round(self.fx), round(self.fy)
         canvas.write(self.abs_x, self.abs_y, self._glyph, self.style)
+
+
+class BubblesNPC(Widget):
+    """The Lost Adventure's fixed Forest merchant -- unlike the Tiger Shark
+    above, he never moves under his own power at all; aquarium.py's day/
+    night handling (_send_bubbles_to_the_cave()/_bring_bubbles_home()) picks
+    him up and repositions him directly, the same "static prop between
+    discrete state changes" idiom every other Forest fixture already uses
+    (see constants.py's LOST_ADVENTURE_SHELTERS comment). `visible` (a plain
+    Widget attribute -- see the widget-lifecycle section of the root
+    CLAUDE.md) is what actually hides him at night; this class itself is
+    otherwise as simple as Food/Wood below."""
+
+    GLYPH = "🐠🧢"
+
+    def __init__(self, x: float, y: float):
+        super().__init__(round(x), round(y), BUBBLES_NPC_STYLE)
+        self.fx, self.fy = float(x), float(y)
+
+    def natural_width(self, scale) -> int:
+        return text_width(self.GLYPH)
+
+    def natural_height(self, scale) -> int:
+        return 1
+
+    def draw(self, canvas) -> None:
+        canvas.write(self.abs_x, self.abs_y, self.GLYPH, self.style)
 
 
 class Decoration(Widget):

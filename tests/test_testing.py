@@ -75,6 +75,16 @@ def test_a_full_screen_app_is_forced_headless():
     assert len(harness.lines) == 10
 
 
+def test_headless_app_with_no_explicit_size_gets_a_sensible_default():
+    # Regression: App(full=False) with no size= raised an unhelpful
+    # AttributeError ('NoneType' object has no attribute 'split') from
+    # _init_size's size.split("x") -- forgetting size is an easy slip when
+    # remembering full=False. Falls back to the same "800x240" Harness
+    # itself already uses for exactly this reason, rather than crashing.
+    app = App(full=False)
+    assert (app.cols, app.rows) == (80, 24)
+
+
 def test_errors_propagate_instead_of_opening_a_crash_screen():
     app = make_app()  # catch_errors defaults to True
     boom = Button(0, 0, "Boom")

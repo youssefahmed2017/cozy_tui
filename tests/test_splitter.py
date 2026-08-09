@@ -125,6 +125,21 @@ def test_min_size_clamps_resize_and_drag():
     assert sp._divider_at == sp._span - 1 - 5
 
 
+def test_min_size_larger_than_available_span_keeps_divider_in_bounds():
+    # Regression: when min_size can't be honored on both sides (a pane
+    # squeezed below 2*min_size), _clamp_pos used to return a position past
+    # the widget's own span -- the divider (and the clip region built from
+    # it, sized off _divider_at) landed outside the Splitter's own bounds,
+    # letting a pane draw over whatever's beside it on screen.
+    ui = make_ui(size="30x100")  # a 3-cell-wide span, well under 2*min_size
+    app = ui.app
+    first, second = make_panes()
+    sp = Splitter(0, 0, "30x100", first, second, min_size=5)
+    app.add(sp)
+    ui.screen
+    assert 0 <= sp._divider_at < sp._span
+
+
 def test_mouse_click_and_drag_move_the_bar():
     ui = make_ui()
     app = ui.app

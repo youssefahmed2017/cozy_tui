@@ -5,6 +5,7 @@ from cozy_tui.events import MouseMove
 from cozy_tui.widgets import (
     AnimatedLabel,
     Button,
+    DecodeAnimation,
     GlowAnimation,
     LevitateAnimation,
     RainbowAnimation,
@@ -77,6 +78,47 @@ def test_levitate_leaves_color_alone():
     base = Style(fg="cyan", bg="black")
     ((_, _, _, style),) = list(anim.cells("z", base))
     assert style is base  # untouched style passed straight through
+
+
+# ── DecodeAnimation ───────────────────────────────────────────────────────────
+
+
+def _decoded_text(anim, text, frame):
+    anim.frame = lambda: frame
+    cells = sorted(anim.cells(text, Style(fg="white")), key=lambda c: c[0])
+    return "".join(c[2] for c in cells)
+
+
+def test_decode_binary_reaches_the_plain_text_once_fully_revealed():
+    anim = DecodeAnimation(mode="binary", randomize=False, loop=False)
+    assert _decoded_text(anim, "Hi", frame=0) == "01001000 01101001"
+    assert _decoded_text(anim, "Hi", frame=1000) == "Hi"
+
+
+def test_decode_hex_reaches_the_plain_text_once_fully_revealed():
+    anim = DecodeAnimation(mode="hex", randomize=False, loop=False)
+    assert _decoded_text(anim, "Hi", frame=0) == "48 69"
+    assert _decoded_text(anim, "Hi", frame=1000) == "Hi"
+
+
+def test_decode_morse_handles_variable_length_codes():
+    # Regression: chunk_size was derived from just the first character's
+    # code (len(chars[0])), applied uniformly to every character. Morse
+    # codes vary per character ('E' is one dot, '5' is five dots), so mixed
+    # text decoded at the wrong pace and never actually reached the plain
+    # text for characters after a shorter/longer one.
+    anim = DecodeAnimation(mode="morse", randomize=False, loop=False)
+    text = "HI5"  # H='....' (4), I='..' (2), 5='.....' (5) -- all different
+    assert _decoded_text(anim, text, frame=0) == ".... .. ....."
+    assert _decoded_text(anim, text, frame=1000) == text  # must fully resolve
+
+
+def test_decode_morse_natural_width_hint_matches_variable_length_codes():
+    anim = DecodeAnimation(mode="morse")
+    # 'E' is "." (1) + '4' is "....-" (5) + one separator per character (2)
+    # = 8 -- not len(text) * chunk_size, which used E's own 1-char code
+    # (chars[0]) as if every character in the text were also 1 char long.
+    assert anim.natural_width_hint("E4") == 1 + 5 + 2
 
 
 # ── AnimatedLabel integration ─────────────────────────────────────────────────

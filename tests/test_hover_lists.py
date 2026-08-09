@@ -84,3 +84,16 @@ def test_radioset_hover_then_click_selects_hovered():
     _hover_row(app, rs, 1)
     rs.on_mouse_click(rs.abs_x, rs.abs_y + 1)
     assert rs.selected == "Medium"
+
+
+# ── clear() chaining ─────────────────────────────────────────────────────────
+# Not hover-related, but these three widgets are already imported here:
+# clear() used to return None on all three (unlike Widget.clear(), which
+# returns self), silently breaking any attempt to chain off it.
+
+
+def test_checklist_clear_returns_self_so_calls_chain():
+    cl = CheckList(0, 0, ["x", "y", "z"])
+    result = cl.clear()
+    assert result is cl
+    assert len(cl.items) == 0

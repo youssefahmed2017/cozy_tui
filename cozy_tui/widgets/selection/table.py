@@ -208,6 +208,13 @@ class Table(Widget):
     def selected_column(self) -> int:
         return self._col_index
 
+    def select_index(self, index: int) -> None:
+        """Move the selected row to *index* (clamped). The public way to
+        restore a position after `sort()`/`add_row()` -- `selected_index`
+        has no setter since row identity, not just position, can shift
+        under a sort."""
+        self._move_row(index)
+
     def on_select(self, func):
         """Called with the selected TableRow when Enter is pressed or a row is clicked."""
         self._select_handler = func

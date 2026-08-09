@@ -261,6 +261,28 @@ def test_log_drops_the_oldest_lines_past_max_lines():
     assert [c.text for c in log.children] == ["line 3", "line 4", "line 5"]
 
 
+def test_log_clear_returns_self_so_calls_chain_like_log():
+    # Regression: clear() discarded super().clear()'s return value (an
+    # implicit -> None), so log.clear().log("restarted") -- the same
+    # chaining log()'s own docstring promises -- raised AttributeError.
+    log = Log()
+    log.log("old")
+    result = log.clear().log("restarted")
+    assert result is log
+    assert log.lines == ["restarted"]
+
+
+def test_log_max_lines_zero_keeps_no_history_without_crashing():
+    # Regression: deque(maxlen=0) discards on every append, which made
+    # _append()'s `over` check true even on the very first call (0 == 0)
+    # with no child row yet to pop -- IndexError: pop from empty list.
+    log = Log(max_lines=0)
+    log.log("first")
+    log.log("second")
+    assert log.lines == []
+    assert log.children == []
+
+
 def test_log_clear_empties_both_the_lines_and_the_rows():
     log = Log()
     log.log("a")

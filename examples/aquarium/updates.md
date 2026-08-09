@@ -1,27 +1,12 @@
 # 🐟 Update 1 — More Fish
-
-
-
 This is where the fun begins.
 
-
-
-I wouldn't make every fish unique.
-
-
-
+I wouldn't make every fish unique. 
 I'd make each one have:
-
-
-
 * sprite
-
 * price
-
 * rarity
-
 * favorite treats
-
 * maybe one small quirk
 
 
@@ -36,482 +21,190 @@ Just like Axolotl.
 
 # Common
 
-
-
 Cheap.
-
-
-
 Beginner fish.
 
 
 
 ```text
-
 Goldfish
-
 Salmon
-
 Anchovy
-
 Sardine
 
 ```
 
-
-
 ---
-
-
 
 # Uncommon
 
-
-
 ```text
-
 Betta
-
-
-
 Angelfish
-
 Axolotl
-
-
+Jellyfish
 ```
 
-
-
 ---
-
-
 
 # Rare
 
-
-
 ```text
-
-
-
 Discus
-
-
-
 Arowana
-
 Octopus
-
-
 Seahorse
-
 ```
 
-
-
 ---
-
-
 
 # Predators
 
-
-
 ```text
-
 Shark
-
 ```
-
-
 
 ---
 
-
-
 # Legendary
-
-
 
 These should be
 
 
 
 VERY
-
-
-
 rare.
 
-
-
 ```text
-
 Golden Axolotl
-
-
-
 Ghost Fish
-
-
-
 Crystal Fish
-
-
-
 Lunar Betta
-
+Moon Jellyfish
 ```
-
-
 
 No stat bonuses.
 
-
-
 Just
-
-
-
 > "YOU FOUND ONE??"
-
-
 
 ---
 
-
-
 # Small personality quirks
 
-
-
 Instead of
-
-
-
 20 mechanics.
 
-
-
 Examples:
-
-
 
 ---
 
 
 ### Salmon
 
-
-
 Moves constantly.
 
-
-
 ---
-
-
-
----
-
-
 
 ### Seahorse
 
-
-
 Slow.
-
-
 
 Always upright.
 
-
-
 ---
-
-
 
 ### Octopus
 
-
-
 Sometimes changes color.
-
-
 
 ---
 
-
-
 Again...
-
-
-
 Flavor.
-
-
 
 Not optimization.
 
-
-
 ---
-
-
-
-# Shop
-
-
-
-Eventually
-
-
-
-```text
-
-Today's Stock
-
-
-
-Goldfish
-
-
-
-Cod
-
-
-
-Bass
-
-
-
-Betta
-
-
-
-Out of Stock:
-
-Axolotl
-
-
-
-Out of Stock:
-
-Shark
-
-```
-
-
-
-Refreshes daily.
-
-
-
----
-
-
 
 # 🎣 Update 2 — Fishing
 
-
-
 This is where everything comes together.
 
-
-
 ---
-
-
 
 ## Fishing spots
-
-
-
 ```text
-
 🌊 Pond
-
-
-
 🌊 River
-
-
-
 🌊 Lake
-
-
-
 🌊 Ocean
-
-
-
 🌊 Coral Reef
-
-
-
 🌊 Deep Sea
-
 ```
-
-
-
 Each has
-
-
-
 different fish.
-
-
 
 ---
 
-
-
 ## Cast
-
-
-
 ```text
-
 Press Space
 
-
-
 ↓
-
-
 
 Cast
 
-
-
 ↓
-
-
 
 Waiting...
 
-
-
 ↓
-
-
 
 Nibble
 
-
-
 ↓
 
-
-
 Catch!
-
 ```
-
-
-
 Not twitchy.
-
-
 
 Relaxing.
 
-
-
 ---
-
-
 
 ## Rewards
 
-
-
 Possible catches
-
-
 
 ```text
 
 🐟 Fish
-
-
-
 🪵 Driftwood
-
-
-
 💰 Coins
-
-
-
 🪙 Treasure
-
-
-
 🐚 Seashell
-
-
-
 📜 Bottle
-
-
-
 🦀 Crab (I guess he's a secret shop item that can't be bought unless you go fishing. So he could stay in your aquarium)
-
-
-
 🦐 Shrimp
-
 ```
 
-
-
 ---
-
-
 
 ## Fish rarity
-
-
-
 ```text
-
 Common
-
-
-
 Uncommon
-
-
-
 Rare
-
-
-
 Legendary
-
 ```
-
-
-
 ---
-
-
 
 ## Weather (future)
 
-
-
 Rain
 
-
-
 ↓
-
-
 
 More Salmon
 
@@ -519,11 +212,7 @@ More Salmon
 
 Night
 
-
-
 ↓
-
-
 
 Catfish
 
@@ -531,359 +220,146 @@ Catfish
 
 Morning
 
-
-
 ↓
-
-
 
 Carp
 
-
-
 ---
 
-
-
 ## Seasons (far future)
-
-
-
 ```text
-
 Spring
-
-
-
 Summer
-
-
-
 Autumn
-
-
-
 Winter
-
 ```
-
-
 
 Changes available fish.
 
-
-
 ---
-
-
 
 ## Fishing Journal
-
-
-
 ```text
-
-Caught
-
-
-
+Caught:
 ✓ Goldfish
-
-
-
 ✓ Cod
-
-
-
 ✓ Salmon
-
-
-
 ✓ Betta
-
-
-
 □ Whale
-
-
-
 □ Ghost Fish
-
 ```
 
-
-
 ---
-
-
 
 ## Aquarium integration
 
-
-
 When caught
 
-
-
 ```text
-
 Keep
-
-
 
 Sell
 
-
-
 Release
-
 ```
 
-
-
 ---
-
-
 
 If kept
 
-
-
 Fish remembers
 
-
-
 ```text
-
 "I came from the Ocean."
-
 ```
-
-
 
 Could even influence dreams.
 
-
-
 ---
-
-
-
-## Shop integration
-
-
-```text
-
-Fish Shop
-
-
-
-Goldfish
-
-
-
-Betta
-
-
-
-Cod
-
-
-
-Out of Stock
-
-
-
-Axolotl
-
-
-
-Shark
-
-```
-
-
-
-Need them?
-
-
-
-Go fishing.
-
-
-
----
-
-
 
 ## Rare Events
 
-
-
 While fishing:
-
-
 
 ```text
 
 ✨ Treasure Chest: Can contain money, fish, or wood
-
-
-
 🪙 Old Coin: simply can be sold
-
-
-
 📜 Message in a Bottle: click to open and read a message.
-
-
-
 🐚 Giant Shell: can be sold FOR A LOT OF MONEY
-
-
-
 🦑 Kraken Shadow: I don't really know why it's useful. We can just pretend it's a legendary thing
-
-
-
 👢 Old Boot 😂: Also can be sold
-
 ```
-
-
 
 ---
 
-
-
 ## Biome progression
-
-
-
 ```text
-
 Start
 
-
-
 ↓
-
-
 
 Pond
 
-
-
 ↓
-
-
 
 River
 
-
-
 ↓
-
-
 
 Lake
 
-
-
 ↓
-
-
 
 Ocean
 
-
-
 ↓
-
-
 
 Coral Reef
 
-
-
 ↓
 
-
-
 Deep Sea
-
 ```
 
-
-
 Each unlock costs money.
+
 The same architecture as the forest: Can be unlocked in the shop, and works as a separate place
-
-
 
 ---
 
-
-
 ## One thing I'd add that fits **TermQuarium's** identity
-
-
 
 Since wer fish already have **memories, dreams, personalities, and relationships**, I'd make catching a fish feel like introducing a **new resident**, not collecting an item.
 
-
-
 Imagine this sequence:
 
-
-
 ```text
-
 🎣 You caught a Salmon!
-
-
 
 Name it?
 
 > Finn
 
-
-
 🐟 Finn cautiously enters the aquarium...
 
-
-
 💬 "The other fish seem curious."
-
-
-
 ```
 
 
 
 A few in-game days later:
 
-
-
 ```text
-
 💭 Finn dreamed about the river he came from.
-
-
-
-❤️ Finn became friends with Bubbles.
-
-
+❤️ Finn became friends with Alex.
 
 🌅 Morning vignette:
-
-Bubbles showed Finn the Castle.
-
+Alex showed Finn the Castle.
 ```
+That's the kind of thing that makes players think, *"I remember catching **that** fish"*.
 
-
-
-That's the kind of thing that makes players think, *"I remember catching **that** fish."* The fishing trip becomes the beginning of that fish's story, not the end of a loot roll.
+The fishing trip becomes the beginning of that fish's story, not the end of a loot roll.
 
 ---
 
@@ -906,7 +382,6 @@ New:
 
 ```text
 Aquarium
-│
 ├── Main Tank
 ├── Coral Reef Tank
 ├── Deep Sea Tank
@@ -1024,12 +499,11 @@ BIG milestone.
 
 Not just:
 
-"Put shark in tank"
+* "Put shark in tank"
 
 Because sharks need:
 
-* huge space
-* special walls
+* lot of space
 * different food
 
 Example:
@@ -1042,8 +516,7 @@ Capacity:
 
 Requirements:
 ✓ Large Tank
-✓ Reinforced Glass
-✓ Ocean Filter
+✓ Crabs
 ```
 
 ---
@@ -1268,27 +741,6 @@ A visitor might say:
 ```
 
 🥺
-
----
-
-# Phase 9 — Staff System (Later)
-
-Don't add this immediately.
-
-Future update:
-
-Hire:
-
-```
-👨‍🔬 Scientist
-- discovers fish information
-
-🧹 Cleaner
-- reduces maintenance
-
-👩‍🏫 Guide
-- increases visitors
-```
 
 ---
 

@@ -13,6 +13,7 @@
 | Scroll Down / Page Down / Ctrl+Down | Scroll content down |
 | Ctrl+T | Open the searchable theme picker (see [styling.md](styling.md#themes)) |
 | Ctrl+P | Open the command palette (see [below](#command-palette)) |
+| Ctrl+S | Save a screenshot of the current screen as a standalone SVG file |
 | F12 | Toggle Cozy DevTools (no-op unless `App(debug=True)`) — always reaches it even while a modal is open |
 
 Any of these can be overridden with your own `app.on_key(...)` — the same key just gets registered again, replacing the default.
@@ -79,7 +80,7 @@ app.on_key(Key.ctrl(Key.F5), hard_refresh)  # Ctrl+F5 → "ctrl+F5"
 
 ### Command palette
 
-**Ctrl+P** opens a Textual-style command palette by default on every `App` — type to filter by name or description, Up/Down to move, Enter or a click to run the highlighted command, Esc/click-outside to cancel. `App` registers a few built-ins this way: **Quit**, **Change Theme** (opens the theme picker above), **Keys** (opens a read-only `Bindings("auto")` legend of every currently-registered global key binding), and — only when `debug=True` — **Toggle Debug Pane**.
+**Ctrl+P** opens a Textual-style command palette by default on every `App` — type to filter by name or description, Up/Down to move, Enter or a click to run the highlighted command, Esc/click-outside to cancel. `App` registers a few built-ins this way: **Quit**, **Change Theme** (opens the theme picker above), **Keys** (opens a read-only `Bindings("auto")` legend of every currently-registered global key binding), **Save Screenshot** (same as Ctrl+S above), and — only when `debug=True` — **Toggle DevTools**.
 
 ```python
 app.register_command(name, callback, *, description="")

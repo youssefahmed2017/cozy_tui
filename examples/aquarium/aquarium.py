@@ -283,6 +283,7 @@ from examples.aquarium.termquarium.styles import (
     WATER_LINE,
 )
 from examples.aquarium.termquarium.tank_objects import (
+    BubblesNPC,
     Decoration,
     Food,
     TigerShark,
@@ -419,6 +420,15 @@ def main() -> None:
         build_forest_scene(app, lambda: _leave_forest(), lambda: paused["value"])
     )
     forest_button = Button(59, 2, "Enter Forest").on_click(lambda _w: _enter_forest())
+    # Bubbles: always present in forest_widgets (visibility toggled via the
+    # plain Widget.visible attribute, not add/remove -- see BubblesNPC's own
+    # docstring), starting the game already relaxing at his usual spot.
+    _bubbles_dense_plants = forest_shelters[BUBBLES_HOME_SHELTER]
+    bubbles_npc = BubblesNPC(
+        _bubbles_dense_plants.fx + 2, _bubbles_dense_plants.fy + 1
+    )
+    forest_widgets.append(bubbles_npc)
+    bubbles_state = {"cave_visit_until": None}
     state = {
         "money": 120,
         "food": 15,
@@ -830,7 +840,13 @@ def main() -> None:
         _show()
 
     def _on_eat_food(food):
-        app.widgets.remove(food)
+        # Defensive, not just tidy: fish.py's own foods.remove(target) right
+        # before this call guarantees `food` was still in the *foods* list
+        # this instant, but says nothing about app.widgets -- the same
+        # "might already be gone" guard the morning vignette's own removal
+        # already uses a few functions down.
+        if food in app.widgets:
+            app.widgets.remove(food)
 
     def _on_eat_fish(eaten):
         # fish.py's own predator-eats-prey code already does
@@ -838,8 +854,10 @@ def main() -> None:
         # never in `fish` by this point (see test_shark_eats_nearby_prey_
         # and_is_fed). A shark only ever hunts in the aquarium scene (a
         # forest-biome fish can't be reached -- see Fish.draw()'s early
-        # forest-mode return), so `eaten` is always in aquarium_widgets.
-        app.widgets.remove(eaten)
+        # forest-mode return), so `eaten` is always in aquarium_widgets --
+        # same defensive guard as _on_eat_food above regardless.
+        if eaten in app.widgets:
+            app.widgets.remove(eaten)
         _log_departure(eaten)
         clear_relationships(eaten, fish)
         serious_event_at["t"] = time.monotonic()
@@ -1306,13 +1324,21 @@ def main() -> None:
                 # A save from before this existed, or a fish that simply
                 # wasn't dreaming, has no "dream" key/a null one -- f.dream
                 # stays at Fish.__init__'s own default (None) either way.
-                f.dream = Dream(
-                    category=saved_dream["category"],
-                    icon=saved_dream["icon"],
-                    title=saved_dream["title"],
-                    description=saved_dream["description"],
-                    frames=tuple(tuple(row) for row in saved_dream["frames"]),
-                )
+                # A *partial* dream (a hand-edited or corrupted save missing
+                # one of these fields) can't be meaningfully reconstructed --
+                # same "None either way" fallback rather than a crash, unlike
+                # every field above this one, which was already the plan for
+                # a missing key but not a malformed one.
+                try:
+                    f.dream = Dream(
+                        category=saved_dream["category"],
+                        icon=saved_dream["icon"],
+                        title=saved_dream["title"],
+                        description=saved_dream["description"],
+                        frames=tuple(tuple(row) for row in saved_dream["frames"]),
+                    )
+                except (KeyError, TypeError):
+                    pass
             if "full_memory_log" not in saved:
                 # A save from before "See All History" existed -- there's no
                 # uncapped archive to restore, so seed it from whatever the
@@ -1328,6 +1354,18 @@ def main() -> None:
             fish.append(f)
             if f.lost_adventure is None:
                 app.add(f)
+            else:
+                # Same gap _begin_lost_adventure() itself used to have
+                # (see that function's own comment): biome="forest" alone
+                # doesn't make a fish visible in the Forest scene -- it
+                # also has to be in forest_widgets, the list that scene
+                # actually draws/hit-tests. Without this, a fish reloaded
+                # mid-adventure was invisible in *both* scenes until its
+                # adventure happened to end on its own and
+                # _return_from_lost_adventure() put it back in the tank,
+                # which read as "randomly reappearing" days later.
+                if f not in forest_widgets:
+                    forest_widgets.append(f)
             _wire_tooltip(f)
         for f, saved in zip(fish, snapshot.get("fish", [])):
             favorite = saved.get("favorite")
@@ -2776,7 +2814,72 @@ def main() -> None:
                 continue
             if f.sleeping_in is not None or f._shelter_visit_until is not None:
                 continue  # tucked in for the night, or mid a shelter-visit flash
-            if now >= f._next_turn:
+            if (
+                f.hunger < BUBBLES_TRADE_THRESHOLD
+                and bubbles_npc.visible
+                and f.lost_adventure["has_wood"]
+            ):
+                # Regression: the actual visit only ever resolves once a day
+                # (_advance_lost_adventure(), on the daily tick -- up to
+                # AGE_SECONDS_PER_DAY real seconds away), so a hungry fish
+                # left to the plain random wander below just drifted
+                # aimlessly with no visible sense of purpose in the
+                # meantime -- "so slow to reach Bubbles" it looked broken,
+                # even though the actual trade was always going to land on
+                # schedule regardless of where it physically was standing.
+                # Heading toward him directly at least makes the wait look
+                # like something is happening.
+                #
+                # has_wood is required too: without it there's nothing to
+                # trade yet (_visit_bubbles() with empty hands just returns
+                # a "no wood" line), so beelining to Bubbles anyway parked a
+                # hungry, wood-less fish camped next to him indefinitely --
+                # motionless and looking stuck, while the actual find_wood
+                # roll it needed (_resolve_lost_adventure_event(), only
+                # reached when this branch is skipped) kept firing on
+                # schedule regardless of where it was standing. Falling
+                # through to the plain wander below at least reads as
+                # searching, matching what's really happening underneath.
+                f.vx, f.vy, _ = steer_toward_food(
+                    f.vx,
+                    f.vy,
+                    f.fx,
+                    f.fy,
+                    (bubbles_npc.fx, bubbles_npc.fy),
+                    FOREST_WANDER_SPEED,
+                    1.0,
+                )
+            elif not f.lost_adventure["has_wood"] and forest_wood:
+                # A real, deterministic search: steer straight to the
+                # nearest actual Wood widget in the Forest -- the same
+                # forest_wood pool _check_foraging() draws from, so a Lost
+                # Adventure fish and an ordinary foraging trip compete for
+                # the same limited supply, same as they'd have to in the
+                # real Forest. This replaces waiting on pick_event()'s
+                # find_wood roll (still there as a fallback -- see
+                # adventure.py -- for the rare tick where forest_wood is
+                # empty) with something the player can actually watch
+                # happen, instead of wood appearing in its pocket off an
+                # invisible daily coin flip.
+                nearest = min(
+                    forest_wood, key=lambda w: math.hypot(w.fx - f.fx, w.fy - f.fy)
+                )
+                f.vx, f.vy, found = steer_toward_food(
+                    f.vx,
+                    f.vy,
+                    f.fx,
+                    f.fy,
+                    (nearest.fx, nearest.fy),
+                    FOREST_WANDER_SPEED,
+                    1.0,
+                )
+                if found:
+                    forest_wood.remove(nearest)
+                    if nearest in forest_widgets:
+                        forest_widgets.remove(nearest)
+                    f.lost_adventure["has_wood"] = True
+                    _log_memory(f, adventure.FOUND_WOOD_LINE)
+            elif now >= f._next_turn:
                 f.vx, f.vy = random_velocity(FOREST_WANDER_SPEED)
                 f._next_turn = now + random.uniform(*FOREST_WANDER_TURN_RANGE)
             f.fx, f.fy, f.vx, f.vy = steer(f.fx, f.fy, f.vx, f.vy, forest_bounds, 1.0)
@@ -2842,11 +2945,88 @@ def main() -> None:
             f.fy = random.uniform(fy0, fy1)
             f.x, f.y = round(f.fx), round(f.fy)
 
+    def _send_bubbles_to_the_cave() -> None:
+        # Bubbles' own Night counterpart to _settle_lost_adventure_fish_for_
+        # night() above -- he heads through the Hidden Cave, visible there
+        # just long enough to notice, then vanishes (deliberately
+        # unexplained -- see BUBBLES_NIGHT_SHELTER's own comment).
+        cave = forest_shelters.get(BUBBLES_NIGHT_SHELTER)
+        if cave is None:
+            return
+        bubbles_npc.fx, bubbles_npc.fy = cave.fx, cave.fy + 1
+        bubbles_npc.x, bubbles_npc.y = round(bubbles_npc.fx), round(bubbles_npc.fy)
+        bubbles_npc.visible = True
+        bubbles_state["cave_visit_until"] = time.monotonic() + BUBBLES_NIGHT_VISIT_SECONDS
+
+    def _check_bubbles_cave_visit() -> None:
+        until = bubbles_state["cave_visit_until"]
+        if until is not None and time.monotonic() >= until:
+            bubbles_state["cave_visit_until"] = None
+            bubbles_npc.visible = False
+
+    def _bring_bubbles_home() -> None:
+        # The Morning counterpart -- back at BUBBLES_HOME_SHELTER, visible
+        # again, every day without fail.
+        bubbles_state["cave_visit_until"] = None
+        home = forest_shelters.get(BUBBLES_HOME_SHELTER)
+        if home is not None:
+            bubbles_npc.fx, bubbles_npc.fy = home.fx + 2, home.fy + 1
+            bubbles_npc.x, bubbles_npc.y = round(bubbles_npc.fx), round(bubbles_npc.fy)
+        bubbles_npc.visible = True
+
+    def _choose_bubbles_food(f: Fish) -> str | None:
+        # The fish's own favorite wins; a friend's favorite is the fallback
+        # (per the brainstorm: "the fish chooses based on favorite food/
+        # friend's favorite food"); plain "normal food" (None -- a generic
+        # feed(), no specific kind) is what's left once neither overlaps
+        # what Bubbles actually carries (BUBBLES_STOCK).
+        sources = (f.favorite_foods, f.friend.favorite_foods if f.friend else ())
+        for source in sources:
+            for kind in source:
+                if kind in BUBBLES_STOCK:
+                    return kind
+        return None
+
+    def _visit_bubbles(f: Fish, adv: dict) -> None:
+        # The deterministic (no-luck) counterpart to the old random
+        # meet_bubbles roll -- called once a day, before pick_event(), for
+        # any lost fish hungry enough (see _advance_lost_adventure()).
+        # Bubbles himself is a fixed, persistent Forest resident (BubblesNPC)
+        # now, not a per-visit flash -- only the *fish* gets the brief
+        # appear-at-BUBBLES_HOME_SHELTER visit (_start_shelter_visit(), the
+        # same appear-and-vanish beat every other narrative Forest moment
+        # uses), since it's still normally somewhere else in the Forest.
+        _start_shelter_visit(f, BUBBLES_HOME_SHELTER)
+        if not adv["has_wood"]:
+            _log_memory(f, adventure.BUBBLES_NO_WOOD_LINE)
+            return
+        adv["has_wood"] = False
+        # A fresh reminder is fair the *next* time this fish goes hungry
+        # empty-handed -- see _advance_lost_adventure()'s told_to_find_wood.
+        adv["told_to_find_wood"] = False
+        f.hunger, f.health = feed(f.hunger, f.health)
+        kind = _choose_bubbles_food(f)
+        if kind is None:
+            _log_memory(f, adventure.BUBBLES_TRADE_LINE)
+            return
+        item = next(i for i in TREAT_SHOP_ITEMS if i.kind == kind)
+        is_own_favorite = kind in f.favorite_foods
+        _log_memory(
+            f,
+            f"Bubbles traded me {kind} {item.emoji} for my wood"
+            + (" -- my favorite!" if is_own_favorite else "."),
+        )
+        if is_own_favorite:
+            f.happiness = adjust_happiness(f.happiness, HAPPINESS_FAVORITE_TREAT_GAIN)
+            _maybe_grant_trait(f, TRAIT_FOOD_LOVER, FOOD_LOVER_TRAIT_CHANCE)
+
     def _resolve_lost_adventure_event(f: Fish, adv: dict) -> None:
         # The actual decision (which event, and its effect on `adv`) is
         # pure logic in termquarium/adventure.py -- this just applies the
-        # resulting effects to the live Fish/memory log.
-        event = adventure.pick_event(adv, hunger=f.hunger)
+        # resulting effects to the live Fish/memory log. Only reached when
+        # _advance_lost_adventure() didn't already route to _visit_bubbles()
+        # instead -- see that function's own docstring.
+        event = adventure.pick_event(adv)
         effects = adventure.apply_event(adv, event)
         if effects["feed"]:
             f.hunger, f.health = feed(f.hunger, f.health)
@@ -2855,15 +3035,6 @@ def main() -> None:
         _log_memory(f, effects["memory"])
         if event in ("find_shelter", "danger"):
             _start_shelter_visit(f, adv["shelter"])
-        elif event == "meet_bubbles":
-            # BUBBLES_GLYPH was defined in adventure.py but never actually
-            # drawn anywhere -- a brief flash beside the fish, same
-            # appear-and-vanish shape as a shelter visit (see fish.py's
-            # draw()), so the encounter the memory line describes is
-            # something you can actually see happen.
-            f._meeting_bubbles_until = (
-                time.monotonic() + LOST_ADVENTURE_BUBBLES_FLASH_SECONDS
-            )
 
     def _return_from_lost_adventure(f: Fish) -> None:
         duration = f.lost_adventure["duration"]
@@ -2913,11 +3084,24 @@ def main() -> None:
         if adv["day"] >= adv["duration"]:
             _return_from_lost_adventure(f)
             return
-        if adv["awaiting_bubbles_trade"]:
-            adv["awaiting_bubbles_trade"] = False
-            adv["has_wood"] = False
-            f.hunger, f.health = feed(f.hunger, f.health)
-            _log_memory(f, adventure.BUBBLES_RESOLVED_LINE)
+        hungry = f.hunger < BUBBLES_TRADE_THRESHOLD
+        if hungry and adv["has_wood"]:
+            _visit_bubbles(f, adv)  # trades immediately -- every day it can
+            return
+        if hungry and not adv.get("told_to_find_wood", False):
+            # Regression: routing *every* hungry day to Bubbles (even
+            # empty-handed) meant a wood-less hungry fish could never reach
+            # _resolve_lost_adventure_event() again -- the only place
+            # find_wood is ever rolled -- so it starved with 5 pieces of
+            # wood sitting in the Forest it was never even allowed a chance
+            # to notice. Bubbles tells it once to come back once it's found
+            # something (adv["told_to_find_wood"], reset the moment a trade
+            # actually succeeds -- see _visit_bubbles()); every day after
+            # that reminder is an ordinary roll, same real find_wood odds
+            # as always, so it keeps genuinely searching instead of nagging
+            # Bubbles on repeat.
+            adv["told_to_find_wood"] = True
+            _visit_bubbles(f, adv)
             return
         _resolve_lost_adventure_event(f, adv)
 
@@ -3211,6 +3395,21 @@ def main() -> None:
     def _process_nightmares() -> None:
         now = time.monotonic()
         for f in fish:
+            if not _in_tank(f):
+                # A fish can be swept into a Lost Adventure (or a foraging
+                # trip) mid-sequence, between the scare and actually reaching
+                # its companion -- unlike _assign_dreams()'s _in_tank() gate
+                # (which only stops a *new* nightmare from starting), nothing
+                # here previously stopped an already-pending one from
+                # continuing. Left unguarded, the "arrived?" distance check
+                # below compares this fish's stale/Forest fx,fy against the
+                # companion's real tank coordinates -- two unrelated
+                # coordinate spaces that can coincidentally land within
+                # SLEEP_CLOSE_DISTANCE, firing a "slept beside X" memory/toast
+                # for a fish that's actually standing still in a Forest
+                # shelter. Pausing here (not clearing the pending state)
+                # means it just resumes correctly once back in the tank.
+                continue
             if f._nightmare_wake_at is not None and now >= f._nightmare_wake_at:
                 _trigger_nightmare_scare(f)
             if f._nightmare_relocate_at is not None and now >= f._nightmare_relocate_at:
@@ -3501,9 +3700,11 @@ def main() -> None:
             _fire_morning_vignette()
             _start_sleepy_holds()
             _wake_lost_adventure_fish()
+            _bring_bubbles_home()
         elif previous_phase != "Night" and environment["phase"] == "Night":
             _assign_dreams()
             _settle_lost_adventure_fish_for_night()
+            _send_bubbles_to_the_cave()
 
     def _hunger_step() -> float:
         # Night: sleeping fish get hungry slower. Heat: a stressed fish
@@ -3593,6 +3794,7 @@ def main() -> None:
         _check_forest_danger()
         _check_lost_adventure_shelter_visits()
         _wander_lost_adventure_fish()
+        _check_bubbles_cave_visit()
 
         # Visitor donations pay out the moment they happen instead of being
         # bundled into the once-a-day summary -- see roll_visitor_donation()

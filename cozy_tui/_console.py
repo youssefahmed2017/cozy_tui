@@ -21,8 +21,26 @@ IS_WINDOWS = sys.platform == "win32"
 
 if IS_WINDOWS:
     import ctypes
+    import ctypes.wintypes as _wt
 
     _k32 = ctypes.windll.kernel32
+    # Without these, ctypes assumes every arg/return is a 32-bit c_int --
+    # GetStdHandle's real return type is HANDLE (void*, 8 bytes on 64-bit
+    # Windows), so an unluckily large handle value would get silently
+    # truncated. Console handles are small in practice, so this has never
+    # actually misbehaved, but declaring the real signatures costs nothing
+    # and removes the truncation risk entirely.
+    _k32.GetStdHandle.argtypes = [_wt.DWORD]
+    _k32.GetStdHandle.restype = _wt.HANDLE
+    _k32.WaitForSingleObject.argtypes = [_wt.HANDLE, _wt.DWORD]
+    _k32.WaitForSingleObject.restype = _wt.DWORD
+    _k32.GetConsoleMode.argtypes = [_wt.HANDLE, ctypes.POINTER(_wt.DWORD)]
+    _k32.GetConsoleMode.restype = _wt.BOOL
+    _k32.SetConsoleMode.argtypes = [_wt.HANDLE, _wt.DWORD]
+    _k32.SetConsoleMode.restype = _wt.BOOL
+    _k32.FlushConsoleInputBuffer.argtypes = [_wt.HANDLE]
+    _k32.FlushConsoleInputBuffer.restype = _wt.BOOL
+
     _H_IN = _k32.GetStdHandle(-10)
     _H_OUT = _k32.GetStdHandle(-11)
 
@@ -72,12 +90,21 @@ if IS_WINDOWS:
 
     def kbhit():
         # WaitForSingleObject with 0ms: signaled when stdin has any pending input
-        # (keyboard, mouse click, or mouse-scroll VT bytes in ConPTY).
-        return _k32.WaitForSingleObject(_H_IN, 0) == 0
+        # (keyboard, mouse click, or mouse-scroll VT bytes in ConPTY). Wrapped
+        # like every other platform call here (and its POSIX select()
+        # equivalent below) -- an invalid/closed handle must read as "no
+        # input yet", not crash the render loop's wait.
+        try:
+            return _k32.WaitForSingleObject(_H_IN, 0) == 0
+        except Exception:
+            return False
 
     def wait_input(timeout):
         ms = max(0, int(timeout * 1000))
-        return _k32.WaitForSingleObject(_H_IN, ms) == 0
+        try:
+            return _k32.WaitForSingleObject(_H_IN, ms) == 0
+        except Exception:
+            return False
 
     def flush_input():
         # Console-window creation queues a FOCUS_EVENT (and sometimes a

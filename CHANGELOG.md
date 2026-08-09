@@ -139,6 +139,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   app.add(chart); app.focus(chart)
   ```
 
+- **`GlitchAnimation`, `TypewriterAnimation`, and `DecodeAnimation`** — three
+  more built-in `AnimatedLabel` animations alongside `Glow`/`Rainbow`/
+  `Levitate`. `GlitchAnimation` stacks random Zalgo-style combining
+  diacritics on each character. `TypewriterAnimation` types through a list
+  of phrases (with an optional blinking cursor and per-phrase colors),
+  erasing and retyping each in turn. `DecodeAnimation` reveals text by
+  decoding it from binary/hex/morse one step at a time, optionally
+  re-encoding it afterward to loop. See
+  [docs/widgets.md](docs/widgets.md#animatedlabel--animations).
+
 ### Changed
 
 - **Examples use the new layout controls and `State`.** `calculator`'s two
