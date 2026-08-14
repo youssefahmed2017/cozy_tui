@@ -40,8 +40,9 @@ class _Leaf:
 
 class LeafField(Widget):
     """Ambient falling leaves, purely decorative -- appended after the
-    Forest's canopy/trunk/ground scenery (see ui.py's build_forest_scene())
-    so leaves draw over the ground line but under any fish/wood appended
+    Forest's canopy/trunk/ground scenery (see ui.py's
+    _build_forest_scenery(), shared by both Forest rooms) so leaves draw
+    over the ground line but under any fish/wood appended
     later. `paused` is the same zero-arg-callable shared-mutable pattern
     BubbleField already uses -- existing leaves freeze in place and no new
     ones spawn while the game is paused."""

@@ -1,7 +1,7 @@
 """The Fish Shop overlay and its purchase wiring."""
 
 from cozy_tui import Style
-from cozy_tui.widgets import Box, Button, Label
+from cozy_tui.widgets import Box, Button, Label, ScrollView
 
 from .constants import (
     DECORATION_SHOP_ITEMS,
@@ -49,39 +49,52 @@ def build_shop(
     )
     row += 2
     out_of_stock = state.get("shop_out_of_stock", [])
+    # More Fish (updates.md): the species roster grew past what a fixed-
+    # height Box can show all at once -- species get their own scrollable
+    # region (mouse wheel / arrows / PageUp-Down while focused, same as
+    # Log's use of ScrollView) instead of pushing every row below them
+    # (decorations, treats, Forest unlock, Close) off the visible panel.
+    species_view_rows = 6  # visible at once, matching roughly what fit before
+    species_view = ScrollView(
+        2, row, f"440x{species_view_rows * 10}", autoscroll=False, style=app.style
+    )
+    box.add(species_view)
+    srow = 0
     for species in SHOP_ITEMS:
         if species.name in out_of_stock:
             # Shop update (updates.md): "Today's Stock" rotates daily
             # (see aquarium.py's _refresh_shop_stock()) -- no Buy button at
             # all while sold out, rather than a disabled one, so there's
             # nothing to click and immediately bounce off of.
-            box.add(
+            species_view.add(
                 Label(
-                    2,
-                    row,
+                    0,
+                    srow,
                     f"{species.name:<10} Out of Stock",
                     Style(fg="bright_black"),
                 )
             )
-            row += 2
+            srow += 2
             continue
         tag = " (predator!)" if species.predator else ""
-        box.add(
+        species_view.add(
             Label(
-                2,
-                row,
-                f"{species.name:<10} {species.right}   ${species.price}{tag}",
+                0,
+                srow,
+                f"{species.name:<10} {species.right}   ${species.price} "
+                f"({species.rarity}){tag}",
                 Style(fg=species.color),
             )
         )
-        box.add(
-            Button(32, row, "Buy").on_click(
+        species_view.add(
+            Button(34, srow, "Buy").on_click(
                 lambda _w, species=species: purchase(
                     species.price, lambda: buy_fish(species)
                 )
             )
         )
-        row += 2
+        srow += 2
+    row += species_view_rows + 1
     for item in DECORATION_SHOP_ITEMS:
         box.add(
             Label(

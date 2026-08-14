@@ -49,6 +49,15 @@ class ScrollView(Widget):
         accent="bright_cyan",
     ):
         super().__init__(x, y, style)
+        # Opts into any-motion tracking unconditionally (like Table's own
+        # row-hover tracking) rather than exposing it as a constructor kwarg
+        # -- wheel routing (App._dispatch_input) prefers whatever's actually
+        # hovered over whatever merely holds keyboard focus, and a
+        # ScrollView full of focusable children (e.g. Buttons) can never
+        # become focused itself (a focusable container always defers Tab to
+        # its focusable descendants -- see App._focusables_in()), so without
+        # this the wheel could never reach it at all in that shape.
+        self.mouse_moves = True
         self.width, self.height = map(int, size.split("x"))
         self.autoscroll = autoscroll
         self.scrollbar = scrollbar

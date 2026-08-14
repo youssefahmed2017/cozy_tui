@@ -711,6 +711,14 @@ def choose_dream(f) -> Dream:
     variant = random.choice(DREAM_FRAMES[category])
     if category == "friendship":
         return _build_dream(category, variant, friend=f.friend.display_name)
+    if category == "funny":
+        # "{friend}" is optional here (see the docstring above) -- unlike
+        # "friendship" (never reached with f.friend is None, see the
+        # redirect-to-"happy" branch above), "funny" is rolled independently
+        # of whether this fish currently has a friend, so the placeholder
+        # needs a real fallback instead of leaking through unsubstituted.
+        friend_name = f.friend.display_name if f.friend is not None else "a friend"
+        return _build_dream(category, variant, friend=friend_name)
     return _build_dream(category, variant)
 
 

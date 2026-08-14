@@ -292,68 +292,35 @@ def _tile(unit: str, width: int) -> str:
     return (unit * reps)[:width]
 
 
-def build_forest_scene(
-    app, on_leave, paused=lambda: False
-) -> tuple[list, Label, tuple[float, float, float, float], dict]:
-    """The Forest biome's own full-screen scene (Exploration Update Slice 1)
-    -- the *static* part only (title, a money-readout label, background
-    scenery, the Leave button, and the three Lost Adventure shelter
-    fixtures below), built once at boot. The live Fish/Wood objects
-    currently in this biome are appended/removed straight onto this same
-    persistent list over time by aquarium.py's _check_foraging()
-    (which fish/wood currently exist changes on its own timers, regardless
-    of whether this scene happens to be the one currently shown -- see
-    constants.py's Exploration Update comment), so nothing here needs
-    rebuilding just to reflect that.
+def _build_forest_scenery(app, leave_label, on_leave, paused, title):
+    """Shared scaffolding for both Forest rooms (Clearing / Deep Forest --
+    see build_forest_clearing_scene()/build_forest_deep_scene() below):
+    title, a money-readout label, background canopy/trunk/ground scenery,
+    an ambient LeafField, and a departure button. Each room-specific
+    builder appends its own fixtures (shelters, an extra navigation
+    button, ...) on top of what this returns.
 
-    Returns `(widgets, stats_label, bounds, shelters)` -- the caller keeps
-    the label reference to refresh its money readout each time the scene is
-    entered (nothing in the Forest changes it while shown, so a live
-    per-tick refresh isn't needed the way the tank's own stats label has
-    one). `bounds` (x0, y0, x1, y1) is where fish/wood should be positioned
-    -- sized from the *actual* terminal (app.cols/app.rows), the same way
-    the tank's own `bounds` is derived in aquarium.py, rather than a fixed
-    constant a small terminal could clip. `shelters` is a
-    {name: Decoration} lookup for the three fixed Tree House/Hidden Cave/
-    Dense Plants Thicket objects (see LOST_ADVENTURE_SHELTERS) -- real
-    Decoration instances with real capacity, exactly like the tank's own
-    Castle/Rock, just never purchasable (they're "already there in the
-    forest", not Shop items). aquarium.py's _start_shelter_visit() looks a
-    fish's discovered/fled-to shelter name up in this dict to know where to
-    briefly place it.
+    Returns `(widgets, stats_label, forest_w, forest_h, trunk_y, ground_y,
+    bounds)`. `bounds` (x0, y0, x1, y1) is where fish/wood should be
+    positioned -- sized from the *actual* terminal (app.cols/app.rows),
+    the same way the tank's own `bounds` is derived in aquarium.py, rather
+    than a fixed constant a small terminal could clip. `trunk_y`/
+    `ground_y` are exposed so a caller placing its own fixtures (shelters)
+    can line them up with the same ground line without recomputing it.
 
-    This whole scene is meant to be swapped wholesale into `app.widgets`
-    (see aquarium.py's `_enter_forest()`) -- deliberately NOT a modal/
-    overlay. Clicking a fish here still opens the same Fish Inspector as
-    in the tank (the Forest isn't read-only). A `LeafField` (ambient
-    falling leaves, mirrors the tank's own `BubbleField`) is included in
-    the static scenery -- `paused` is the same zero-arg-callable shared-
-    mutable pattern the tank's Pause menu already uses."""
-    from .constants import (
-        DENSE_PLANTS_ART,
-        DENSE_PLANTS_COLORS,
-        FOREST_HEIGHT,
-        FOREST_WIDTH,
-        HIDDEN_CAVE_ART,
-        HIDDEN_CAVE_COLORS,
-        LOST_ADVENTURE_SHELTER_CAPACITY,
-        TREE_HOUSE_ART,
-        TREE_HOUSE_COLORS,
-    )
+    Clicking a fish here still opens the same Fish Inspector as in the
+    tank (neither Forest room is read-only). `paused` is the same
+    zero-arg-callable shared-mutable pattern the tank's Pause menu already
+    uses, passed straight to the LeafField."""
+    from .constants import FOREST_HEIGHT, FOREST_WIDTH
     from .leaves import LeafField
-    from .tank_objects import Decoration
 
     forest_w = min(FOREST_WIDTH, max(20, app.cols - 6))
     forest_h = min(FOREST_HEIGHT, max(10, app.rows - 8))
 
     stats_label = Label(2, 1, "", Style(fg="bright_white"))
     widgets: list = [
-        Label(
-            2,
-            0,
-            "The Forest -- click a fish to inspect it, or Leave to go back",
-            Style(fg="bright_cyan", styles=["bold"]),
-        ),
+        Label(2, 0, title, Style(fg="bright_cyan", styles=["bold"])),
         stats_label,
     ]
     canopy_top_y, canopy_mid_y, trunk_y = 3, 4, 5
@@ -374,7 +341,138 @@ def build_forest_scene(
             (2.0, float(canopy_top_y), float(2 + forest_w), float(ground_y)), paused
         )
     )
-    widgets.append(Button(2, leave_y, "Leave Forest").on_click(lambda _w: on_leave()))
+    widgets.append(Button(2, leave_y, leave_label).on_click(lambda _w: on_leave()))
+
+    fy_low = float(trunk_y + 1)
+    fy_high = max(fy_low + 1.0, float(ground_y - 1))
+    bounds = (4.0, fy_low, forest_w - 4.0, fy_high)
+    return widgets, stats_label, forest_w, forest_h, trunk_y, ground_y, bounds
+
+
+def build_forest_clearing_scene(
+    app, on_leave, on_go_deeper, paused=lambda: False
+) -> tuple[list, Label, tuple[float, float, float, float]]:
+    """The Forest's outer Clearing (Exploration Update Slice 1, now split
+    into rooms) -- where an ordinary day-trip forager comes and goes. The
+    live Fish/Wood objects currently here are appended/removed straight
+    onto this same persistent list over time by aquarium.py's
+    _check_foraging() (which fish/wood currently exist changes on its own
+    timers, regardless of whether this scene happens to be the one
+    currently shown -- see constants.py's Exploration Update comment), so
+    nothing here needs rebuilding just to reflect that. Never sees a Lost
+    Adventure fish -- those live exclusively in the Deep Forest room (see
+    build_forest_deep_scene()), reached one room deeper via `on_go_deeper`.
+
+    Returns `(widgets, stats_label, bounds)` -- the caller keeps the label
+    reference to refresh its money readout each time the scene is entered
+    (nothing in the Clearing changes it while shown, so a live per-tick
+    refresh isn't needed the way the tank's own stats label has one).
+
+    This whole scene is meant to be swapped wholesale into `app.widgets`
+    via a real cozy_tui Screen (see aquarium.py's `_enter_forest()`) --
+    deliberately NOT a modal/overlay."""
+    from .constants import (
+        DENSE_PLANTS_ART,
+        DENSE_PLANTS_COLORS,
+        HIDDEN_CAVE_ART,
+        HIDDEN_CAVE_COLORS,
+        TREE_HOUSE_ART,
+        TREE_HOUSE_COLORS,
+    )
+    from .tank_objects import Decoration
+
+    widgets, stats_label, forest_w, forest_h, trunk_y, ground_y, bounds = (
+        _build_forest_scenery(
+            app,
+            "Leave Forest",
+            on_leave,
+            paused,
+            "The Clearing -- click a fish to inspect it, or Leave to go back",
+        )
+    )
+    # Purely decorative lookalikes of the Deep Forest's three real shelters
+    # (see build_forest_deep_scene() below) -- same art, same rough layout,
+    # but capacity=0 so Decoration.is_container is False: never enterable,
+    # never clickable here (aquarium.py's _on_mouse() only wires shelter
+    # clicks for the Deep Forest room). A forager dwelling nearby can still
+    # notice and comment on one (see _check_foraging()'s step 3c and
+    # CLEARING_SHELTER_NOTICE_LINES) -- the same forest either way, just
+    # nothing here is an actual hideout the way it is one room deeper.
+    widgets.append(
+        Decoration(
+            forest_w * 0.25,
+            trunk_y + 1,
+            TREE_HOUSE_ART,
+            TREE_HOUSE_COLORS,
+            kind="Tree House",
+        )
+    )
+    widgets.append(
+        Decoration(
+            forest_w * 0.55,
+            ground_y - len(HIDDEN_CAVE_ART),
+            HIDDEN_CAVE_ART,
+            HIDDEN_CAVE_COLORS,
+            kind="Hidden Cave",
+        )
+    )
+    widgets.append(
+        Decoration(
+            forest_w * 0.8,
+            ground_y - len(DENSE_PLANTS_ART),
+            DENSE_PLANTS_ART,
+            DENSE_PLANTS_COLORS,
+            kind="Dense Plants Thicket",
+        )
+    )
+    # One row above "Leave Forest" -- both stay reachable without crowding.
+    widgets.append(
+        Button(2, forest_h - 2, "Go Deeper...").on_click(lambda _w: on_go_deeper())
+    )
+    return widgets, stats_label, bounds
+
+
+def build_forest_deep_scene(
+    app, on_leave, paused=lambda: False
+) -> tuple[list, Label, tuple[float, float, float, float], dict]:
+    """The Deep Forest -- reached only through the Clearing (see
+    build_forest_clearing_scene()'s "Go Deeper..." button) -- where a Lost
+    Adventure fish actually spends its days: its own shelters, its own
+    wood supply (aquarium.py keeps a second, independent `forest_wood`-
+    style pool for this room), and Bubbles' home turf. An ordinary
+    forager never appears here, and a Lost Adventure fish never appears in
+    the Clearing -- keeping "lost" meaning genuinely unreachable rather
+    than a fish the player can just wander past in the same clearing a
+    day-tripper uses.
+
+    Returns `(widgets, stats_label, bounds, shelters)`. `shelters` is a
+    {name: Decoration} lookup for the three fixed Tree House/Hidden Cave/
+    Dense Plants Thicket objects (see LOST_ADVENTURE_SHELTERS) -- real
+    Decoration instances with real capacity, exactly like the tank's own
+    Castle/Rock, just never purchasable (they're "already there in the
+    forest", not Shop items). aquarium.py's _start_shelter_visit() looks a
+    fish's discovered/fled-to shelter name up in this dict to know where
+    to briefly place it."""
+    from .constants import (
+        DENSE_PLANTS_ART,
+        DENSE_PLANTS_COLORS,
+        HIDDEN_CAVE_ART,
+        HIDDEN_CAVE_COLORS,
+        LOST_ADVENTURE_SHELTER_CAPACITY,
+        TREE_HOUSE_ART,
+        TREE_HOUSE_COLORS,
+    )
+    from .tank_objects import Decoration
+
+    widgets, stats_label, forest_w, _forest_h, trunk_y, ground_y, bounds = (
+        _build_forest_scenery(
+            app,
+            "Back to the Clearing",
+            on_leave,
+            paused,
+            "The Deep Forest -- where lost fish wander. Click one to inspect it.",
+        )
+    )
 
     # Lost Adventure's three shelter fixtures -- real Decoration instances
     # (capacity and all), spread across the ground so a briefly-visiting
@@ -409,8 +507,5 @@ def build_forest_scene(
     }
     widgets.extend(shelters.values())
 
-    fy_low = float(trunk_y + 1)
-    fy_high = max(fy_low + 1.0, float(ground_y - 1))
-    bounds = (4.0, fy_low, forest_w - 4.0, fy_high)
     return widgets, stats_label, bounds, shelters
 

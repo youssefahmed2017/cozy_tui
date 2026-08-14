@@ -119,7 +119,7 @@ def _build_registry():
         events.append(("refresh_stats",))
 
     def set_day_phase(phase):
-        if phase.lower() not in ("day", "morning", "night"):
+        if phase.lower() not in ("morning", "afternoon", "evening", "night"):
             raise ValueError("bad phase")
         events.append(("set_day_phase", phase))
         return phase.capitalize()
@@ -190,6 +190,27 @@ def _build_registry():
             fish.remove(f)
         events.append(("remove_fish", f.display_name))
 
+    def find_legendary(species_name=None):
+        events.append(("find_legendary", species_name))
+        if species_name is not None and species_name not in (
+            "Golden Axolotl",
+            "Ghost Fish",
+            "Crystal Fish",
+            "Lunar Betta",
+            "Moon Jellyfish",
+        ):
+            raise ValueError(f"Unknown Legendary species: {species_name!r}.")
+        f = _fake_fish(species_name or "Ghost Fish")
+        fish.append(f)
+        return f
+
+    def force_random_event(event):
+        events.append(("force_random_event", event))
+        if event not in ("legendary", "lucky_find", "showing_off", "storm", "stray_fish"):
+            raise ValueError(f"Unknown event: {event!r}.")
+        if event == "storm" and state.get("storm_active"):
+            raise ValueError("A storm is already rolling through.")
+
     commands = build_console_commands(
         state=state,
         fish=fish,
@@ -215,6 +236,8 @@ def _build_registry():
         toggle_forest=toggle_forest,
         spawn_decoration=spawn_decoration,
         remove_fish=remove_fish,
+        find_legendary=find_legendary,
+        force_random_event=force_random_event,
     )
     return commands, fish, state, events
 
@@ -297,13 +320,14 @@ def test_buy_command_rejects_an_unknown_item():
         run_console_command(commands, 'buy("Nonexistent Thing")')
 
 
-def test_set_time_command_accepts_the_three_phases():
+def test_set_time_command_accepts_the_four_phases():
     commands, _fish, _state, events = _build_registry()
-    for phase in ("day", "morning", "night"):
+    for phase in ("morning", "afternoon", "evening", "night"):
         run_console_command(commands, f'set_time("{phase}")')
     assert [e for e in events if e[0] == "set_day_phase"] == [
-        ("set_day_phase", "day"),
         ("set_day_phase", "morning"),
+        ("set_day_phase", "afternoon"),
+        ("set_day_phase", "evening"),
         ("set_day_phase", "night"),
     ]
 
@@ -534,6 +558,25 @@ def test_remove_fish_command_raises_for_an_unknown_fish():
     commands, _fish, _state, _events = _build_registry()
     with pytest.raises(ConsoleError):
         run_console_command(commands, 'remove_fish(fish_name="Ghost")')
+
+
+def test_force_random_event_command_fires_the_named_event():
+    commands, _fish, _state, events = _build_registry()
+    run_console_command(commands, 'force_random_event(event="storm")')
+    assert ("force_random_event", "storm") in events
+
+
+def test_force_random_event_command_requires_an_event_argument():
+    commands, _fish, _state, _events = _build_registry()
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, "force_random_event()")
+
+
+def test_force_random_event_command_surfaces_a_not_currently_applicable_error():
+    commands, _fish, state, _events = _build_registry()
+    state["storm_active"] = True
+    with pytest.raises(ConsoleError):
+        run_console_command(commands, 'force_random_event(event="storm")')
 
 
 # ── run(): RestrictedPython-sandboxed scripting ─────────────────────────────

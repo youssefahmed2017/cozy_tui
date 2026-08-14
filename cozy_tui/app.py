@@ -2032,9 +2032,27 @@ class App:
             Key.CTRL_UP,
             Key.CTRL_DOWN,
         ):
-            # A focused scrollable widget (ScrollView) consumes the wheel
-            # / page keys; otherwise they scroll the whole base UI.
-            if getattr(self.focused, "scrollable", False):
+            # The mouse wheel (unlike Page Up/Down or Ctrl+Up/Down, which
+            # are keyboard-only -- no cursor position to hover with) prefers
+            # whatever scrollable widget is actually under the cursor over
+            # whatever merely holds keyboard focus: a ScrollView full of
+            # focusable children (e.g. Buttons) can never become focused
+            # itself (a focusable container always defers Tab to its
+            # focusable descendants -- see _focusables_in()), so without
+            # this the wheel could never reach it at all in that shape, no
+            # matter where the mouse was. Walks up from whatever was
+            # actually hit (e.g. a Button inside the ScrollView) to the
+            # nearest scrollable ancestor.
+            hovered = None
+            if key in (Key.SCROLL_UP, Key.SCROLL_DOWN):
+                col, row = self._last_mouse_pos
+                target = self._mouse_target(col, row, self._topmost_modal())
+                while target is not None and not getattr(target, "scrollable", False):
+                    target = getattr(target, "parent", None)
+                hovered = target
+            if hovered is not None:
+                hovered.on_key(key)
+            elif getattr(self.focused, "scrollable", False):
                 self.focused.on_key(key)
             elif key in (Key.SCROLL_UP, Key.PAGE_UP, Key.CTRL_UP):
                 self._scroll(-3)
@@ -2064,7 +2082,11 @@ class App:
         either sees them."""
         modal = self._topmost_modal()
         event.row += 0 if modal else self.scroll_y
-        if isinstance(event, MouseMove) and self._debug_log is not None:
+        if isinstance(event, MouseMove):
+            # Unconditional (not just under debug=True, which only ever
+            # gated the DevTools Coordinates tab that first read this) --
+            # wheel-scroll routing (_dispatch_input's SCROLL_UP/DOWN branch)
+            # needs an always-current hover position too, in any app.
             self._last_mouse_pos = (event.col, event.row)
         # Elements mode: the DevTools panel is open, its own Elements tab is
         # showing, and the event isn't over the panel's own chrome (a click

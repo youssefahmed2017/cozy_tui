@@ -340,15 +340,24 @@ def find_breeding_pairs(fish_list):
     """Friend-or-better pairs where both fish are grown-up (Adult) and not
     predators -- each pair returned exactly once. Doesn't roll BREED_CHANCE
     itself; the caller (main()'s daily tick) decides whether each pair
-    actually has a baby this time."""
+    actually has a baby this time.
+
+    A Legendary parent is excluded the same way a predator is: More Fish
+    (updates.md)'s Legendary tier is "found, not bought" and one-of-a-kind
+    by design -- breeding one into a second copy undercuts that, and would
+    also crash the species lookup in aquarium.py's _try_breeding(), since
+    Legendary species deliberately live outside SHOP_ITEMS (see
+    constants.LEGENDARY_SPECIES)."""
     pairs = []
     for a, b, rel in all_relationship_pairs(fish_list):
         if (
             rel.score < RELATIONSHIP_FRIEND_THRESHOLD
             or a.is_predator
             or b.is_predator
-            or a.growth_stage != "Adult"
-            or b.growth_stage != "Adult"
+            or a.rarity == "Legendary"
+            or b.rarity == "Legendary"
+            or not a.growth_stage.startswith("Adult")
+            or not b.growth_stage.startswith("Adult")
         ):
             continue
         pairs.append((a, b))

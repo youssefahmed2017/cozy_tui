@@ -159,6 +159,7 @@ class Decoration(Widget):
         kind: str = "Decoration",
         price: int = 0,
         capacity: int = 0,
+        heat_source: bool = False,
     ):
         colors = [color] * len(art) if isinstance(color, str) else list(color)
         super().__init__(round(x), round(y), Style(fg=colors[0]))
@@ -167,6 +168,11 @@ class Decoration(Widget):
         self.kind = kind
         self.price = price  # this kind's Shop price -- sell_value is a fraction of it
         self.capacity = capacity
+        # Warm Lamp (Evening warming-up): a plain bool, same "no subclass
+        # needed" reasoning as capacity/is_container below -- see fish.py's
+        # Fish._nearest_heat_source(). False (the default, and every
+        # non-Lamp kind's value) means a cold fish never prefers this one.
+        self.heat_source = heat_source
         self.fx, self.fy = float(x), float(y)
         w = max(text_width(line) for line in art)
         h = len(art)

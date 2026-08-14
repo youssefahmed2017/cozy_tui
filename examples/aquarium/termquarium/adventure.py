@@ -30,6 +30,12 @@ BUBBLES_NO_WOOD_LINE = (
 # find_wood roll below -- one line either way keeps the memory log consistent
 # regardless of which path actually found it.
 FOUND_WOOD_LINE = "Found a piece of driftwood."
+# Same precedent, for danger: shared with aquarium.py's
+# _flee_lost_adventure_fish_to_shelter(), a real encounter with the exact
+# same Tiger Shark that threatens ordinary foragers (see
+# _check_forest_danger()) instead of only ever an invisible daily coin
+# flip. {shelter} is filled in by whichever path actually resolved it.
+DANGER_LINE = "A huge fish chased me. I made it back to the {shelter} safely."
 
 
 def roll_duration() -> int:
@@ -50,6 +56,14 @@ def new_state(duration: int | None = None) -> dict:
         # read side already defaults a missing key to False (an old save's
         # fish hasn't been reminded yet either), so no migration needed.
         "told_to_find_wood": False,
+        # Set for the rest of the in-progress day the moment a real Tiger
+        # Shark encounter resolves (see aquarium.py's
+        # _flee_lost_adventure_fish_to_shelter()), so pick_event() doesn't
+        # also roll the abstract "danger" event on top of one that already
+        # visibly happened -- reset back to False once _advance_lost_
+        # adventure() finishes resolving each day. Same missing-key-
+        # defaults-safely story as told_to_find_wood above for an old save.
+        "danger_today": False,
     }
 
 
@@ -68,8 +82,16 @@ def pick_event(adv: dict) -> str:
     if not adv["has_wood"]:
         events.append("find_wood")
         weights.append(10)
-    events.append("danger")
-    weights.append(10)
+    # Skipped if a real Tiger Shark encounter already resolved this same
+    # day (adv["danger_today"], see aquarium.py's
+    # _flee_lost_adventure_fish_to_shelter()) -- same "the real path takes
+    # over, the abstract roll steps aside" shape find_wood already has
+    # above, just day-scoped instead of adventure-scoped since danger (unlike
+    # finding wood or a shelter) is meant to be a repeatable risk, not a
+    # one-time discovery.
+    if not adv.get("danger_today", False):
+        events.append("danger")
+        weights.append(10)
     return random.choices(events, weights=weights, k=1)[0]
 
 
@@ -107,7 +129,7 @@ def apply_event(adv: dict, event: str) -> dict:
         if adv["shelter"] is None:
             adv["shelter"] = shelter
         return {
-            "memory": f"A huge fish chased me. I made it back to the {shelter} safely.",
+            "memory": DANGER_LINE.format(shelter=shelter),
             "happiness_delta": -LOST_ADVENTURE_DANGER_HAPPINESS_LOSS,
             "feed": False,
         }

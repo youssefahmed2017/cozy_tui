@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 
 from .constants import (
+    AFTERNOON_END,
     BASE_WATER_TEMP,
     MORNING_END,
     NIGHT_END,
@@ -29,14 +30,16 @@ def compute_time_of_day(elapsed_seconds: float, day_length_seconds: float) -> fl
 
 
 def get_day_phase(fraction: float) -> str:
-    """Night / Morning / Day, for behavior gating and the status readout.
-    Night wraps around the fraction=0 boundary (e.g. NIGHT_START=0.75 to
-    NIGHT_END=0.15 spans midnight)."""
+    """Morning / Afternoon / Evening / Night, for behavior gating and the
+    status readout. Night wraps around the fraction=0 boundary (e.g.
+    NIGHT_START=0.75 to NIGHT_END=0.15 spans midnight)."""
     if fraction >= NIGHT_START or fraction < NIGHT_END:
         return "Night"
     if fraction < MORNING_END:
         return "Morning"
-    return "Day"
+    if fraction < AFTERNOON_END:
+        return "Afternoon"
+    return "Evening"
 
 
 def day_night_curve(fraction: float) -> float:
@@ -56,3 +59,18 @@ def night_blend(fraction: float) -> float:
     """0.0 at midday, 1.0 at midnight, smooth in between -- how far to
     lerp_color() the background from DAY_BG toward NIGHT_BG."""
     return (1.0 - day_night_curve(fraction)) / 2.0
+
+
+def temperature_chill(temperature: float) -> float:
+    """0.0 at today's peak warmth, 1.0 at today's coldest point -- a smooth
+    "how chilly does the water feel right now" ramp for fish.py's Evening
+    warming-up behavior (comfortable -> no urge, slightly cold -> a small
+    one, very cold -> a strong one), driven by the same continuous
+    temperature curve as everything else in this module. Deliberately not
+    the same scale as constants.COLD_TEMP_THRESHOLD, which is a harder
+    cutoff for the sluggish-speed effect near midnight -- this ramps
+    gradually across the whole swing, so it's already meaningfully above
+    zero by Evening rather than snapping on at a fixed point."""
+    peak = BASE_WATER_TEMP + WATER_TEMP_SWING
+    chill = (peak - temperature) / (2 * WATER_TEMP_SWING)
+    return max(0.0, min(1.0, chill))

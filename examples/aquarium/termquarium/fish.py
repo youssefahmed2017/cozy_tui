@@ -16,6 +16,8 @@ from .constants import (
     AXOLOTL_RELAX_DURATION_MAX,
     AXOLOTL_RELAX_DURATION_MIN,
     AXOLOTL_RESTING_GLYPH,
+    BUBBLE_CHASE_RADIUS,
+    BUBBLE_CHASE_STEER_RATE,
     ENERGETIC_TURN_DIV,
     EXPLORER_HOME_SHUFFLE_CHANCE,
     FAST_SWIMMER_SPEED_MULT,
@@ -27,6 +29,7 @@ from .constants import (
     GREEDY_RATE_MULT,
     GREEDY_SPEED_MULT,
     GROWTH_STAGES,
+    HOLD_BEFORE_EAT_SECONDS,
     HAPPINESS_CIRCLE_ANGULAR_SPEED,
     HAPPINESS_CIRCLE_RADIUS,
     HAPPINESS_CIRCLE_STEER_RATE,
@@ -65,6 +68,11 @@ from .constants import (
     MIN_TURN_DELAY,
     MAX_TURN_DELAY,
     MISCHIEVOUS_FOOD_BOOST,
+    OCTOPUS_COLOR_SHIFT_MAX,
+    OCTOPUS_COLOR_SHIFT_MIN,
+    OCTOPUS_COLORS,
+    PIZZA_EAT_FLASH_SECONDS,
+    PLANKTON_HUNGER_RELIEF,
     PLAYFUL_SPEED_VARIANCE,
     PLAYFUL_TURN_DIV,
     RELAX_ARRIVE_MARGIN,
@@ -77,6 +85,7 @@ from .constants import (
     RELAX_STEER_RATE,
     RELAX_WIGGLE_DURATION,
     RELAX_WIGGLE_INTERVAL,
+    RACE_SPEED_MULT,
     RIVAL_FLEE_RADIUS,
     RIVAL_FOOD_BOOST,
     SCHOOL_ALIGNMENT_WEIGHT,
@@ -85,11 +94,19 @@ from .constants import (
     SCHOOL_SEPARATION_DISTANCE,
     SCHOOL_SEPARATION_WEIGHT,
     SCHOOL_STEER_RATE,
+    SEAHORSE_SPEED_MULT,
     SHY_FLEE_RADIUS,
     SLEEP_CLOSE_DISTANCE,
     SLEEP_FAR_DISTANCE,
     SLEEP_HUNGER_THRESHOLD,
     SLEEP_STEER_RATE,
+    WARM_ARRIVE_MARGIN,
+    WARM_CHANCE_MAX,
+    WARM_CHECK_MAX,
+    WARM_CHECK_MIN,
+    WARM_DURATION_MAX,
+    WARM_DURATION_MIN,
+    WARM_STEER_RATE,
     TRAIT_ENERGETIC,
     TRAIT_FAST_SWIMMER,
     TRAIT_FOOD_LOVER,
@@ -126,6 +143,7 @@ from .steering import (
 )
 from .styles import HEART_STYLE, MUTED, WOOD_STYLE
 from .tank_objects import Wood
+from .world import temperature_chill
 
 
 class Fish(Widget):
@@ -149,6 +167,8 @@ class Fish(Widget):
         environment=None,
         paused=None,
         favorite_foods=(),
+        rarity: str = "Common",
+        bubbles=None,
     ):
         super().__init__(round(x), round(y), Style(fg=color))
         # Set before anything below that can read .age_days/.growth_stage --
@@ -166,7 +186,7 @@ class Fish(Widget):
         self.left_glyph = left_glyph
         self.is_predator = is_predator
         self.decorations = decorations if decorations is not None else []
-        # Shared {"phase": "Day"/"Morning"/"Night", "temperature": float}
+        # Shared {"phase": "Morning"/"Afternoon"/"Evening"/"Night", "temperature": float}
         # dict, updated once a second by main()'s _per_second_tick -- the
         # same shared-mutable-dict pattern mouse_pos already uses.
         self.environment = environment
@@ -181,7 +201,34 @@ class Fish(Widget):
         # aquarium.py's _feed_treat. Flavor only: same economy.feed() relief
         # either way, just a nicer toast, never a bigger number.
         self.favorite_foods = favorite_foods
+        # More Fish (updates.md): collection tier, flavor-only display (Shop
+        # row, Inspector) -- see constants.RARITY_TIERS.
+        self.rarity = rarity
         self.mouse_pos = mouse_pos  # shared {"x":.., "y":..} dict, or None
+        # The tank's single shared BubbleField (bubbles.py), or None -- read
+        # (never mutated) by a wandering Baby's bubble-chase steering in
+        # draw(), the same "hold a live shared reference" pattern mouse_pos
+        # already uses.
+        self.bubbles = bubbles
+        # One-shot per catch (not per-baby-ever -- see constants.py's
+        # BUBBLE_CHASE_RADIUS comment): set True in draw() the instant a
+        # chased bubble is reached, consumed by aquarium.py's
+        # _process_bubble_chases() the same way _relax_began already is.
+        self._bubble_chase_caught = False
+        # Rolled fresh once a day for every Baby (aquarium.py's
+        # _check_milestone_achievements(), BUBBLE_CHASE_CHANCE_PER_DAY) --
+        # False by default so a fresh fish never chases before its first
+        # roll. Gates the whole branch below: on a day this loses, bubbles
+        # are ignored entirely, however many drift by.
+        self._bubble_chase_eligible_today = False
+        # Baby racing (aquarium.py's _check_baby_races()): while now is
+        # before this, _effective_speed() applies RACE_SPEED_MULT and
+        # draw() shows a 💨 above the fish -- a cosmetic burst, not a new
+        # destination. Set on both fish at once from aquarium.py, which
+        # already has both objects in hand; fish.py never mutates a rival's
+        # state directly (same reasoning join-relax's `self.friend.relaxing`
+        # read-only check already follows).
+        self._racing_until = 0.0
         self.personality = random_personality()
         # Independent of (and stackable with) personality -- see
         # roll_is_sleepy()'s docstring. A Greedy fish can also be Sleepy.
@@ -321,6 +368,20 @@ class Fish(Widget):
         # actually happened are different things, and the whole point here is
         # letting them diverge -- the fish forgets, the player doesn't have to.
         self.full_memory_log: list[str] = []
+        # A curated subset of memory_log's own entries -- the handful truly
+        # too important to risk aging out of the capped list above (birth,
+        # a first Friend bond, a child, making it home from a Lost
+        # Adventure). Appended alongside memory_log/full_memory_log by
+        # aquarium.py's _log_memory(..., lifelong=True), never trimmed.
+        # Deliberately excludes departure lines -- see dreams.py's
+        # _departed_friend_name(): grief fading once memory_log's cap pushes
+        # that line out is itself the intended behavior, not a gap to patch.
+        self.pinned_memories: list[str] = []
+        # Which REFLECTION_MEMORY_DAYS thresholds this fish has already
+        # reflected on (see aquarium.py's _check_reflection_memories()) --
+        # a frozenset, same immutable-set convention as `traits`, so each
+        # milestone line fires exactly once per fish even across save/load.
+        self.reflections_logged: frozenset[int] = frozenset()
         # Set once at birth (aquarium.py's _try_breeding) to the two parents'
         # display_names at that moment, and never touched again -- a "blood
         # bond" that must outlive either parent (sold, starved, eaten) or a
@@ -427,7 +488,9 @@ class Fish(Widget):
             # Looked up by name, not GROWTH_STAGES[-1] -- Elder is the real
             # last stage now, and a brand-new Shark must never start there.
             adult_age_days = next(
-                min_age for name, min_age, _mult in GROWTH_STAGES if name == "Adult"
+                min_age
+                for name, min_age, _mult in GROWTH_STAGES
+                if name.startswith("Adult")
             )
             self.birth_time -= AGE_SECONDS_PER_DAY * (adult_age_days + 0.5)
         self._last = time.monotonic()
@@ -436,6 +499,25 @@ class Fish(Widget):
         self._next_relax_check = self._last + random.uniform(
             RELAX_CHECK_MIN, RELAX_CHECK_MAX
         )
+        # More Fish (updates.md): Octopus's "sometimes changes color" -- only
+        # meaningfully read when species_name == "Octopus" (see draw()), but
+        # seeded for every fish the same unconditional way birth_time/
+        # _next_turn are.
+        self._next_color_shift = self._last + random.uniform(
+            OCTOPUS_COLOR_SHIFT_MIN, OCTOPUS_COLOR_SHIFT_MAX
+        )
+        # More Fish (updates.md): Worms/Bloodworms are held at the mouth for
+        # HOLD_BEFORE_EAT_SECONDS instead of eaten instantly -- see the
+        # caught branch below (sets these two) and draw()'s per-frame check
+        # (finishes the meal once _holding_until elapses) and _glyph() (shows
+        # the held food's emoji meanwhile). None whenever nothing's held.
+        self._holding_food = None
+        self._holding_until = 0.0
+        # More Fish (updates.md): a brief ☺️ right after finishing a Pizza --
+        # the second half of the two-frame reaction (_consume_food() sets
+        # this; the first half, 😋 while approaching, is live state read
+        # straight off the food-seeking branch, not a timer -- see draw()).
+        self._pizza_eat_flash_until = 0.0
         # Surfacing state (see the relax branch in draw()): `relaxing` is True
         # only once actually settled -- at its own favorite spot, or (see the
         # join branch) beside a friend who's already relaxing at theirs.
@@ -452,6 +534,34 @@ class Fish(Widget):
         self._relax_flash_until = 0.0
         self._relax_began = False
         self._joined_friend_relax = False
+        # Evening warming-up (see draw()'s branch right after relaxing, and
+        # world.temperature_chill()): a fish that wins its chance heads for
+        # a Warm Lamp if one exists (preferred -- see _nearest_heat_source()),
+        # otherwise the nearest container *with room*. A container is
+        # actually entered -- `_entered`/`_warming_in`, the same "tucked in,
+        # invisible, frozen" mechanism sleeping_in/_hiding_in already use
+        # (see the `_entered` early-return in draw()) -- but a Lamp isn't a
+        # container, so a fish just lingers visibly nearby instead
+        # (`_warming_at_lamp`), any number at once. `_warm_target` is which
+        # one it's heading toward *before* arriving; `_warming_in`/
+        # `_warming_at_lamp` is which it actually reached (mirrors
+        # sleeping_in/_hiding_in's own split, extended one more way).
+        # `_warming_until` is set fresh the moment it actually arrives
+        # (mirrors `_hide_until`), not at the moment the urge starts --
+        # travel time doesn't eat into it. `_warm_approaching` drives the
+        # continuous 🥶 while still on the way (see draw()'s indicator
+        # chain); the entered-a-container fish's own ☺️ is drawn from the
+        # `_entered` mood-icon chain instead, the same way a housed fish's
+        # other momentary moods already are, while a Lamp-basking fish's ☺️
+        # is drawn from the ordinary (visible) indicator chain.
+        self._warm_approaching = False
+        self._warm_target = None
+        self._warming_in = None
+        self._warming_at_lamp = None
+        self._warming_until = 0.0
+        self._next_warm_check = self._last + random.uniform(
+            WARM_CHECK_MIN, WARM_CHECK_MAX
+        )
 
     @property
     def age_days(self) -> float:
@@ -554,19 +664,56 @@ class Fish(Widget):
         # Night no longer lives here -- a sleeping fish is a hard stop
         # (see draw()), not just slower, so there's nothing left to blend.
         mult = LAZY_SPEED_MULT if self.personality == "Lazy" else 1.0
+        if self.species_name == "Seahorse":
+            mult *= SEAHORSE_SPEED_MULT  # More Fish (updates.md): "slow"
         if TRAIT_FAST_SWIMMER in self.traits:
             mult *= FAST_SWIMMER_SPEED_MULT  # earned trait, stacks with everything else here
-        if self.growth_stage == "Elder":
+        if self.growth_stage.startswith("Elder"):
             mult *= ELDER_SPEED_MULT  # measurably slower with age
         if self.environment is not None:
             temperature = self.environment.get("temperature")
             if temperature is not None and temperature < COLD_TEMP_THRESHOLD:
                 mult *= COLD_SPEED_MULT  # cold-blooded and sluggish
+        if self._racing_until and time.monotonic() < self._racing_until:
+            mult *= RACE_SPEED_MULT  # a Baby race's cosmetic burst of speed
         return self.speed * mult
 
     def _nearest_food(self):
         i = nearest_index(self.fx, self.fy, [(f.fx, f.fy) for f in self.foods])
         return self.foods[i] if i is not None else None
+
+    def _consume_food(self, target) -> None:
+        """feed()/Happiness/the on_eaten flavor hook for a food item this
+        fish just ate -- shared by the immediate-eat path (draw()'s caught
+        branch) and the deferred Worms/Bloodworms hold (draw()'s per-frame
+        check), so both apply the exact same effects once eating actually
+        happens, just at different moments."""
+        if getattr(target, "kind", None) == "Plankton":
+            # "Barely a mouthful" -- Plankton relieves hunger by only a tiny
+            # amount, dropped or fed, unlike every other food's near-full-up
+            # bite (see aquarium.py's _feed_treat for the Inspector-feeding
+            # equivalent).
+            self.hunger, self.health = feed(
+                self.hunger, self.health, relief=PLANKTON_HUNGER_RELIEF
+            )
+        else:
+            self.hunger, self.health = feed(self.hunger, self.health)
+        self.happiness = adjust_happiness(self.happiness, HAPPINESS_FED_GAIN)
+        if not self.is_predator and TRAIT_FOOD_LOVER in self.traits:
+            # On top of HAPPINESS_FED_GAIN above -- any food, not just a
+            # favorite treat (see aquarium.py's _treat_reaction for the
+            # separate favorite-food bonus, which stacks with this one too).
+            self.happiness = adjust_happiness(self.happiness, HAPPINESS_FOOD_LOVER_BONUS)
+        # A special food (a dropped treat) reacts to whoever actually ate it
+        # -- fired here, after feed(), so the reaction sees the fed hunger/
+        # health. Plain food and eaten prey have no such hook.
+        on_eaten = getattr(target, "on_eaten", None)
+        if on_eaten is not None:
+            on_eaten(self)
+        if getattr(target, "kind", None) == "Pizza":
+            # More Fish (updates.md): the ☺️ half of the two-frame reaction --
+            # see the 😋 half in draw()'s flourish chain.
+            self._pizza_eat_flash_until = time.monotonic() + PIZZA_EAT_FLASH_SECONDS
 
     def _closer_rival_for(self, food_pos):
         """The nearest *other* non-predator fish that was closer to
@@ -623,6 +770,16 @@ class Fish(Widget):
         i = nearest_index(self.fx, self.fy, [(d.fx, d.fy) for d in containers])
         return containers[i] if i is not None else None
 
+    def _nearest_heat_source(self):
+        # Warm Lamp (Evening warming-up) -- unlike a Rock/Castle, never
+        # claims/checks capacity: it isn't a container (Decoration.
+        # heat_source, not capacity), so any number of fish can bask at the
+        # same one at once. Preferred over a container whenever one exists
+        # (see the warming periodic-check in draw()).
+        lamps = [d for d in self.decorations if d.heat_source]
+        i = nearest_index(self.fx, self.fy, [(d.fx, d.fy) for d in lamps])
+        return lamps[i] if i is not None else None
+
     def _group_centroid(self):
         """Average (x, y) of every other fish sharing this tank, or None if
         there are none -- Friendly's fallback when there's no mouse to
@@ -657,14 +814,19 @@ class Fish(Widget):
         ]
 
     def _home_occupancy(self, decoration) -> int:
-        # Sleepers and hiders share one capacity pool per container -- a
-        # Rock already holding 2 sleepers for the night can't also cram in
-        # 2 more fish hiding from a Shark.
+        # Sleepers, hiders, and Evening warming-up guests all share one
+        # capacity pool per container -- a Rock already holding 2 sleepers
+        # for the night can't also cram in 2 more fish hiding from a Shark
+        # or warming up.
         return sum(
             1
             for f in self.fish_list
             if f is not self
-            and (f.sleeping_in is decoration or f._hiding_in is decoration)
+            and (
+                f.sleeping_in is decoration
+                or f._hiding_in is decoration
+                or f._warming_in is decoration
+            )
         )
 
     def _roommates_ready_to_leave(self) -> bool:
@@ -751,7 +913,7 @@ class Fish(Widget):
     def _glyph(self) -> str:
         # A Baby hasn't grown into its species' real shape yet -- growing up
         # is something you can actually see, not just an Inspector number.
-        if self.growth_stage == "Baby":
+        if self.growth_stage.startswith("Baby"):
             return BABY_RIGHT if self.vx >= 0 else BABY_LEFT
         # An Axolotl visibly looks different while resting (see the
         # Axolotl-tuned relax mechanic above) -- a closed-eyes glyph instead
@@ -778,7 +940,15 @@ class Fish(Widget):
             # two flourishes never fight over the same glyph.
             wiggling = True
         if wiggling:
-            return f"{base}~" if self.vx >= 0 else f"~{base}"
+            base = f"{base}~" if self.vx >= 0 else f"~{base}"
+        if self._holding_food is not None:
+            # More Fish (updates.md): Worms/Bloodworms held at the mouth for
+            # a moment before actually being eaten -- see the caught branch
+            # and _consume_food() in draw(). Appended on the facing side,
+            # same "mouth end" convention the carried-wood tail placement
+            # (below) uses for the opposite end.
+            emoji = self._holding_food.glyph
+            base = f"{base}{emoji}" if self.vx >= 0 else f"{emoji}{base}"
         return base
 
     def natural_width(self, scale) -> int:
@@ -823,6 +993,7 @@ class Fish(Widget):
         self.relaxing = False
         self._relax_spot = None
         self._relaxing_with = None
+        self._warm_approaching = False
 
         if self.paused is not None and self.paused.get("value"):
             # Frozen solid -- no movement, no hunger-independent timers, no
@@ -859,6 +1030,24 @@ class Fish(Widget):
             self._draw_carried_wood(canvas)
             return
 
+        # More Fish (updates.md): Octopus "sometimes changes color" -- past
+        # every early return above (paused/travelling/in the Forest), same
+        # as the rest of this file's per-frame timers.
+        if self.species_name == "Octopus" and now >= self._next_color_shift:
+            self.style.fg = random.choice(OCTOPUS_COLORS)
+            self._next_color_shift = now + random.uniform(
+                OCTOPUS_COLOR_SHIFT_MIN, OCTOPUS_COLOR_SHIFT_MAX
+            )
+
+        # More Fish (updates.md): finishes a Worms/Bloodworms meal once it's
+        # been held at the mouth for HOLD_BEFORE_EAT_SECONDS (set in the
+        # caught branch further down) -- same "check a _next_/_until
+        # timestamp once per frame" shape as the Octopus color shift above.
+        if self._holding_food is not None and now >= self._holding_until:
+            held = self._holding_food
+            self._holding_food = None
+            self._consume_food(held)
+
         if self._hide_until is not None and now >= self._hide_until:
             # Safe to come back out -- reposition at the container's door,
             # same as a fish leaving its claimed home for the night, and
@@ -878,6 +1067,22 @@ class Fish(Widget):
             self._storm_sheltering = None
             self._entered = False
 
+        if self._warming_in is not None and now >= self._warming_until:
+            # Done warming up -- come back out right where it entered, same
+            # release shape as Shark-hiding above.
+            self.fx, self.fy = self._warming_in.fx, self._warming_in.fy
+            self._warming_in = None
+            self._warming_until = 0.0
+            self._entered = False
+            self._warm_target = None
+
+        if self._warming_at_lamp is not None and now >= self._warming_until:
+            # Done basking at the Lamp -- it was visible the whole time
+            # (never entered anything), so there's nothing to reposition.
+            self._warming_at_lamp = None
+            self._warming_until = 0.0
+            self._warm_target = None
+
         speed = self._effective_speed()
         mouse_pos = self._mouse_point()
         # Fully asleep -- not just slower (see is_asleep below for the
@@ -888,7 +1093,30 @@ class Fish(Widget):
         # not advancing while asleep (so it picks a fresh direction/relax
         # roll the moment it wakes, rather than acting on a stale decision
         # from before it fell asleep).
-        sleeping = self.is_asleep
+        sleeping = self.is_asleep and not (
+            self.sleeping_in is None
+            and self.environment is not None
+            and self.environment.get("storm")
+        )
+        # A fish with nowhere safe (no claimed container -- see
+        # _claim_home()'s "or None for the tank floor") can't sleep through
+        # a live storm: overridden back into the awake branch below so it
+        # actually runs the storm-shelter-seeking steering ("no matter the
+        # personality" -- the elif chain there already overrides every
+        # personality branch once reached). A fish that already has a real
+        # sleeping_in container stays properly asleep -- it's already safe,
+        # same as an awake storm-sheltering fish once it arrives (see the
+        # `_entered`/`_storm_sheltering` release check above, which is the
+        # container-side half of "stays put through the storm").
+        #
+        # Unconditional (not just inside the awake branch's priority chain
+        # below, where `target`/`seeking_food` normally get their real
+        # values) so the flourish section far below -- reached by a sleeping
+        # fish too -- can safely read them regardless of which branch ran
+        # this frame. More Fish (updates.md): needed for the 😋-while-
+        # approaching-Pizza check.
+        seeking_food = False
+        target = None
 
         if sleeping:
             self._awake_in_home = False  # guards against a stale True if
@@ -986,13 +1214,23 @@ class Fish(Widget):
                     # wherever occupants_of() is read.
                     self._awake_in_home = True
                     self._wake_time = now
-                elif self._roommates_ready_to_leave():
+                elif self._roommates_ready_to_leave() and not (
+                    self.environment is not None and self.environment.get("storm")
+                ):
                     # Everyone sharing this home is awake and lingering,
                     # and it's been WAKE_LINGER_SECONDS since the *last* of
                     # them woke -- the whole room leaves together this
                     # frame instead of trickling out one at a time (each
                     # roommate's own draw() computes this same condition
                     # independently, so they all resolve it simultaneously).
+                    # A live storm holds everyone inside regardless -- same
+                    # "stays put through the storm" rule the awake
+                    # `_storm_sheltering` branch already gives a fish that
+                    # took cover this way instead of sleeping through it;
+                    # _awake_in_home stays True, so nothing about being
+                    # awake-but-lingering changes except the door staying
+                    # shut. The very next frame this clears once the storm
+                    # ends re-evaluates and lets the room leave normally.
                     self.fx, self.fy = self.sleeping_in.fx, self.sleeping_in.fy
                     self.sleeping_in = None
                     self._entered = False
@@ -1008,17 +1246,36 @@ class Fish(Widget):
             self._held_since = None
             self._wake_waker = None
             self._wake_next_attempt = None
-            self.dream = None  # whatever it dreamed about, it's awake now
-            # Defensive cleanup for a normal wake landing mid-nightmare-
-            # reaction (e.g. morning arrives before the 5s scare timer, or
-            # while still mid-comfort-flash) -- _process_nightmares() itself
-            # clears these the moment it actually fires each phase.
-            self._nightmare_wake_at = None
-            self._nightmare_relocate_at = None
-            self._just_scared_until = None
-            self._nightmare_comfort_until = None
-            self._seeking_friend_after_nightmare = False
-            self._nightmare_seek_target = None
+            # A nightmare's scare/relocate/seek/comfort sequence is allowed
+            # to keep running even once this fish wakes up naturally partway
+            # through it (hunger crossing SLEEP_HUNGER_THRESHOLD, or night
+            # simply ending before the sequence finishes) -- aquarium.py's
+            # _process_nightmares() drives these fields off real time
+            # regardless of is_asleep, and each phase already clears its own
+            # field the moment it actually fires. Wiping them here instead
+            # (the old behavior) meant a nightmare could be silently
+            # cancelled mid-flight with no scare, no toast, nothing -- see
+            # the awake seek-toward-companion branch below, which is what
+            # actually lets _seeking_friend_after_nightmare's walk continue
+            # once this fish is no longer in the sleep-steering branch at
+            # all. Only truly stale/finished state (nothing pending, no
+            # active flash) gets cleared here, same defensive spirit as
+            # before, just narrower.
+            nightmare_pending = (
+                self._nightmare_wake_at is not None
+                or self._nightmare_relocate_at is not None
+                or self._seeking_friend_after_nightmare
+                or (self._just_scared_until is not None and now < self._just_scared_until)
+                or (
+                    self._nightmare_comfort_until is not None
+                    and now < self._nightmare_comfort_until
+                )
+            )
+            if not nightmare_pending:
+                self.dream = None  # whatever it dreamed about, it's awake now
+                self._just_scared_until = None
+                self._nightmare_comfort_until = None
+                self._nightmare_seek_target = None
             if now >= self._next_turn:
                 lo, hi = MIN_TURN_DELAY, MAX_TURN_DELAY
                 turn_speed = speed
@@ -1043,7 +1300,13 @@ class Fish(Widget):
                     RELAX_CHECK_MIN, RELAX_CHECK_MAX
                 )
                 is_axolotl = self.species_name == "Axolotl"
-                chance = AXOLOTL_RELAX_CHANCE if is_axolotl else RELAX_CHANCE
+                chance = (
+                    AXOLOTL_RELAX_CHANCE
+                    if is_axolotl
+                    # More Fish (updates.md): Salmon "moves constantly" --
+                    # never relaxes, regardless of the happiness scaling below.
+                    else 0.0 if self.species_name == "Salmon" else RELAX_CHANCE
+                )
                 # "Visits favorite decoration more often" (Happy) / less so
                 # (Sad) -- Axolotl's own already-elevated chance gets the
                 # same scaling, so a happy Axolotl rests even more than usual
@@ -1058,6 +1321,41 @@ class Fish(Widget):
                     self._relaxing_until = now + random.uniform(*duration_range)
             relaxing = (
                 self.favorite_decoration is not None and now < self._relaxing_until
+            )
+
+            if self._warm_target is None and now >= self._next_warm_check:
+                # Only re-rolls while it has no target yet -- an in-progress
+                # approach (or an already-entered fish, which never reaches
+                # here at all -- see the `_entered` early return) keeps its
+                # target instead of getting a fresh one mid-walk.
+                self._next_warm_check = now + random.uniform(
+                    WARM_CHECK_MIN, WARM_CHECK_MAX
+                )
+                temperature = (
+                    self.environment.get("temperature")
+                    if self.environment is not None
+                    else None
+                )
+                if (
+                    temperature is not None
+                    and self.species_name != "Salmon"  # "moves constantly," like relaxing
+                ):
+                    chill = temperature_chill(temperature)
+                    if chill > 0.0 and random.random() < WARM_CHANCE_MAX * chill:
+                        # A Warm Lamp, if one exists, beats a container --
+                        # _with_room(), not the storm branch's plain nearest,
+                        # since a container is actually claimed on arrival,
+                        # so capacity has to be checked up front (shares one
+                        # pool with sleepers/hiders, see _home_occupancy()).
+                        # A Lamp never needs that check (not a container).
+                        self._warm_target = (
+                            self._nearest_heat_source()
+                            or self._nearest_container_with_room()
+                        )
+            should_warm = (
+                not relaxing
+                and self._warm_target is not None
+                and self._warm_target in self.decorations
             )
 
             mouse_scare = (
@@ -1142,6 +1440,27 @@ class Fish(Widget):
                     self.vx, self.vy = steer_away_from(
                         self.vx, self.vy, self.fx, self.fy, threat_pos, speed, blend
                     )
+            elif self._seeking_friend_after_nightmare and self._nightmare_seek_target:
+                # Continuing a nightmare's comfort-walk (set while still
+                # asleep, see the sleep branch above) even though this fish
+                # is now awake -- without this, waking up before actually
+                # reaching the companion stranded it: nothing here used to
+                # keep steering toward them once out of the sleep branch, so
+                # _process_nightmares()' arrival check (aquarium.py) could
+                # wait forever and the promised comfort never showed.
+                # aquarium.py clears _seeking_friend_after_nightmare/
+                # _nightmare_seek_target itself the moment it detects arrival.
+                companion = self._nightmare_seek_target
+                blend = min(1.0, SLEEP_STEER_RATE * dt)
+                self.vx, self.vy, _ = steer_toward_food(
+                    self.vx,
+                    self.vy,
+                    self.fx,
+                    self.fy,
+                    (companion.fx, companion.fy),
+                    speed,
+                    blend,
+                )
             else:
                 target = (
                     self._nearest_prey() if self.is_predator else self._nearest_food()
@@ -1183,6 +1502,7 @@ class Fish(Widget):
                         blend,
                     )
                     if caught:
+                        hold_kind = None
                         if self.is_predator:
                             self.fish_list.remove(target)
                             self.on_eat_fish(target)
@@ -1190,25 +1510,19 @@ class Fish(Widget):
                             self.foods.remove(target)
                             self.on_eat_food(target)
                             self._stole_food_from = self._closer_rival_for(target_pos)
-                        self.hunger, self.health = feed(self.hunger, self.health)
-                        self.happiness = adjust_happiness(
-                            self.happiness, HAPPINESS_FED_GAIN
-                        )
-                        if not self.is_predator and TRAIT_FOOD_LOVER in self.traits:
-                            # On top of HAPPINESS_FED_GAIN above -- any food,
-                            # not just a favorite treat (see aquarium.py's
-                            # _treat_reaction for the separate favorite-food
-                            # bonus, which stacks with this one too).
-                            self.happiness = adjust_happiness(
-                                self.happiness, HAPPINESS_FOOD_LOVER_BONUS
-                            )
-                        # A special food (a dropped treat) reacts to whoever
-                        # actually ate it -- fired here, after feed(), so the
-                        # reaction sees the fed hunger/health. Plain food and
-                        # eaten prey have no such hook.
-                        on_eaten = getattr(target, "on_eaten", None)
-                        if on_eaten is not None:
-                            on_eaten(self)
+                            hold_kind = getattr(target, "kind", None)
+                        if hold_kind in ("Worms", "Bloodworms"):
+                            # More Fish (updates.md): held at the mouth for a
+                            # moment instead of eaten instantly -- already
+                            # taken out of the water (on_eat_food above), but
+                            # feed()/Happiness/the on_eaten flavor hook (in
+                            # _consume_food) wait for draw()'s per-frame check
+                            # near the top of this file. _glyph() shows the
+                            # held emoji meanwhile.
+                            self._holding_food = target
+                            self._holding_until = now + HOLD_BEFORE_EAT_SECONDS
+                        else:
+                            self._consume_food(target)
                 elif self.environment is not None and self.environment.get("storm"):
                     # A live storm (see aquarium.py's _maybe_trigger_random_event()/
                     # _end_storm()) overrides personality-driven steering/friend-
@@ -1345,6 +1659,51 @@ class Fish(Widget):
                         if not was_relaxing:
                             self._relax_flash_until = now + RELAX_FLASH_SECONDS
                             self._relax_began = True
+                elif should_warm:
+                    # Evening warming-up: same "steer to a spot" shape as
+                    # relaxing just above, aimed at a Warm Lamp if one
+                    # exists (preferred) or else the nearest real container
+                    # with room. A container is actually entered, same
+                    # tucked-in/invisible mechanism sleeping_in/_hiding_in
+                    # already use (see the `_entered` early return above);
+                    # a Lamp isn't a container, so it just lingers nearby,
+                    # visible, instead.
+                    spot = self._warm_target
+                    arrive_radius = spot.radius + AVOID_MARGIN + WARM_ARRIVE_MARGIN
+                    if math.hypot(self.fx - spot.fx, self.fy - spot.fy) > arrive_radius:
+                        # Still on the way -- draw()'s indicator chain shows
+                        # 🥶 for as long as this stays True, not a timed flash.
+                        self._warm_approaching = True
+                        blend = min(1.0, WARM_STEER_RATE * dt)
+                        self.vx, self.vy, _ = steer_toward_food(
+                            self.vx,
+                            self.vy,
+                            self.fx,
+                            self.fy,
+                            (spot.fx, spot.fy),
+                            speed,
+                            blend,
+                        )
+                    elif spot.heat_source:
+                        # Arrived at the Lamp -- just settle in place, same
+                        # idle-damp as relaxing, never "entered". Same
+                        # release shape as the container branch below:
+                        # _warming_until is only set once, right here.
+                        self.vx *= IDLE_DAMPING
+                        self.vy *= IDLE_DAMPING
+                        self._warming_at_lamp = spot
+                        self._warming_until = now + random.uniform(
+                            WARM_DURATION_MIN, WARM_DURATION_MAX
+                        )
+                    else:
+                        # Arrived at a container -- go inside. Same release
+                        # shape as Shark-hiding: _warming_until is only set
+                        # once, right here, not back when the urge started.
+                        self._entered = True
+                        self._warming_in = spot
+                        self._warming_until = now + random.uniform(
+                            WARM_DURATION_MIN, WARM_DURATION_MAX
+                        )
                 elif self._circling_until and now < self._circling_until:
                     # "Swims in circles" (❤️, Very Happy) -- orbit the pivot
                     # captured when the roll landed (aquarium.py's
@@ -1386,6 +1745,34 @@ class Fish(Widget):
                             SCHOOL_SEPARATION_WEIGHT,
                             SCHOOL_SEPARATION_DISTANCE,
                         )
+                    elif (
+                        self.growth_stage.startswith("Baby")
+                        and self.bubbles is not None
+                        and self._bubble_chase_eligible_today
+                    ):
+                        # Even further below schooling -- purely a Baby's
+                        # own whim, only when nothing else (not even a
+                        # schoolmate) claimed this frame, and only on a day
+                        # its own roll allows it at all (see constants.py's
+                        # BUBBLE_CHASE_CHANCE_PER_DAY comment). Purely
+                        # cosmetic: bubbles.py's BubbleField is never
+                        # mutated here.
+                        bubble = self.bubbles.nearest_bubble(
+                            self.fx, self.fy, BUBBLE_CHASE_RADIUS
+                        )
+                        if bubble is not None:
+                            blend = min(1.0, BUBBLE_CHASE_STEER_RATE * dt)
+                            self.vx, self.vy, caught = steer_toward_food(
+                                self.vx,
+                                self.vy,
+                                self.fx,
+                                self.fy,
+                                (bubble.x, bubble.y),
+                                speed,
+                                blend,
+                            )
+                            if caught:
+                                self._bubble_chase_caught = True
 
             if self.decorations and not seeking_food and self._hiding_in is None:
                 # A fish heading into a container to hide from a Shark needs
@@ -1427,7 +1814,7 @@ class Fish(Widget):
             # nothing nearby to explain it. Anchoring to the container
             # itself means it always appears right at the furniture the
             # player would otherwise have to open the Inspector to check.
-            home = self.sleeping_in or self._hiding_in
+            home = self.sleeping_in or self._hiding_in or self._warming_in
             mood_x = home.abs_x if home is not None else self.abs_x
             mood_y = max(0, (home.abs_y if home is not None else self.abs_y) - 1)
             if self._just_booped_until is not None and now < self._just_booped_until:
@@ -1444,6 +1831,12 @@ class Fish(Widget):
                 and now < self._just_resisted_wake_until
             ):
                 canvas.write(mood_x, mood_y, "*...zzz*", MUTED)
+            elif self._warming_in is not None:
+                # Content, warming up -- lowest priority here since it's the
+                # only one of this group that isn't a brief, one-shot beat
+                # (it holds for the fish's whole stay, same as sleep's 😴
+                # would if a housed fish's ordinary glyph were shown at all).
+                canvas.write(mood_x, mood_y, "☺️", MUTED)
             return
 
         self.fx, self.fy, self.vx, self.vy = steer(
@@ -1483,11 +1876,35 @@ class Fish(Widget):
             # something to click open (see aquarium.py's _open_dream()).
             glyph = "😴💭" if self.dream is not None else "😴"
             canvas.write(self.abs_x, max(0, self.abs_y - 1), glyph, MUTED)
+        elif self._racing_until and now < self._racing_until:
+            # A Baby race's own visual (aquarium.py's _check_baby_races()) --
+            # above sleep-adjacent flourishes' priority but below the
+            # actually-serious ones above (booped/scared/comfort/resisted
+            # wake), since a race is exciting, not urgent.
+            canvas.write(self.abs_x, max(0, self.abs_y - 1), "💨", MUTED)
         elif self._relax_flash_until and now < self._relax_flash_until:
             # A brief 😌 when a fish first settles by its favorite spot -- a
             # glance-and-gone notice, not a permanent badge (it fades while the
             # fish keeps relaxing). Awake, so it can't collide with 😴 above.
             canvas.write(self.abs_x, max(0, self.abs_y - 1), "😌", MUTED)
+        elif self._warm_approaching:
+            # Still on the way to warm up -- 🥶 for the whole approach, not a
+            # one-shot notice. Once it actually arrives at a container it
+            # enters (see the `_entered` early return above) and this stops
+            # applying; its ☺️ is drawn from that branch's own mood-icon
+            # chain instead. Arriving at a Lamp falls straight into the elif
+            # just below instead, since it never enters anything.
+            canvas.write(self.abs_x, max(0, self.abs_y - 1), "🥶", MUTED)
+        elif self._warming_at_lamp is not None:
+            # Basking at a Warm Lamp -- visible the whole time (never
+            # entered), so its own ☺️ lives in this ordinary indicator
+            # chain rather than the `_entered` mood-icon one above.
+            canvas.write(self.abs_x, max(0, self.abs_y - 1), "☺️", MUTED)
+        elif self._pizza_eat_flash_until and now < self._pizza_eat_flash_until:
+            # More Fish (updates.md): the second half of the two-frame Pizza
+            # reaction -- 😋 while closing in (see the lowest-priority elif
+            # below), ☺️ right after (_consume_food() sets this).
+            canvas.write(self.abs_x, max(0, self.abs_y - 1), "☺️", MUTED)
         elif self._sparkle_until and now < self._sparkle_until:
             # A Very Happy fish's own ambient flourish -- rare and rate-
             # limited by construction (see aquarium.py's _process_happiness()'s
@@ -1505,6 +1922,17 @@ class Fish(Widget):
             )
             if close:
                 canvas.write(self.abs_x, max(0, self.abs_y - 1), "💕", HEART_STYLE)
+        elif (
+            seeking_food
+            and target is not None
+            and getattr(target, "kind", None) == "Pizza"
+        ):
+            # More Fish (updates.md): the first half of the two-frame Pizza
+            # reaction -- live state tracking the chase itself (not a timer,
+            # unlike every other flourish above), so it lasts exactly as
+            # long as the approach does. ☺️ (_pizza_eat_flash_until, above)
+            # takes over the instant it's actually eaten.
+            canvas.write(self.abs_x, max(0, self.abs_y - 1), "😋", MUTED)
 
 
 def _make_fish(
@@ -1518,6 +1946,7 @@ def _make_fish(
     mouse_pos=None,
     environment=None,
     paused=None,
+    bubbles=None,
 ) -> Fish:
     x0, y0, x1, y1 = bounds
     x = random.uniform(x0, x1)
@@ -1541,6 +1970,8 @@ def _make_fish(
         environment=environment,
         paused=paused,
         favorite_foods=species.favorite_foods,
+        rarity=species.rarity,
+        bubbles=bubbles,
     )
 
 

@@ -1,133 +1,4 @@
-# 🐟 Update 1 — More Fish
-This is where the fun begins.
-
-I wouldn't make every fish unique. 
-I'd make each one have:
-* sprite
-* price
-* rarity
-* favorite treats
-* maybe one small quirk
-
-
-
-Just like Axolotl.
-
-
-
----
-
-
-
-# Common
-
-Cheap.
-Beginner fish.
-
-
-
-```text
-Goldfish
-Salmon
-Anchovy
-Sardine
-
-```
-
----
-
-# Uncommon
-
-```text
-Betta
-Angelfish
-Axolotl
-Jellyfish
-```
-
----
-
-# Rare
-
-```text
-Discus
-Arowana
-Octopus
-Seahorse
-```
-
----
-
-# Predators
-
-```text
-Shark
-```
-
----
-
-# Legendary
-
-These should be
-
-
-
-VERY
-rare.
-
-```text
-Golden Axolotl
-Ghost Fish
-Crystal Fish
-Lunar Betta
-Moon Jellyfish
-```
-
-No stat bonuses.
-
-Just
-> "YOU FOUND ONE??"
-
----
-
-# Small personality quirks
-
-Instead of
-20 mechanics.
-
-Examples:
-
----
-
-
-### Salmon
-
-Moves constantly.
-
----
-
-### Seahorse
-
-Slow.
-
-Always upright.
-
----
-
-### Octopus
-
-Sometimes changes color.
-
----
-
-Again...
-Flavor.
-
-Not optimization.
-
----
-
-# 🎣 Update 2 — Fishing
+# 🎣 Update 1 — Fishing
 
 This is where everything comes together.
 
@@ -185,7 +56,7 @@ Possible catches
 🪙 Treasure
 🐚 Seashell
 📜 Bottle
-🦀 Crab (I guess he's a secret shop item that can't be bought unless you go fishing. So he could stay in your aquarium)
+🦀 Crab (I guess he's a secret shop item that can't be bought unless you go fishing. So he could stay in your aquarium: <\_(°°)_/>
 🦐 Shrimp
 ```
 
@@ -287,7 +158,6 @@ While fishing:
 🪙 Old Coin: simply can be sold
 📜 Message in a Bottle: click to open and read a message.
 🐚 Giant Shell: can be sold FOR A LOT OF MONEY
-🦑 Kraken Shadow: I don't really know why it's useful. We can just pretend it's a legendary thing
 👢 Old Boot 😂: Also can be sold
 ```
 
@@ -1187,8 +1057,6 @@ Examples:
 * Becoming Best Friends
 * First Adventure
 * First Child
-* Death of a Best Friend
-* Player Adoption
 * First Visit to Coral Valley
 
 ---

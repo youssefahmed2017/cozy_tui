@@ -191,6 +191,52 @@ def test_scroll_key_routes_to_scrollable_focused_widget():
     assert view._scroll > 0
 
 
+def test_scroll_wheel_prefers_the_hovered_scrollable_widget_over_focus():
+    # A ScrollView full of focusable children (e.g. Buttons) can never
+    # become focused itself -- a focusable container always defers Tab (and
+    # open_overlay()'s auto-focus) to its focusable descendants, see
+    # App._focusables_in() -- so the wheel has to be able to reach it some
+    # other way, or it can never be scrolled with the mouse at all in that
+    # shape. Whatever's actually hovered wins over whatever merely holds
+    # keyboard focus.
+    ui = make_ui()
+    app = ui.app
+    view = ScrollView(0, 0, "300x50")
+    for i in range(20):
+        view.add(Button(0, i, f"row {i}"))
+    app.add(view)
+    other = Button(0, 60, "Elsewhere")
+    app.add(other)
+    app.focus(other)  # focus is on something else entirely
+    app._compose()
+
+    ui.hover(view)
+    ui.press(Key.SCROLL_DOWN)
+
+    assert view._scroll > 0
+    assert app.focused is other  # hovering to scroll never steals focus
+
+
+def test_scroll_wheel_finds_a_scrollable_ancestor_when_hovering_a_child():
+    # Hovering exactly over one of the ScrollView's own children (its
+    # deepest focusable descendant, so hit-testing lands there first, not on
+    # the ScrollView itself) must still scroll the ScrollView -- walks up
+    # the parent chain to find it.
+    ui = make_ui()
+    app = ui.app
+    view = ScrollView(0, 0, "300x50")
+    buttons = [Button(0, i, f"row {i}") for i in range(20)]
+    for b in buttons:
+        view.add(b)
+    app.add(view)
+    app._compose()
+
+    ui.hover(buttons[0])
+    ui.press(Key.SCROLL_DOWN)
+
+    assert view._scroll > 0
+
+
 def test_mouse_event_routes_through_dispatch_mouse():
     ui = make_ui()
     app = ui.app

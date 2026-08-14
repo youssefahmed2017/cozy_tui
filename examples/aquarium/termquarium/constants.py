@@ -32,16 +32,20 @@ HUNGER_CONTENT_THRESHOLD = 80.0
 # way, not just a reversed string), color, shop price, predator flag,
 # favorite treat kinds (TREAT_SHOP_ITEMS kinds this species reacts to with
 # extra delight when fed -- see aquarium.py's _feed_treat -- defaulted to ()
-# since only Axolotl has any today; never a stat bonus, just a nicer toast).
+# since only Axolotl has any today; never a stat bonus, just a nicer toast),
+# rarity (RARITY_TIERS above, defaulted to "Common" -- most species don't
+# need to say so explicitly).
 Species = namedtuple(
-    "Species", "name right left color price predator favorite_foods", defaults=[()]
+    "Species",
+    "name right left color price predator favorite_foods rarity",
+    defaults=[(), "Common"],
 )
 
 SHOP_ITEMS = [
     Species("Goldfish", "><>", "<><", "bright_yellow", 20, False),
-    Species("Angelfish", "><(((°>", "<°)))><", "bright_cyan", 40, False),
-    Species("Betta", "><{{{°>", "<°}}}><", "bright_red", 55, False),
-    Species("Shark", "▶===>", "<===◀", "white", 500, True),
+    Species("Angelfish", "><(((°>", "<°)))><", "bright_cyan", 40, False, (), "Uncommon"),
+    Species("Betta", "><{{{°>", "<°}}}><", "bright_red", 55, False, (), "Uncommon"),
+    Species("Shark", "▶===>", "<===◀", "white", 500, True, (), "Rare"),
     # Not "fish with 20 unique mechanics" -- a delightful new resident that
     # reuses Fish entirely (same growth/hunger/relationships/container-
     # sleeping as everything else) with a few small, personality-flavored
@@ -56,9 +60,61 @@ SHOP_ITEMS = [
         45,
         False,
         ("Brine Shrimp", "Bloodworms", "Worms"),
+        "Uncommon",
     ),
+    # More Fish (updates.md): appended after Axolotl, not interleaved above
+    # -- keeps every existing species' position (and the tests that key off
+    # it, e.g. Shark being the 4th species) unchanged. Quirks are flavor
+    # only (see fish.py's per-species checks alongside the Axolotl ones):
+    # Salmon never relaxes, Seahorse swims slower and never mirrors its
+    # glyph (same right/left string -- "always upright"), Octopus's color
+    # drifts on its own over time.
+    Species("Salmon", "-<((°>", "<°))>-", "bright_red", 25, False),
+    Species("Anchovy", "-<>", "<>-", "bright_black", 15, False),
+    Species("Sardine", "-<>-", "-<>-", "bright_blue", 15, False),
+    Species("Jellyfish", "(°)~", "~(°)", "bright_magenta", 50, False, (), "Uncommon"),
+    Species("Discus", "><[[[°>", "<°]]]><", "bright_green", 75, False, (), "Rare"),
+    Species("Arowana", "-=====>", "<=====-", "bright_yellow", 120, False, (), "Rare"),
+    Species("Octopus", "<(°.°<)", "(>°.°)>", "magenta", 90, False, (), "Rare"),
+    Species("Seahorse", "ss{°>", "ss{°>", "yellow", 70, False, (), "Rare"),
 ]
 STARTER_SPECIES = [s for s in SHOP_ITEMS if not s.predator]
+
+# More Fish (updates.md): Legendary tier -- deliberately its own list, never
+# folded into SHOP_ITEMS. Being in SHOP_ITEMS would put these in the Shop
+# with a Buy button (contradicts "found, not bought") and would also make
+# them eligible for the ordinary "stray_fish" random event
+# (random.choice(STARTER_SPECIES), aquarium.py), diluting the whole point
+# of a dedicated, much rarer roll (see LEGENDARY_FIND_CHANCE below and
+# aquarium.py's _grant_legendary_fish()/_maybe_trigger_random_event()).
+# "No stat bonuses. Just 'YOU FOUND ONE??'" -- price is flavor/sell-value
+# only (not a gameplay stat -- Shark is $500 with no balance concern
+# either), and none of these five carry a behavioral quirk the way some
+# Rare-tier species do. Golden Axolotl keeps the plain Axolotl's own
+# favorite-foods list as a deliberate callback (it's still an Axolotl).
+LEGENDARY_FIND_CHANCE = 0.015  # ~once every ~67 game-days -- "VERY rare"
+LEGENDARY_SPECIES = [
+    Species(
+        "Golden Axolotl",
+        "(★.★)~",
+        "~(★.★)",
+        "bright_yellow",
+        300,
+        False,
+        ("Brine Shrimp", "Bloodworms", "Worms"),
+        "Legendary",
+    ),
+    Species(
+        "Ghost Fish", "~<)))°>", "<°(((>~", "bright_white", 250, False, (), "Legendary"
+    ),
+    Species("Crystal Fish", "<>◆", "◆<>", "bright_cyan", 275, False, (), "Legendary"),
+    Species(
+        "Lunar Betta", "><{{{°>", "<°}}}><", "bright_blue", 260, False, (), "Legendary"
+    ),
+    Species(
+        "Moon Jellyfish", "(°)~", "~(°)", "bright_white", 240, False, (), "Legendary"
+    ),
+]
 
 # Shop update (updates.md): "Today's Stock" rotates once a day instead of
 # every species always being buyable -- something worth checking back for,
@@ -74,12 +130,23 @@ FOOD_PACK_PRICE = 5
 
 # Treats -- unlike Fish Food (dropped in the water, eaten by whoever gets
 # there first), each of these is fed directly to one chosen fish (see the
-# Fish Inspector's "Feed a Treat"). Same economy.feed() relief as regular
-# food, deliberately no bigger number for feeding one -- these are about
-# personality, not a better stat stick. Bought in small packs like Fish
-# Food, except Pizza: a single-serving purchase on purpose, so it stays
-# the rare, deliberate "it's a special occasion" treat rather than
-# something you stock up five at a time. Nobody has Pizza as a declared
+# Fish Inspector's "Feed a Treat"), or dropped into the tank as a special
+# Food for whoever reaches it first (aquarium.py's _drop_special_food()).
+# Same economy.feed() relief and Happiness gain as regular food by default
+# (Brine Shrimp: "the classic," genuinely no special case) -- except the few
+# below with their own real effect, kept small/flavorful rather than a
+# stat-stick escalation: Worms/Bloodworms are held in the fish's mouth for a
+# moment before actually being eaten (HOLD_BEFORE_EAT_SECONDS, see fish.py's
+# draw()); Bloodworms' bite is a bit more exciting (BLOODWORMS_HAPPINESS_
+# BONUS) *unless* it's also this fish's declared favorite, in which case the
+# bigger favorite-food reaction below wins instead, same one bonus either
+# way, never both; Plankton barely relieves hunger at all
+# (PLANKTON_HUNGER_RELIEF, matching its own flavor text); Pizza's delight is
+# tuned to its own PIZZA_HAPPINESS_BONUS rather than the generic favorite-
+# food one, plus a brief 😋/☺️ flourish (fish.py's draw()). Bought in small
+# packs like Fish Food, except Pizza: a single-serving purchase on purpose,
+# so it stays the rare, deliberate "it's a special occasion" treat rather
+# than something you stock up five at a time. Nobody has Pizza as a declared
 # favorite -- every fish is just delighted by it anyway.
 FoodItem = namedtuple("FoodItem", "kind emoji price pack_size flavor_text")
 TREAT_SHOP_ITEMS = [
@@ -89,6 +156,19 @@ TREAT_SHOP_ITEMS = [
     FoodItem("Plankton", "🦠", 9, 5, "Barely a mouthful, gone in a second."),
     FoodItem("Pizza", "🍕", 12, 1, "Nobody knows why fish love this so much."),
 ]
+
+# Worms/Bloodworms: held at the mouth (see fish.py's _glyph()) rather than
+# eaten the instant a fish arrives -- the one visible "wait for it" moment
+# among the treats. Only the natural in-tank eating path shows this (a
+# fish actually swimming to a dropped Food); the Inspector's instant
+# "Feed a Treat" has no swim-up moment to hold during.
+HOLD_BEFORE_EAT_SECONDS = 1.0
+# A tiny relief instead of economy.HUNGER_RELIEF's normal ~full-up bite --
+# "barely a mouthful, gone in a second," per its own flavor text above.
+PLANKTON_HUNGER_RELIEF = 5.0
+BLOODWORMS_HAPPINESS_BONUS = 2.0  # on top of HAPPINESS_FED_GAIN -- 2+2 = +4 total
+PIZZA_HAPPINESS_BONUS = 5.0  # on top of HAPPINESS_FED_GAIN -- 2+5 = +7 total
+PIZZA_EAT_FLASH_SECONDS = 2.0  # how long the post-eating ☺️ shows
 
 # A fish gets exactly one of these (see random_personality()), not a
 # checklist of independent traits:
@@ -102,6 +182,14 @@ TREAT_SHOP_ITEMS = [
 #   Playful   -- changes direction often *and* varies its speed wildly each
 #                time (bursts of energy), unlike Explorer's steady patrol.
 PERSONALITIES = ("Friendly", "Explorer", "Shy", "Greedy", "Lazy", "Playful")
+
+# More Fish (updates.md): a species' collection tier, purely flavor/display
+# (Shop row, Fish Inspector) -- deliberately not wired into any stat/price
+# formula, since updates.md only ever describes rarity as "flavor, not
+# optimization" for Common/Uncommon/Rare. Legendary is reserved for a future
+# rare-discovery event (see aquarium.py's _maybe_trigger_random_event()) and
+# isn't assigned to any Species yet.
+RARITY_TIERS = ("Common", "Uncommon", "Rare", "Legendary")
 
 # Personality System 2.0 (see ROADMAP.md) -- traits earned through play,
 # stacking on top of the personality above rather than replacing it, the
@@ -216,10 +304,10 @@ AGE_SECONDS_PER_DAY = (
 # lands around 42 real minutes in (was ~18) -- still growing up within a
 # sitting, just not almost immediately.
 GROWTH_STAGES = (
-    ("Baby", 0.0, 0.25),
-    ("Juvenile", 10.0, 0.6),
-    ("Adult", 30.0, 1.0),
-    ("Elder", 55.0, 0.8),
+    ("Baby 👶", 0.0, 0.25),
+    ("Juvenile 🐟", 10.0, 0.6),
+    ("Adult 🐠", 30.0, 1.0),
+    ("Elder 🧓", 55.0, 0.8),
 )
 BABY_RIGHT, BABY_LEFT = "o>", "<o"
 
@@ -262,6 +350,7 @@ GREEDY_SPEED_MULT = 1.6  # food-chase speed multiplier for Greedy
 EXPLORER_TURN_DIV = 2.0  # Explorer changes direction this many times more often
 LAZY_TURN_MULT = 2.0  # Lazy changes direction this many times less often
 LAZY_SPEED_MULT = 0.55  # Lazy's base speed, applied once at construction
+SEAHORSE_SPEED_MULT = 0.6  # More Fish (updates.md): "slow" -- same shape as Lazy's
 PLAYFUL_TURN_DIV = 2.0  # Playful changes direction as often as Explorer...
 PLAYFUL_SPEED_VARIANCE = (0.6, 1.9)  # ...but at a wildly different speed each time
 
@@ -290,6 +379,11 @@ RELAX_FLASH_SECONDS = 3.0  # how long the 😌 shows after a fish settles to rel
 RELAX_TOAST_CHANCE = 0.18  # chance a settle is worth an ambient toast at all...
 RELAX_TOAST_COOLDOWN = 75.0  # ...and at most one such toast this often, tank-wide
 RELAX_MEMORY_CHANCE = 0.06  # rarer still: a peaceful moment becomes a diary memory
+# A Baby's very first relax at its favorite_decoration is unconditional (not
+# gated by RELAX_MEMORY_CHANCE) and gets its own baby-voiced line instead of
+# the ordinary one above -- see aquarium.py's _process_relaxing(). One-shot
+# per fish (baby_decoration_marvel_announced), same shape as elder_announced.
+BABY_DECORATION_MARVEL_LINE = "The {kind} is really big."
 # A tiny periodic wiggle while settled -- "just enough to look comfortable,"
 # not a real animation state. Stateless: fish.py's _glyph() phases each fish
 # by its own birth_time rather than tracking a per-fish timer, so a whole
@@ -297,6 +391,29 @@ RELAX_MEMORY_CHANCE = 0.06  # rarer still: a peaceful moment becomes a diary mem
 # already has its own closed-eyes resting glyph, see AXOLOTL_RESTING_GLYPH).
 RELAX_WIGGLE_INTERVAL = 2.5  # seconds between wiggles
 RELAX_WIGGLE_DURATION = 0.4  # seconds the wiggle glyph shows each time
+
+# Evening warming-up (fish.py's Fish.draw(), the branch right after relaxing,
+# mutually exclusive with it -- a fish already settled at its favorite spot
+# doesn't also detour for warmth this same frame): same "periodic chance
+# check, then steer-and-settle" shape as relaxing, but the *chance* itself
+# scales continuously with world.temperature_chill() rather than being a
+# flat roll -- comfortable water (Afternoon) means ~0% per check, and it
+# rises smoothly through Evening into Night. Targets the nearest real
+# container (any Decoration with capacity > 0 -- Rock/Castle today), never
+# claims it (no occupants_of()/capacity bookkeeping -- purely visual
+# proximity, so it can never collide with a real nighttime sleeper's claim).
+# Salmon is excluded, same "moves constantly" exception RELAX_CHANCE's own
+# Salmon check already makes.
+WARM_CHECK_MIN = 5.0  # seconds between rolls of "does it start warming up now"
+WARM_CHECK_MAX = 12.0
+WARM_CHANCE_MAX = 0.5  # chance per roll at temperature_chill()'s max (1.0)
+WARM_DURATION_MIN = 4.0  # seconds spent warming up, once started
+WARM_DURATION_MAX = 10.0
+WARM_STEER_RATE = 1.2  # blend rate toward the nearest container while warming up
+WARM_ARRIVE_MARGIN = 1.0  # cells, same reasoning as RELAX_ARRIVE_MARGIN
+# Unlike RELAX_FLASH_SECONDS' brief glance-and-gone notice, the warming-up
+# indicator (fish.py's draw()) is continuous, not timed: 🥶 for the whole
+# approach, ☺️ for as long as it's actually settled there.
 
 # A friend swimming over to join one already relaxing (see fish.py's draw(),
 # the branch just above plain friend-following). Reuses RELAX_STEER_RATE/
@@ -317,6 +434,15 @@ AXOLOTL_RELAX_CHANCE = 0.75
 AXOLOTL_RELAX_DURATION_MIN = 12.0
 AXOLOTL_RELAX_DURATION_MAX = 25.0
 AXOLOTL_RESTING_GLYPH = "(-.-)~ 😌"  # closed-eyes with 😌, shown only while relaxing
+
+# More Fish (updates.md): Salmon's "moves constantly" reuses the relax
+# mechanic's own chance roll (see fish.py) with a flat 0 -- it simply never
+# starts relaxing, no separate never-idle system needed. Octopus's "sometimes
+# changes color" is its own tiny timer (see Fish.draw()): every so often,
+# self.style.fg gets reassigned to one of these.
+OCTOPUS_COLOR_SHIFT_MIN = 8.0  # seconds between color changes
+OCTOPUS_COLOR_SHIFT_MAX = 20.0
+OCTOPUS_COLORS = ("magenta", "bright_magenta", "blue", "bright_cyan", "bright_black")
 
 # ── Happiness (Update 1): a per-fish "personality amplifier," not another
 # resource to babysit -- a player shouldn't panic because it dipped from 84%
@@ -510,22 +636,45 @@ CASTLE_COLORS = ["yellow", "white", "white", "white", "bright_black"]
 DRIFTWOOD_ART = ["~~~~~~", "\\____/"]
 DRIFTWOOD_COLORS = ["yellow", "bright_black"]
 
-# The Shop's decoration rows (Phase 3) -- buying one spawns a fresh
-# Decoration at a random floor position. The tank's starting furniture is
-# also built from this catalog (see main()), so there's exactly one source
-# of truth for each kind's art/colors/price/capacity.
+# Warm Lamp (Evening warming-up, constants.py's WARM_* comment): the one
+# decoration a cold fish actively prefers over a Rock/Castle once one
+# exists in the tank -- see fish.py's Fish._nearest_heat_source(). Not a
+# container (capacity stays 0): a fish lingers visibly nearby rather than
+# tucking inside, so any number of fish can bask at the same lamp at once.
+WARM_LAMP_ART = [
+    " .-. ",
+    "( * )",
+    "  |  ",
+    " _|_ ",
+]
+WARM_LAMP_COLORS = ["yellow", "bright_yellow", "bright_black", "bright_black"]
+
+# The Shop's decoration rows (Phase 3) -- buying one spawns a ghost the
+# player places by hand (see aquarium.py's _start_placing_decoration()).
+# The tank's starting furniture is also built from this catalog (see
+# main()), so there's exactly one source of truth for each kind's
+# art/colors/price/capacity/heat_source.
 #
 # `capacity` (Phase 7) is the one number that turns any decoration into a
 # "container" fish can sleep inside overnight -- 0 means "not a container",
-# same as everything else here (see Decoration.is_container). Giving a
-# *future* decoration a home is just picking a capacity, no new class or
-# behavior needed.
-DecorationItem = namedtuple("DecorationItem", "kind art colors price capacity")
+# same as everything else here (see Decoration.is_container). `heat_source`
+# is the same idea for the Warm Lamp above -- a plain bool, defaulting False
+# for every existing kind, rather than a new Decoration subclass. Giving a
+# *future* decoration a home or a warm glow is just picking these fields,
+# no new class or behavior needed.
+DecorationItem = namedtuple(
+    "DecorationItem",
+    "kind art colors price capacity heat_source",
+    defaults=(False,),
+)
 DECORATION_SHOP_ITEMS = [
     DecorationItem("Plant", PLANT_ART, PLANT_COLORS, 10, 0),
     DecorationItem("Driftwood", DRIFTWOOD_ART, DRIFTWOOD_COLORS, 15, 0),
     DecorationItem("Rock", ROCK_ART, ROCK_COLORS, 12, 2),
     DecorationItem("Castle", CASTLE_ART, CASTLE_COLORS, 100, 4),
+    DecorationItem(
+        "Warm Lamp", WARM_LAMP_ART, WARM_LAMP_COLORS, 40, 0, heat_source=True
+    ),
 ]
 DECORATION_CATALOG = {item.kind: item for item in DECORATION_SHOP_ITEMS}
 DECORATION_SELL_MULT = 0.5  # e.g. a $100 Castle sells back for $50
@@ -542,6 +691,33 @@ VISITORS_PER_ATTRACTIVENESS = 20
 TICKET_PRICE = 2  # $ per visitor, deterministic
 DONATION_PER_VISITOR_MAX = 3  # $ per visitor, randomized 0..this
 MAINTENANCE_GRANT = 10  # "Aquarium Maintenance Grant" -- $/day, unconditional
+
+# Named Recurring Visitors: on top of the anonymous visitors/donations math
+# above (which is unchanged), once a day there's a chance one individual,
+# named visitor is featured -- either someone new (who picks a favorite fish
+# on the spot, weighted toward pricier/rarer ones the same way attractiveness
+# already treats them as more eye-catching) or someone already met, coming
+# back (see aquarium.py's _check_named_visitor()). A returning visitor whose
+# favorite fish happens to be genuinely present donates generously and gives
+# that fish its own memory line; one whose favorite isn't around barely
+# donates at all. Deliberately rare enough to read as a real character
+# showing up, not a second income stream competing with the real one.
+NAMED_VISITOR_CHANCE_PER_DAY = 0.4
+NAMED_VISITOR_RETURN_CHANCE = 0.6  # vs. introducing someone new, when anyone exists
+NAMED_VISITOR_FIRST_VISIT_DONATION = (5, 15)
+NAMED_VISITOR_FAVORITE_ABSENT_DONATION = (0, 8)
+NAMED_VISITOR_FAVORITE_PRESENT_DONATION = (25, 60)
+VISITOR_NAMES = (
+    "Maya", "Alex", "Jordan", "Sam", "Riley", "Casey", "Morgan", "Avery",
+    "Quinn", "Rowan", "Skyler", "Emerson", "Dakota", "Reese", "Finley",
+)
+
+# Fish Memory Log line for the moment above (a Best Friend's own pin already
+# covers "someone I know", this is the mirror case: a stranger who knows
+# the fish). Ordinary, not lifelong -- a popular fish can rack up several
+# of these over time, and only the rarest, truly one-of-a-kind moments are
+# meant to survive MEMORY_LOG_LIMIT's cap.
+VISITOR_RECOGNITION_MEMORY_LINE = "Someone seemed really happy to see me today."
 
 # Emergency Aquarium Welfare (opt-out in Settings): a bankrupt tank
 # (money = food = fish = 0) gets exactly this fresh start instead of staying
@@ -651,14 +827,20 @@ RELATIONSHIP_NEARBY_RADIUS = 6.0
 
 # Phase 5: world (day/night + water temperature). `fraction` is 0..1 progress
 # through the current AGE_SECONDS_PER_DAY-long day -- the same "day" fish age
-# by and the daily tick fires on. Night/Morning/Day are discrete, threshold-
-# based (for behavior gating and the status readout); water temperature and
-# the background tint are both continuous functions of the same fraction
-# (see world.day_night_curve()), so the two Phase 5 mechanics stay in sync
-# with each other for free instead of needing separately-tuned schedules.
+# by and the daily tick fires on. Morning/Afternoon/Evening/Night are
+# discrete, threshold-based (for behavior gating and the status readout);
+# water temperature and the background tint are both continuous functions of
+# the same fraction (see world.day_night_curve()), so all these mechanics
+# stay in sync with each other for free instead of needing separately-tuned
+# schedules. Only the *names*/bands split four ways here -- the temperature
+# curve itself is untouched, so Evening isn't yet reliably colder than
+# Afternoon on its own (it's close to BASE_WATER_TEMP, well above
+# COLD_TEMP_THRESHOLD); a real "Evening feels cold" gameplay effect is later
+# work, not this phase-naming split.
 NIGHT_START = 0.75  # fraction of the day at which Night begins
 NIGHT_END = 0.15  # fraction of the (next) day at which Night ends
-MORNING_END = 0.30  # fraction of the day at which Morning gives way to Day
+MORNING_END = 0.30  # fraction of the day at which Morning gives way to Afternoon
+AFTERNOON_END = 0.60  # fraction of the day at which Afternoon gives way to Evening
 
 NIGHT_HUNGER_MULT = 0.4  # sleeping fish get hungry slower
 
@@ -679,6 +861,13 @@ DAY_BG = (10, 24, 42)  # a lighter, sunlit-water blue
 SLEEP_HUNGER_THRESHOLD = 40.0
 SLEEP_STEER_RATE = 1.0  # gentle settling-into-position blend while falling asleep
 SLEEP_CLOSE_DISTANCE = 3.0  # cells -- how close friends end up when both asleep
+# Daytime counterpart to the baby/parent sleep line (fish.py's Baby stage +
+# Fish.parent_names, aquarium.py's _check_milestone_achievements()): a Baby
+# swimming this close to its own real parent while both are awake gets a
+# one-shot line, same distance as sleeping close on the floor since both
+# describe the same "genuinely near each other" idea, just at different
+# times of day.
+BABY_SWIM_HELP_DISTANCE = SLEEP_CLOSE_DISTANCE
 SLEEP_FAR_DISTANCE = (
     30.0  # cells -- rivals keep drifting apart (bounded by the tank) up to this far
 )
@@ -788,6 +977,12 @@ ACHIEVEMENTS = [
     Achievement(
         "golden_years", "🧓", "Golden Years", "A fish reached its Elder years."
     ),
+    Achievement(
+        "legendary_find",
+        "✨",
+        "YOU FOUND ONE??",
+        "A Legendary fish appeared in your tank.",
+    ),
 ]
 
 # Random events: one roll per day (see aquarium.py's
@@ -795,7 +990,12 @@ ACHIEVEMENTS = [
 # rarer than MORNING_VIGNETTE_CHANCE/BREED_CHANCE above so it reads as a
 # genuine surprise rather than routine. Each event reuses existing state
 # (Fish.hunger, state["money"], _add_fish()) rather than a new temporary
-# buff/debuff system.
+# buff/debuff system. RANDOM_EVENT_NAMES is every event _fire_random_event()
+# knows how to fire -- "legendary" included even though it's rolled via its
+# own separate LEGENDARY_FIND_CHANCE pre-check, not this list's uniform
+# random.choice() -- shared with console.py's force_random_event() usage
+# string so both stay in sync with one source of truth.
+RANDOM_EVENT_NAMES = ("legendary", "lucky_find", "showing_off", "storm", "stray_fish")
 RANDOM_EVENT_CHANCE = 0.12
 STORM_HUNGER_BUMP = 15.0  # flat, one-time -- not a decaying effect
 # A storm is a real, live weather state (environment["storm"], shared with
@@ -880,6 +1080,19 @@ NIGHTMARE_COMFORT_FLASH_SECONDS = 3.0
 # newest-appended/oldest-dropped shape, just a different cap.
 MEMORY_LOG_LIMIT = 10
 
+# Reflection Memories: once a day (aquarium.py's _check_reflection_memories(),
+# alongside _check_milestone_achievements()'s other once-a-day checks), a
+# fish whose age_days has just crossed one of these gets a one-shot,
+# always-pinned (lifelong=True) line marking how long it's been around --
+# purely flavor, no gameplay effect, just making an old fish feel old.
+# AGE_SECONDS_PER_DAY's "6 real minutes = 1 fish day" means these are
+# genuinely rare: a year-old fish is ~36 real hours of uptime.
+REFLECTION_MEMORY_LINES = {
+    365: "I've been alive for one whole year.",
+    700: "I know this aquarium feels like home.",
+    1000: "I've met so many wonderful fish.",
+}
+
 # Cheat Console (backtick key, see termquarium/console.py): a dev/testing
 # tool, not player-facing content -- generous compared to MEMORY_LOG_LIMIT
 # since a debugging session can reasonably run many more commands than a
@@ -910,6 +1123,57 @@ SCHOOL_SEPARATION_WEIGHT = 1.2
 SCHOOL_SEPARATION_DISTANCE = (
     1.5  # cells -- push apart once a schoolmate gets this close
 )
+
+# Baby bubble-chasing (fish.py's Fish.draw(), bottom of the priority chain --
+# below schooling, so it only ever engages when nothing more urgent, not even
+# a schoolmate, is claiming this frame's velocity): a wandering Baby that
+# notices a real ambient bubble (bubbles.py's BubbleField, purely decorative
+# otherwise) within this radius drifts toward it, same "cheap steering, not
+# pathfinding" spirit as relaxing. Reuses steering.steer_toward_food() as-is
+# (EAT_RADIUS is close enough to count as "caught" here too) rather than a
+# new primitive just for this.
+#
+# BUBBLE_CHASE_CHANCE_PER_DAY is a once-a-day roll (see aquarium.py's
+# _check_milestone_achievements(), alongside its other per-fish daily
+# scans), not a per-bubble or per-frame one -- on a day it doesn't win that
+# roll, a Baby ignores bubbles entirely, however many drift by. Without
+# this, chasing was effectively guaranteed most days: any bubble passing
+# within BUBBLE_CHASE_RADIUS while nothing more urgent was happening would
+# trigger it, and bubbles spawn often. Even on an eligible day it's still
+# not gated to "only the first bubble ever" -- aquarium.py's
+# _process_bubble_chases() is what makes the resulting memory line ("I
+# chased a bubble today.") one-shot, not the chasing itself.
+BUBBLE_CHASE_RADIUS = 5.0  # cells -- how far a Baby will notice a bubble
+BUBBLE_CHASE_STEER_RATE = 1.0  # same blend rate as schooling
+BUBBLE_CHASE_CHANCE_PER_DAY = 0.5  # roughly 1 in 2 days a Baby chases bubbles at all
+
+# Baby racing (aquarium.py's _check_baby_races(), checked once a day
+# alongside _check_milestone_achievements()'s other daily scans): a pair of
+# Babies close enough at that moment, both awake and neither already
+# racing, has one single roll -- RACE_CHANCE_PER_DAY -- for whether they
+# spontaneously race each other today. Deliberately moved off a per-second
+# check (which used to compound toward near-certainty every day two Babies
+# stayed close for a while) to exactly one roll per pair per day, so the
+# rate actually matches its own name. Purely cosmetic -- Fish.
+# _effective_speed() applies RACE_SPEED_MULT for the duration and draw()
+# shows a 💨, but neither fish's heading/destination changes; it's a burst
+# of speed, not a race *to* anywhere. The race itself can repeat with
+# different rivals across a Baby's ~10-day infancy; the resulting memory
+# line ("X challenged me to a race.") is what's one-shot.
+BABY_RACE_DISTANCE = 4.0  # cells -- how close two Babies need to be
+RACE_CHANCE_PER_DAY = 0.25  # roughly 1 in 4 days, for an eligible nearby pair
+BABY_RACE_DURATION_SECONDS = 4.0
+RACE_SPEED_MULT = 1.8
+
+# Extra throttle on top of "checked once a day already" for the two
+# grounded baby/parent memories (see aquarium.py's _check_baby_parent_swim()
+# and the sleep-together block in _check_night_events()): real proximity to
+# a real parent was otherwise sufficient on its own, which made both fire
+# almost as soon as the opportunity existed. These are one-shot per pair
+# regardless, so this only controls *how many chances* pass before the
+# (single) real one lands -- not spammy repeats.
+BABY_SWIM_HELP_CHANCE_PER_DAY = 0.5
+BABY_SLEEP_PARENT_CHANCE_PER_DAY = 0.5
 
 # Exploration Update, Slice 1: biomes. The Forest is a one-time, whole-tank
 # unlock (state["forest_unlocked"]) -- once bought, the player can enter it
@@ -949,11 +1213,12 @@ FOREST_CARRY_LINGER_SECONDS = 3.0
 WOOD_SELL_PRICE = 15
 WOOD_SPAWN_CHANCE_PER_CHECK = 0.1  # per second, while under WOOD_MAX_COUNT
 WOOD_MAX_COUNT = 5
-# Upper bound on the Forest scene's own coordinate space -- the scene is
-# actually sized from the live terminal (see ui.py's build_forest_scene(),
-# mirroring how the tank's own bounds are derived from app.cols/app.rows),
-# so a smaller terminal clamps down from these rather than a fish ever
-# being positioned off-screen.
+# Upper bound on either Forest room's own coordinate space -- each room is
+# actually sized from the live terminal (see ui.py's
+# _build_forest_scenery(), shared by both build_forest_clearing_scene()/
+# build_forest_deep_scene(), mirroring how the tank's own bounds are
+# derived from app.cols/app.rows), so a smaller terminal clamps down from
+# these rather than a fish ever being positioned off-screen.
 FOREST_WIDTH = 70
 FOREST_HEIGHT = 16
 
@@ -1043,8 +1308,8 @@ LOST_ADVENTURE_DURATION_RANGE = (4, 8)  # days
 # fish off on a multi-day trip it can't spare the health/hunger budget for.
 LOST_ADVENTURE_HEALTH_MIN = 80.0
 LOST_ADVENTURE_HUNGER_MIN = HUNGER_WARNING_THRESHOLD
-# Real, permanent Decoration fixtures in the Forest scene (see ui.py's
-# build_forest_scene(), TREE_HOUSE_ART/HIDDEN_CAVE_ART/DENSE_PLANTS_ART
+# Real, permanent Decoration fixtures in the Deep Forest room (see ui.py's
+# build_forest_deep_scene(), TREE_HOUSE_ART/HIDDEN_CAVE_ART/DENSE_PLANTS_ART
 # below) -- one instance of each, built once at boot, never purchasable
 # (they're "already there in the forest", not Shop items), matching Castle/
 # Rock's capacity mechanism exactly. A lost fish that finds/flees to one
@@ -1062,6 +1327,33 @@ LOST_ADVENTURE_SHELTER_CAPACITY = {
     "Dense Plants Thicket": 3,
 }
 LOST_ADVENTURE_SHELTER_VISIT_SECONDS = 4.0
+
+# Purely decorative "clutter" versions of the same three shelters, placed in
+# the Clearing too (see ui.py's build_forest_clearing_scene()) -- an
+# ordinary day-tripper never actually goes missing, so it can't have a real
+# hideout the way a Lost Adventure fish does (capacity=0: Decoration.
+# is_container is False, and aquarium.py's _on_mouse() only wires shelter
+# clicks for the Deep Forest room), but the same forest is the same forest:
+# it should still be able to notice and comment on one passing by. One
+# specific flavor line per kind, from the brainstorm, so a "Tree House"
+# sighting always reads as a Tree House sighting rather than a generic
+# "saw something" line.
+CLEARING_SHELTER_NOTICE_LINES = {
+    "Tree House": (
+        "I saw a house on top of a Tree. I think they're called Tree Houses."
+    ),
+    "Dense Plants Thicket": (
+        "Found some dense plants near a tree, they looked different from "
+        "normal plants."
+    ),
+    "Hidden Cave": "There was a little hole in the Forest, I relaxed in it for a bit.",
+}
+# Rolled once per second per fish dwelling in the Clearing without wood yet
+# (aquarium.py's _check_foraging() step 3c) -- same magnitude as
+# FOREST_TRAVEL_CHANCE_PER_CHECK/RELAX_MEMORY_CHANCE above, so it reads as
+# occasional flavor on a typical trip, not a guaranteed line every visit.
+CLEARING_SHELTER_NOTICE_CHANCE_PER_CHECK = 0.03
+
 # A lost fish's ambient wander (aquarium.py's _wander_lost_adventure_fish(),
 # called from the ordinary 1-second tick, not a smooth per-frame steer like
 # the tank's fish get) -- slower than MIN_SPEED and turning far less often

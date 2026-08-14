@@ -1,5 +1,6 @@
 """Ambient rising-bubble particles (Phase 6) -- purely decorative."""
 
+import math
 import random
 import time
 
@@ -53,6 +54,20 @@ class BubbleField(Widget):
         self._bubbles: list[_Bubble] = []
         self._last = time.monotonic()
         self._next_spawn = random.uniform(*BUBBLE_SPAWN_INTERVAL)
+
+    def nearest_bubble(self, x: float, y: float, max_distance: float):
+        """The closest live bubble to (x, y) within max_distance, or None --
+        the read-only hook a Baby fish's bubble-chase steering (fish.py's
+        Fish.draw()) uses to notice a nearby bubble, without reaching into
+        this widget's own `_bubbles` list directly."""
+        nearest = None
+        nearest_dist = max_distance
+        for b in self._bubbles:
+            dist = math.hypot(x - b.x, y - b.y)
+            if dist <= nearest_dist:
+                nearest = b
+                nearest_dist = dist
+        return nearest
 
     def draw(self, canvas) -> None:
         now = time.monotonic()

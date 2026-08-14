@@ -118,7 +118,7 @@ def _build_inspector(
         f.favorite_decoration.kind if f.favorite_decoration is not None else "none yet"
     )
     box = Box(0, 0, "380x520", title=f.display_name, border="rounded", style=app.style)
-    box.add(Label(2, 1, f"Species: {f.species_name}"))
+    box.add(Label(2, 1, f"Species: {f.species_name} ({f.rarity})"))
     box.add(Label(2, 2, f"Age: {f.age_days:.1f} days ({f.growth_stage})"))
     box.add(Label(2, 3, f"Health: {f.health:.0f}%"))
     box.add(
@@ -190,6 +190,21 @@ def _build_inspector(
         _add_bond(f.friend, HEART_STYLE)
     if f.rival is not None:
         _add_bond(f.rival, Style(fg="bright_red"))
+
+    if f.pinned_memories:
+        # The handful of entries too important to risk aging out of the
+        # capped Memory Log below (see fish.py's pinned_memories and
+        # aquarium.py's _log_memory(..., lifelong=True)). The stored list
+        # itself is never trimmed -- only this glanceable panel view is,
+        # same "last 5" cap as the Memory Log section below, so a very
+        # long-lived, well-bonded fish can't blow out the Inspector's fixed
+        # height.
+        box.add(Label(2, y, "Lifelong Memories", Style(fg="bright_yellow", styles=["bold"])))
+        y += 1
+        for entry in f.pinned_memories[-5:]:
+            box.add(Label(2, y, entry, Style(fg="bright_yellow")))
+            y += 1
+        y += 1
 
     if f.memory_log:
         # This fish's own diary (aquarium.py's _log_memory()) -- distinct

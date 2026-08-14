@@ -5,6 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Scoped to `examples/aquarium/` (TermQuarium). Read the root `CLAUDE.md` first for
 `cozy_tui` itself — this file only covers what's specific to this example.
 
+**This directory is also its own git repo** (`git remote -v` here shows `aquar`
+→ `github.com/youssefahmed2017/TermQuarium.git`), developed in place inside the
+`cozy_tui` monorepo and mirrored out to that standalone repo for distribution.
+The practical consequence: this repo has no `tests/` directory of its own — the
+tests for everything here live in the monorepo's `tests/` (`../../tests/` from
+here), run from the monorepo root as shown below, even though `README.md` (which
+is written for readers of the standalone mirror) shows bare `tests/...` paths.
+
 ## Commands
 
 ```bash
@@ -99,6 +107,16 @@ the top of the file if you rename something they depend on.
   ambience: rising bubbles, falling Forest leaves, sleeping fish's dream
   selection/animated view, and the in-tank half of the morning wake-up
   vignette (the toast is the other half, built in `relationships.py`).
+- **`weather.py`** — `LightningField`, a purely decorative flash during a live
+  storm; same randomized-timing/pauses-with-the-game shape as `bubbles.py`/
+  `leaves.py` but for one transient shape instead of many continuously-moving
+  particles.
+- **`adventure.py`** — pure state/decision logic for the Lost Adventure (a fish
+  gone missing in the Forest for several days; see `ROADMAP.md`). Kept apart
+  from `aquarium.py`'s live Fish/App side effects (toasts, memory-log writes,
+  happiness/hunger mutation) the same way `steering.py`/`economy.py` are, so
+  the day-by-day decisions are unit-testable without a `Widget`/`App`
+  (`tests/test_termquarium_adventure.py`).
 - **`save.py`** — versioned plain-JSON saves under `~/.termquarium/saves/`
   (`SAVE_VERSION`, `safe_filename()`). The format is deliberately inspectable
   and shareable — migrate old saves forward on load rather than breaking

@@ -37,6 +37,7 @@ from .constants import (
     MAX_SPEED,
     MIN_SPEED,
     PERSONALITIES,
+    RANDOM_EVENT_NAMES,
     SHOP_ITEMS,
     TRAITS,
     TREAT_SHOP_ITEMS,
@@ -119,6 +120,8 @@ def build_console_commands(
     toggle_forest,
     spawn_decoration,
     remove_fish,
+    find_legendary,
+    force_random_event,
 ) -> dict:
     """The command registry, closing over the same real state/mutators the
     Shop/Inspector already use (see aquarium.py's main()) -- every command
@@ -238,7 +241,9 @@ def build_console_commands(
     def cmd_set_time(args, kwargs):
         phase = kwargs.get("phase", args[0] if args else None)
         if phase is None:
-            raise ConsoleError('Usage: set_time("day" | "morning" | "night")')
+            raise ConsoleError(
+                'Usage: set_time("morning" | "afternoon" | "evening" | "night")'
+            )
         try:
             label = set_day_phase(str(phase))
         except ValueError as error:
@@ -293,6 +298,28 @@ def build_console_commands(
         except ValueError as error:
             raise ConsoleError(str(error))
         return f"Gave {target.display_name} a dream about {title}."
+
+    def cmd_find_legendary(args, kwargs):
+        species_name = kwargs.get("species_name", args[0] if args else None)
+        try:
+            f = find_legendary(str(species_name) if species_name is not None else None)
+        except ValueError as error:
+            raise ConsoleError(str(error))
+        return f"You found one?? A {f.species_name} appeared in the tank."
+
+    def cmd_force_random_event(args, kwargs):
+        event = kwargs.get("event", args[0] if args else None)
+        if event is None:
+            names = ", ".join(RANDOM_EVENT_NAMES)
+            raise ConsoleError(
+                f'Usage: force_random_event(event="storm") -- one of: {names}'
+            )
+        event = str(event)
+        try:
+            force_random_event(event)
+        except ValueError as error:
+            raise ConsoleError(str(error))
+        return f"Fired the {event!r} event."
 
     def cmd_grant_trait(args, kwargs):
         name = kwargs.get("fish_name", args[0] if args else None)
@@ -542,6 +569,7 @@ def build_console_commands(
         "spawn",
         "give_nightmare",
         "give_dream",
+        "find_legendary",
         "grant_trait",
         "advance_day",
         "start_lost_adventure",
@@ -554,6 +582,7 @@ def build_console_commands(
         "toggle_forest",
         "spawn_decoration",
         "remove_fish",
+        "force_random_event",
     ):
         script_globals[_name] = _script_call(_name)
 
@@ -693,8 +722,8 @@ def build_console_commands(
             cmd_buy,
         ),
         "set_time": Command(
-            'set_time(phase: "day", "morning", or "night") -- jumps the '
-            "day/night clock to that time of day",
+            'set_time(phase: "morning", "afternoon", "evening", or "night") '
+            "-- jumps the day/night clock to that time of day",
             cmd_set_time,
         ),
         "spawn": Command(
@@ -714,6 +743,13 @@ def build_console_commands(
             "give_dream(fish_name: the fish, category: happy/food/friendship/"
             "home/fantasy (optional)) -- gives it a nice dream to view",
             cmd_give_dream,
+        ),
+        "find_legendary": Command(
+            "find_legendary(species_name: which one, e.g. \"Ghost Fish\" "
+            "(optional; random of the 5 if omitted)) -- More Fish's "
+            "Legendary tier is found, never bought, so this is the only "
+            "way to add one outside the real (very rare) daily roll",
+            cmd_find_legendary,
         ),
         "grant_trait": Command(
             "grant_trait(fish_name: the fish, trait: food_lover/dreamer/"
@@ -783,6 +819,15 @@ def build_console_commands(
             "immediately, no toast or memory flavor (unlike natural death/"
             "starvation)",
             cmd_remove_fish,
+        ),
+        "force_random_event": Command(
+            "force_random_event(event: one of "
+            + ", ".join(RANDOM_EVENT_NAMES)
+            + ") -- fires that day's random event immediately, without "
+            "waiting on its own daily roll (fails with an error if that "
+            "event isn't currently applicable, e.g. a second storm while "
+            "one's already rolling)",
+            cmd_force_random_event,
         ),
         "run": Command(
             "run(code: a snippet of real Python, e.g. "
