@@ -250,3 +250,25 @@ existing engine**, not new systems:
 species most likely to visit it, stay there (a natural fit for
 `favorite_decoration`-style "favorite location" once that generalizes, per
 the note above), and explore it once there.
+
+## Injuries — considered, not pursued
+
+**Status: rejected.** Not being built.
+
+**Source:** `_internal/future/dfd.md` — a probability-driven injury system
+(bonking into decorations, coral scrapes, seaweed tangles, panic-escape
+collisions, ...) gating a temporary status effect, plus a shop-purchasable
+bandage/first-aid-kit economy to clear it.
+
+**Why not:** this codebase already made the equivalent call once, for Coral
+Valley above — "resist the urge to give every biome a danger mechanic just
+because the Forest has one." Injuries apply that same instinct to ordinary
+tank activities (spinning, chasing bubbles, relaxing in seaweed), turning
+them into RNG penalty rolls with purchasable cures. That works against the
+low-stakes "flavor, not optimization" philosophy the rest of the game
+follows (Treats, Random Events, personality flavor text). The doc's
+comedic/bonding beats (bonking into a decoration, a food-chase collision, one
+fish comforting another) are fine as pure flavor and could resurface
+elsewhere as zero-mechanical-penalty memory lines, but the system as
+designed — status effects, fear reactions, a bandage/first-aid shop economy —
+isn't happening.

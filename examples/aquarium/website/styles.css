@@ -74,6 +74,7 @@ a { color: inherit; }
 .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; position: relative; }
 .logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; letter-spacing: -0.01em; text-decoration: none; color: var(--ink); }
 .logo .glyph { font-family: "JetBrains Mono", monospace; color: var(--accent); font-size: 15px; }
+.logo-mark { height: 22px; width: auto; display: block; }
 .nav-right { display: flex; align-items: center; gap: clamp(16px, 2.6vw, 28px); }
 .nav-links { display: flex; align-items: center; gap: clamp(16px, 2.6vw, 28px); font-size: 14.5px; }
 .nav-links a.link { text-decoration: none; color: var(--ink-muted); font-weight: 500; white-space: nowrap; }

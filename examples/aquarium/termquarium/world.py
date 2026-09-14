@@ -13,11 +13,23 @@ import math
 
 from .constants import (
     AFTERNOON_END,
-    BASE_WATER_TEMP,
+    AFTERNOON_WATER_TEMP,
+    COLD_TEMP_THRESHOLD,
+    EVENING_WATER_TEMP,
     MORNING_END,
+    MORNING_WATER_TEMP,
     NIGHT_END,
     NIGHT_START,
-    WATER_TEMP_SWING,
+    NIGHT_WATER_TEMP,
+)
+
+# (representative fraction, temperature) for the midpoint of each phase
+# band, in chronological order -- see compute_water_temperature().
+_TEMPERATURE_ANCHORS = (
+    (0.225, MORNING_WATER_TEMP),  # Morning midpoint (NIGHT_END..MORNING_END)
+    (0.45, AFTERNOON_WATER_TEMP),  # Afternoon midpoint (MORNING_END..AFTERNOON_END)
+    (0.675, EVENING_WATER_TEMP),  # Evening midpoint (AFTERNOON_END..NIGHT_START)
+    (0.95, NIGHT_WATER_TEMP),  # Night midpoint (wraps across midnight)
 )
 
 
@@ -50,9 +62,22 @@ def day_night_curve(fraction: float) -> float:
 
 
 def compute_water_temperature(fraction: float) -> float:
-    """Warmest at midday, coolest at night -- a smooth curve, not a coin
-    flip, so it reads as "the tank" rather than a randomized stat."""
-    return BASE_WATER_TEMP + WATER_TEMP_SWING * day_night_curve(fraction)
+    """Piecewise-linear between each phase's own representative midpoint
+    (_TEMPERATURE_ANCHORS) -- warmest in the Morning, coldest at Night's,
+    cooling steadily across the day rather than peaking at midday. Still
+    one continuous curve, not a coin flip, just shaped by four anchors
+    instead of a single sinusoid. Wraps smoothly from Night's own midpoint
+    back to Morning's across the 0/1 boundary."""
+    anchors = _TEMPERATURE_ANCHORS
+    wrapped = anchors[1:] + ((anchors[0][0] + 1.0, anchors[0][1]),)
+    for (f0, t0), (f1, t1) in zip(anchors, wrapped):
+        if f0 <= fraction <= f1:
+            return t0 + (t1 - t0) * (fraction - f0) / (f1 - f0)
+    # fraction is before the first anchor (0 <= fraction < anchors[0][0]) --
+    # still warming up from the *previous* cycle's Night anchor.
+    f0, t0 = anchors[-1][0] - 1.0, anchors[-1][1]
+    f1, t1 = anchors[0]
+    return t0 + (t1 - t0) * (fraction - f0) / (f1 - f0)
 
 
 def night_blend(fraction: float) -> float:
@@ -62,15 +87,19 @@ def night_blend(fraction: float) -> float:
 
 
 def temperature_chill(temperature: float) -> float:
-    """0.0 at today's peak warmth, 1.0 at today's coldest point -- a smooth
-    "how chilly does the water feel right now" ramp for fish.py's Evening
-    warming-up behavior (comfortable -> no urge, slightly cold -> a small
-    one, very cold -> a strong one), driven by the same continuous
-    temperature curve as everything else in this module. Deliberately not
-    the same scale as constants.COLD_TEMP_THRESHOLD, which is a harder
-    cutoff for the sluggish-speed effect near midnight -- this ramps
-    gradually across the whole swing, so it's already meaningfully above
-    zero by Evening rather than snapping on at a fixed point."""
-    peak = BASE_WATER_TEMP + WATER_TEMP_SWING
-    chill = (peak - temperature) / (2 * WATER_TEMP_SWING)
+    """0.0 at EVENING_WATER_TEMP and above (still comfortable), 1.0 at
+    COLD_TEMP_THRESHOLD and below (properly cold -- the same point
+    Fish._effective_speed() turns sluggish at) -- a smooth "how chilly does
+    the water feel right now" ramp for fish.py's Evening warming-up
+    behavior. Deliberately anchored to the real cold threshold, not the
+    day's peak warmth: an earlier version measured distance from Morning's
+    own peak, which meant an ordinary, nowhere-near-cold Afternoon already
+    produced a real (if small) chance to seek warmth -- confusing, since
+    nothing about that temperature was actually cold. Anchoring here means
+    Morning/Afternoon are always exactly 0.0, and the ramp itself only
+    exists across Evening's own cooling stretch, right where the water is
+    actually approaching COLD_TEMP_THRESHOLD."""
+    comfortable = EVENING_WATER_TEMP
+    cold = COLD_TEMP_THRESHOLD
+    chill = (comfortable - temperature) / (comfortable - cold)
     return max(0.0, min(1.0, chill))

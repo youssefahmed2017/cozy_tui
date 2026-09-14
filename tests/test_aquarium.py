@@ -741,8 +741,16 @@ def test_shop_buy_treat_deducts_price_and_calls_buy_treat_with_the_item():
     buttons = [c for c in box.children if c.__class__.__name__ == "Button"]
     # Fish Food(1) + one per decoration = buttons before Treats. Species no
     # longer count here -- they live in their own ScrollView, not directly
-    # in box.children (see _species_buttons()).
-    treats_start = 1 + len(aq.DECORATION_SHOP_ITEMS)
+    # in box.children (see _species_buttons()). Birthday System (ROADMAP.md):
+    # Balloons/Confetti only get a row when state["birthday_today"] is set
+    # (not here), so they're excluded from this count too.
+    treats_start = 1 + len(
+        [
+            i
+            for i in aq.DECORATION_SHOP_ITEMS
+            if i.price != 0 and i.kind not in aq.BIRTHDAY_DECORATION_KINDS
+        ]
+    )
     first_treat_buy = buttons[treats_start]
     first_treat_buy.on_mouse_click()
 
@@ -772,7 +780,15 @@ def test_shop_shows_current_treat_stock_and_updates_after_buying():
     assert any("(have 2)" in t for t in labels)
 
     buttons = [c for c in box.children if c.__class__.__name__ == "Button"]
-    treats_start = 1 + len(aq.DECORATION_SHOP_ITEMS)
+    # Birthday System (ROADMAP.md): Balloons/Confetti only get a row when
+    # state["birthday_today"] is set (not here), so they're excluded.
+    treats_start = 1 + len(
+        [
+            i
+            for i in aq.DECORATION_SHOP_ITEMS
+            if i.price != 0 and i.kind not in aq.BIRTHDAY_DECORATION_KINDS
+        ]
+    )
     buttons[treats_start].on_mouse_click()  # buy another Brine Shrimp pack
 
     labels_after = [c.text for c in box.children if c.__class__.__name__ == "Label"]
@@ -1424,7 +1440,7 @@ def test_a_cold_fish_starts_warming_up_at_a_nearby_container(monkeypatch):
         5.0,
         bounds,
         decorations=[rock],
-        environment={"phase": "Evening", "temperature": aq.BASE_WATER_TEMP},
+        environment={"phase": "Evening", "temperature": aq.COLD_TEMP_THRESHOLD},
     )
     f.favorite_decoration = None  # isolate warming from relaxing
     f._next_turn = float("inf")
@@ -1441,8 +1457,9 @@ def test_a_cold_fish_starts_warming_up_at_a_nearby_container(monkeypatch):
 
 
 def test_a_comfortable_fish_never_starts_warming_up(monkeypatch):
-    # temperature_chill() is 0.0 at the daily peak -- WARM_CHANCE_MAX * 0.0
-    # is 0.0, so even a guaranteed random() roll must never trigger it.
+    # temperature_chill() is 0.0 at EVENING_WATER_TEMP and above -- WARM_
+    # CHANCE_MAX * 0.0 is 0.0, so even a guaranteed random() roll must
+    # never trigger it for an ordinary Afternoon temperature.
     bounds = (0.0, 0.0, 50.0, 50.0)
     rock = aq.Decoration(
         30.0, 5.0, aq.ROCK_ART, aq.ROCK_COLORS, kind="Rock", capacity=2
@@ -1454,7 +1471,7 @@ def test_a_comfortable_fish_never_starts_warming_up(monkeypatch):
         decorations=[rock],
         environment={
             "phase": "Afternoon",
-            "temperature": aq.BASE_WATER_TEMP + aq.WATER_TEMP_SWING,
+            "temperature": aq.AFTERNOON_WATER_TEMP,
         },
     )
     f.favorite_decoration = None
@@ -1594,7 +1611,7 @@ def test_salmon_never_starts_warming_up(monkeypatch):
         # exclusion itself actually works.
         environment={
             "phase": "Evening",
-            "temperature": aq.BASE_WATER_TEMP - aq.WATER_TEMP_SWING,
+            "temperature": aq.NIGHT_WATER_TEMP,
         },
     )
     f.species_name = "Salmon"
@@ -1625,7 +1642,7 @@ def test_a_full_container_is_never_a_warming_target(monkeypatch):
         bounds,
         decorations=[rock],
         fish_list=fish_list,
-        environment={"phase": "Evening", "temperature": aq.BASE_WATER_TEMP},
+        environment={"phase": "Evening", "temperature": aq.COLD_TEMP_THRESHOLD},
     )
     occupant = _neutral_fish(30.0, 5.0, bounds, fish_list=fish_list)
     occupant.sleeping_in = rock
@@ -1683,7 +1700,7 @@ def test_a_warm_lamp_is_preferred_over_a_container(monkeypatch):
         5.0,
         bounds,
         decorations=[rock, lamp],
-        environment={"phase": "Evening", "temperature": aq.BASE_WATER_TEMP},
+        environment={"phase": "Evening", "temperature": aq.COLD_TEMP_THRESHOLD},
     )
     f.favorite_decoration = None
     f._next_turn = float("inf")
@@ -1776,6 +1793,89 @@ def test_leaving_a_lamp_does_not_reposition_the_fish(monkeypatch):
     # released container guest, nothing here forces a snap back to the
     # lamp's own position, 6.0) -- the release itself never repositions it.
     assert f.fx != lamp.fx
+
+
+def test_a_hot_fish_shows_a_stressed_face():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    f = _neutral_fish(
+        5.0,
+        5.0,
+        bounds,
+        environment={
+            "phase": "Morning",
+            "temperature": aq.HOT_TEMP_THRESHOLD + 1.0,
+        },
+    )
+    f.favorite_decoration = None
+
+    written = []
+
+    class _RecordingCanvas:
+        def write(self, x, y, text, style=None):
+            written.append((x, y, text))
+
+    _age(f)
+    f.draw(_RecordingCanvas())
+
+    assert any(
+        text == "🥵" and x == f.abs_x and y == max(0, f.abs_y - 1)
+        for x, y, text in written
+    )
+
+
+def test_a_fish_at_or_below_the_hot_threshold_never_shows_a_stressed_face():
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    f = _neutral_fish(
+        5.0,
+        5.0,
+        bounds,
+        environment={"phase": "Afternoon", "temperature": aq.HOT_TEMP_THRESHOLD},
+    )
+    f.favorite_decoration = None
+
+    written = []
+
+    class _RecordingCanvas:
+        def write(self, x, y, text, style=None):
+            written.append((x, y, text))
+
+    _age(f)
+    f.draw(_RecordingCanvas())
+
+    assert not any(text == "🥵" for _x, _y, text in written)
+
+
+def test_a_more_specific_flourish_beats_the_stressed_face():
+    # Lowest priority of the whole indicator chain -- a genuine relax
+    # settle must still win even while the water is hot.
+    bounds = (0.0, 0.0, 50.0, 50.0)
+    spot = aq.Decoration(6.0, 5.0, aq.ROCK_ART, aq.ROCK_COLORS, kind="Rock")
+    f = _neutral_fish(
+        5.0,
+        5.0,
+        bounds,
+        decorations=[spot],
+        environment={
+            "phase": "Morning",
+            "temperature": aq.HOT_TEMP_THRESHOLD + 1.0,
+        },
+    )
+    f.favorite_decoration = spot
+    f._next_turn = float("inf")
+    f._next_relax_check = float("inf")
+    f._relaxing_until = float("inf")
+
+    written = []
+
+    class _RecordingCanvas:
+        def write(self, x, y, text, style=None):
+            written.append((x, y, text))
+
+    _age(f)
+    f.draw(_RecordingCanvas())
+
+    assert any(text == "😌" for _x, _y, text in written)
+    assert not any(text == "🥵" for _x, _y, text in written)
 
 
 # ── Relaxation surfacing (existing relax mechanic, made visible) ────────────
@@ -2702,6 +2802,9 @@ def test_decoration_shop_items_have_expected_kinds_and_prices():
         "Rock": 12,
         "Castle": 100,
         "Warm Lamp": 40,
+        "Balloons": 8,
+        "Confetti": 6,
+        "Toy Ball": 0,
     }
 
 
@@ -2847,7 +2950,7 @@ def test_settings_checkbox_toggles_state():
     app = App(full=False, size="400x200")
     state = {"welfare_enabled": True}
     box = aq._build_settings(
-        app, state, None, lambda: None, lambda: None, lambda: None, lambda: None
+        app, state, None, lambda: None, lambda: None, lambda: None, lambda: None, lambda checked: None
     )
     checkbox = next(c for c in box.children if c.__class__.__name__ == "Checkbox")
     assert checkbox.checked is True
@@ -2866,7 +2969,7 @@ def test_settings_close_button_closes_the_overlay():
     app = App(full=False, size="400x200")
     state = {"welfare_enabled": True}
     box = aq._build_settings(
-        app, state, None, lambda: None, lambda: None, lambda: None, lambda: None
+        app, state, None, lambda: None, lambda: None, lambda: None, lambda: None, lambda checked: None
     )
     app.open_overlay(box)
     assert app._overlays
@@ -3446,6 +3549,15 @@ def _headless_app(tmp_path, monkeypatch):
     """Boot the real main() against a temp save directory (never the user's
     real ~/.termquarium) and dismiss the start menu, returning the live App."""
     monkeypatch.setattr(aq.Path, "home", lambda: tmp_path)
+    # Sound (termquarium/sound.py): main() calls sound.init() unconditionally,
+    # and every fish spawn/purchase/etc. would otherwise try to actually play
+    # audio through a real device on every single test in this file. Forcing
+    # init() to report "unavailable" keeps every play_*() call a no-op (they
+    # all check `if _device is None: return` first) without touching any of
+    # this file's hundreds of existing call sites -- dedicated sound tests
+    # patch this back individually where they actually need to observe
+    # play_sfx()/play_ambience() calls.
+    monkeypatch.setattr(aq.sound, "init", lambda: False)
     captured = {}
     monkeypatch.setattr(aq.App, "run", lambda self: captured.__setitem__("app", self))
     aq.main()
@@ -3654,7 +3766,13 @@ def test_hungry_warning_toast_is_a_complete_message(tmp_path, monkeypatch):
     toasts = []
     monkeypatch.setattr(app, "toast", lambda message, **kw: toasts.append(message))
     for f in [w for w in app.widgets if isinstance(w, aq.Fish)]:
-        f.hunger = aq.HUNGER_WARNING_THRESHOLD + 1
+        # +0.5, not +1: a fresh app starts Afternoon (never hot enough for
+        # HOT_HUNGER_MULT under the current tuning, never Night), so one
+        # plain HUNGER_STEP (1.0) application is the only multiplier that
+        # will ever actually apply here -- landing exactly on the
+        # threshold (51 -> 50) wouldn't count as "warning"
+        # (should_warn_hungry() needs strictly below), so +1 isn't safe.
+        f.hunger = aq.HUNGER_WARNING_THRESHOLD + 0.5
 
     # Hunger only actually decays once every HUNGER_TICK_SECONDS worth of
     # 1.0s ticks (see _per_second_tick()'s hunger_tick_accum) -- three
@@ -5028,6 +5146,472 @@ def test_reflection_memory_fires_once_past_each_age_threshold(tmp_path, monkeypa
     fish.pinned_memories.clear()
     _fire_daily_tick(app)
     assert fish.pinned_memories == []
+
+
+def test_new_fish_gets_a_birth_day_of_year_from_the_current_calendar_day(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    # A brand-new aquarium starts at day_count 0.
+    assert fish.birth_day_of_year == 0
+    assert fish.birthdays_logged == frozenset()
+
+
+def test_birthday_fires_once_a_calendar_year_after_birth(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    # Old enough for the very first check to already be past one full
+    # calendar year -- only day_count's day-of-year match is still pending.
+    fish.birth_time -= aq.AGE_SECONDS_PER_DAY * aq.CALENDAR_YEAR_DAYS
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+
+    for _ in range(aq.CALENDAR_YEAR_DAYS - 1):
+        daily_timer.callback()
+    assert fish.birthdays_logged == frozenset()  # day_of_year hasn't matched yet
+
+    daily_timer.callback()  # day_count now == CALENDAR_YEAR_DAYS -> matches birth day 0
+
+    assert 1 in fish.birthdays_logged
+    assert any("Today is my birthday" in m for m in fish.pinned_memories)
+
+
+def test_birthday_guard_prevents_relogging_the_same_year(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    fish.birth_time -= aq.AGE_SECONDS_PER_DAY * aq.CALENDAR_YEAR_DAYS
+    fish.birthdays_logged = frozenset({1})  # already celebrated this year
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+
+    for _ in range(aq.CALENDAR_YEAR_DAYS):
+        daily_timer.callback()
+
+    assert not any("Today is my birthday" in m for m in fish.pinned_memories)
+
+
+def test_birthday_friend_wishes_happy_birthday_when_both_awake_and_in_tank(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    steve, kitty = fishes[0], fishes[1]
+    steve.display_name = "Steve"
+    kitty.display_name = "Kitty"
+    steve.birth_time -= aq.AGE_SECONDS_PER_DAY * aq.CALENDAR_YEAR_DAYS
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+
+    for _ in range(aq.CALENDAR_YEAR_DAYS - 1):
+        daily_timer.callback()
+    # Set right before the triggering tick, well above the threshold -- set
+    # any earlier and decay_relationships() (runs every daily tick, before
+    # this check) would erode a score set exactly at the threshold back
+    # under it well before day CALENDAR_YEAR_DAYS is reached.
+    aq.set_relationship(steve, kitty, aq.RELATIONSHIP_MAX)
+    daily_timer.callback()
+
+    assert any("Kitty wished me a happy birthday." in m for m in steve.memory_log)
+    assert any("I wished Steve a happy birthday." in m for m in kitty.memory_log)
+
+
+def test_birthday_friend_wish_skipped_when_friend_asleep(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    steve, kitty = fishes[0], fishes[1]
+    steve.display_name = "Steve"
+    kitty.display_name = "Kitty"
+    steve.birth_time -= aq.AGE_SECONDS_PER_DAY * aq.CALENDAR_YEAR_DAYS
+    kitty._holding_asleep = True
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+
+    for _ in range(aq.CALENDAR_YEAR_DAYS - 1):
+        daily_timer.callback()
+    # Set right before the triggering tick -- see the happy-path test for
+    # why decay_relationships() rules out setting this any earlier.
+    aq.set_relationship(steve, kitty, aq.RELATIONSHIP_MAX)
+    daily_timer.callback()
+
+    # The personal birthday thought still happens -- it just goes uncelebrated.
+    assert any("Today is my birthday" in m for m in steve.pinned_memories)
+    assert not any("wished me a happy birthday" in m for m in steve.memory_log)
+
+
+def test_birthday_friend_wish_skipped_without_a_friend(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    assert steve.friend is None  # a fresh fish starts with no earned bonds
+    steve.birth_time -= aq.AGE_SECONDS_PER_DAY * aq.CALENDAR_YEAR_DAYS
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+
+    for _ in range(aq.CALENDAR_YEAR_DAYS):
+        daily_timer.callback()
+
+    assert any("Today is my birthday" in m for m in steve.pinned_memories)
+    assert not any("wished me a happy birthday" in m for m in steve.memory_log)
+
+
+def _buy_treat_via_shop(app, kind: str) -> None:
+    app._key_handlers["s"]()
+    box = app._overlays[-1].widget
+    children = box.children
+    idx = next(
+        i
+        for i, c in enumerate(children)
+        if c.__class__.__name__ == "Label" and kind in getattr(c, "text", "")
+    )
+    buy_btn = children[idx + 2]  # [item Label, stock Label, "Buy" Button]
+    assert buy_btn.__class__.__name__ == "Button" and buy_btn.text.strip() == "Buy"
+    buy_btn.on_mouse_click()
+    # Opening the Shop auto-pauses (_enter_auto_pause()) until it closes --
+    # left open, every subsequent daily_timer.callback() in the test would
+    # silently no-op on _daily_tick()'s own `if paused["value"]: return`.
+    close_btn = [c for c in children if c.__class__.__name__ == "Button"][-1]
+    close_btn.on_mouse_click()
+
+
+def test_birthday_gift_given_when_a_birthday_treat_is_in_stock(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    steve, kitty = fishes[0], fishes[1]
+    steve.display_name = "Steve"
+    kitty.display_name = "Kitty"
+    steve.birth_time -= aq.AGE_SECONDS_PER_DAY * aq.CALENDAR_YEAR_DAYS
+    _buy_treat_via_shop(app, "Shrimp Donut")
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+
+    for _ in range(aq.CALENDAR_YEAR_DAYS - 1):
+        daily_timer.callback()
+    aq.set_relationship(steve, kitty, aq.RELATIONSHIP_MAX)
+    daily_timer.callback()
+
+    # Handed straight over -- held at the mouth exactly like a natural
+    # Worms/Bloodworms catch (test_worms_are_held_at_the_mouth_before_being_eaten),
+    # not eaten instantly.
+    assert steve._holding_food is not None
+    assert steve._holding_food.kind == "Shrimp Donut"
+    assert any("I gave Steve a birthday gift." in m for m in kitty.memory_log)
+
+    class _FakeCanvas:
+        def write(self, *a, **k):
+            pass
+
+    steve._holding_until = time.monotonic() - 0.01
+    steve.draw(_FakeCanvas())
+
+    assert steve._holding_food is None
+    assert any(
+        "Kitty gave me a Shrimp Donut for my birthday." in m for m in steve.memory_log
+    )
+
+
+def test_birthday_gift_skipped_without_any_birthday_treats_in_stock(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    steve, kitty = fishes[0], fishes[1]
+    steve.display_name = "Steve"
+    kitty.display_name = "Kitty"
+    steve.birth_time -= aq.AGE_SECONDS_PER_DAY * aq.CALENDAR_YEAR_DAYS
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+
+    for _ in range(aq.CALENDAR_YEAR_DAYS - 1):
+        daily_timer.callback()
+    aq.set_relationship(steve, kitty, aq.RELATIONSHIP_MAX)
+    daily_timer.callback()
+
+    # The wish still happens -- just no *treat* gift to go with it, since
+    # the player never bought any birthday treats. Bubbles' own toy-ball
+    # gift is unrelated to treat stock, so it still fires independently --
+    # not what this test is checking.
+    assert any("Kitty wished me a happy birthday." in m for m in steve.memory_log)
+    assert steve._holding_food is None
+    assert not any("Kitty gave me" in m for m in steve.memory_log)
+    assert not any("I gave Steve a birthday gift." in m for m in kitty.memory_log)
+
+
+def _trigger_birthday(app, fish, monkeypatch=None):
+    # A fresh app starts at day_count 0, and fish.birth_day_of_year == 0 --
+    # the birthday fires once day_count reaches a multiple of
+    # CALENDAR_YEAR_DAYS, so it takes exactly that many ticks, not one.
+    fish.birth_time -= aq.AGE_SECONDS_PER_DAY * aq.CALENDAR_YEAR_DAYS
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+    for _ in range(aq.CALENDAR_YEAR_DAYS):
+        daily_timer.callback()
+    return daily_timer
+
+
+def test_bubbles_visits_the_tank_and_leaves_a_toy_ball_on_a_birthday(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    _trigger_birthday(app, steve)
+
+    bubbles = next(w for w in app.widgets if isinstance(w, aq.BubblesNPC))
+    assert bubbles.visible
+    ball = next(
+        d for d in app.widgets if getattr(d, "kind", None) == "Toy Ball"
+    )
+    assert ball.expires_on_day is None  # persistent, unlike Balloons/Confetti
+    assert any(
+        "Bubbles gave me a toy ball for my birthday." in m for m in steve.pinned_memories
+    )
+
+
+def test_bubbles_only_visits_once_even_with_a_double_birthday(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    steve, kitty = fishes[0], fishes[1]
+    steve.display_name = "Steve"
+    kitty.display_name = "Kitty"
+    steve.birth_time -= aq.AGE_SECONDS_PER_DAY * aq.CALENDAR_YEAR_DAYS
+    kitty.birth_time -= aq.AGE_SECONDS_PER_DAY * aq.CALENDAR_YEAR_DAYS
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+
+    # Both spawned at day_count 0 in a fresh aquarium, so they share the
+    # same birth_day_of_year -- a real double birthday.
+    for _ in range(aq.CALENDAR_YEAR_DAYS):
+        daily_timer.callback()
+
+    balls = [d for d in app.widgets if getattr(d, "kind", None) == "Toy Ball"]
+    assert len(balls) == 1  # not one per birthday fish
+
+
+def test_bubbles_returns_home_the_morning_after_a_birthday_visit(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    _trigger_birthday(app, steve)
+    assert next(w for w in app.widgets if isinstance(w, aq.BubblesNPC))
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'set_time("night")')
+    _type_into_console(console, 'set_time("morning")')
+    app.close_overlay(console)
+
+    assert not any(isinstance(w, aq.BubblesNPC) for w in app.widgets)
+
+
+def test_bubbles_birthday_visit_ends_on_save_and_load(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    _trigger_birthday(app, steve)
+    assert any(isinstance(w, aq.BubblesNPC) for w in app.widgets)
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Mid-Visit Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c
+        for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+    # Bubbles isn't part of the snapshot at all -- loading unconditionally
+    # sends him home, the same safety net a normal morning already provides.
+    assert not any(isinstance(w, aq.BubblesNPC) for w in app.widgets)
+
+
+def test_toy_ball_survives_across_many_daily_ticks(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    _trigger_birthday(app, steve)
+    ball = next(d for d in app.widgets if getattr(d, "kind", None) == "Toy Ball")
+
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+    for _ in range(20):
+        daily_timer.callback()
+
+    assert ball in app.widgets  # never expires, unlike Balloons/Confetti
+
+
+def test_birthday_decorations_hidden_from_shop_on_an_ordinary_day(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["s"]()
+    labels = [
+        c.text
+        for c in app._overlays[-1].widget.children
+        if c.__class__.__name__ == "Label"
+    ]
+    assert not any("Balloons" in t for t in labels)
+    assert not any("Confetti" in t for t in labels)
+
+
+def test_birthday_decorations_appear_in_shop_once_a_birthday_happens(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    fish.birth_time -= aq.AGE_SECONDS_PER_DAY * aq.CALENDAR_YEAR_DAYS
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+    for _ in range(aq.CALENDAR_YEAR_DAYS):
+        daily_timer.callback()
+
+    app._key_handlers["s"]()
+    labels = [
+        c.text
+        for c in app._overlays[-1].widget.children
+        if c.__class__.__name__ == "Label"
+    ]
+    assert any("Balloons" in t for t in labels)
+    assert any("Confetti" in t for t in labels)
+
+    # And they're gone again the moment the day rolls over.
+    app.close_overlay()
+    daily_timer.callback()
+    app._key_handlers["s"]()
+    labels_next_day = [
+        c.text
+        for c in app._overlays[-1].widget.children
+        if c.__class__.__name__ == "Label"
+    ]
+    assert not any("Balloons" in t for t in labels_next_day)
+
+
+def test_birthday_decoration_expires_the_day_after_its_placed(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'spawn_decoration(kind="Balloons")')
+    # Close the Console specifically, by reference -- the spawn command's
+    # own confirmation toast is a non-modal overlay stacked on top of it
+    # (App.toast() -> open_overlay()), so a bare close_overlay() would close
+    # the toast instead and leave the Console's auto-pause still in effect.
+    app.close_overlay(console)
+
+    balloons = next(d for d in app.widgets if getattr(d, "kind", None) == "Balloons")
+    assert balloons.expires_on_day == 1  # placed on day 0 -- expires at day 1
+    assert balloons in app.widgets
+
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+    daily_timer.callback()  # day_count now 1 -- swept by _expire_birthday_decorations()
+
+    assert balloons not in app.widgets
+
+
+def test_ordinary_decorations_never_expire(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'spawn_decoration(kind="Rock")')
+    # Close the Console specifically, by reference -- the spawn command's
+    # own confirmation toast is a non-modal overlay stacked on top of it
+    # (App.toast() -> open_overlay()), so a bare close_overlay() would close
+    # the toast instead and leave the Console's auto-pause still in effect.
+    app.close_overlay(console)
+    rock = next(d for d in app.widgets if getattr(d, "kind", None) == "Rock")
+    assert rock.expires_on_day is None
+
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+    for _ in range(10):
+        daily_timer.callback()
+
+    assert rock in app.widgets
+
+
+def test_birthday_decoration_expiry_round_trips_through_save_and_load(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'spawn_decoration(kind="Confetti")')
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Party Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c
+        for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+    reloaded = next(
+        d for d in app.widgets if getattr(d, "kind", None) == "Confetti"
+    )
+    assert reloaded.expires_on_day == 1
+
+
+def test_birthday_state_round_trips_through_save_and_load(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    fish.display_name = "Steve"
+    fish.birth_day_of_year = 7
+    fish.birthdays_logged = frozenset({1, 2})
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Steve's Birthdays"
+    prompt.on_key(aq.Key.ENTER)
+
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c
+        for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+    steve = next(
+        w for w in app.widgets if isinstance(w, aq.Fish) and w.display_name == "Steve"
+    )
+    assert steve.birth_day_of_year == 7
+    assert steve.birthdays_logged == frozenset({1, 2})
+
+
+def test_loading_a_save_from_before_birthdays_existed_backfills_birth_day_of_year(
+    tmp_path, monkeypatch
+):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+    for _ in range(5):
+        daily_timer.callback()
+    # Keep age_days in step with day_count -- a fish that's actually been
+    # alive since the aquarium's own day 0, not an artifact of firing ticks
+    # instantaneously in a test.
+    steve.birth_time -= aq.AGE_SECONDS_PER_DAY * 5
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Old Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    path = tmp_path / ".termquarium" / "saves" / "Old Save.json"
+    data = json.loads(path.read_text())
+    del data["aquarium"]["fish"][0]["birth_day_of_year"]
+    del data["aquarium"]["fish"][0]["birthdays_logged"]
+    path.write_text(json.dumps(data))
+
+    app._key_handlers["l"]()
+    load_box = app._overlays[-1].widget
+    load_btn = next(
+        c
+        for c in load_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Load"
+    )
+    load_btn.on_mouse_click()
+
+    reloaded = next(f for f in app.widgets if isinstance(f, aq.Fish))
+    assert reloaded.birth_day_of_year == 0
+    assert reloaded.birthdays_logged == frozenset()
 
 
 def test_pinned_memories_and_reflections_round_trip_through_save_and_load(
@@ -6805,16 +7389,17 @@ def test_remove_fish_command_grieves_a_bonded_friend(tmp_path, monkeypatch):
     )
 
 
-def test_run_command_wires_through_to_the_real_app(tmp_path, monkeypatch):
+def test_a_multi_statement_script_wires_through_to_the_real_app(tmp_path, monkeypatch):
+    # No more special run(code="...") wrapper -- a script (here, a for loop,
+    # not a single expression) is just typed directly; run_console_command()
+    # falls back from eval to exec for exactly this shape.
     app = _headless_app(tmp_path, monkeypatch)
     steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
     steve.display_name = "Steve"
     app._key_handlers["`"]()
     console = app._overlays[-1].widget
 
-    _type_into_console(
-        console, 'run(code="for f in fish: set_happiness(f.display_name, 100)")'
-    )
+    _type_into_console(console, "for f in fish: set_happiness(f.display_name, 100)")
 
     assert steve.happiness == 100.0
 
@@ -6858,7 +7443,9 @@ def test_unknown_command_shows_an_error_line(tmp_path, monkeypatch):
 
     _type_into_console(console, "nonexistent_command()")
 
-    assert any("Unknown command" in text for text, _is_error in console.lines)
+    assert any(
+        "not defined" in text and is_error for text, is_error in console.lines
+    )
 
 
 def test_force_random_event_command_wires_through_to_the_real_app(
@@ -6926,7 +7513,7 @@ def test_help_output_is_split_across_separate_lines_not_run_together(
     app._key_handlers["`"]()
     console = app._overlays[-1].widget
 
-    _type_into_console(console, "help")
+    _type_into_console(console, "help()")
 
     assert not any("\n" in text for text, _is_error in console.lines)
     assert not any(
@@ -6941,7 +7528,7 @@ def test_long_output_lines_wrap_instead_of_getting_cut_off(tmp_path, monkeypatch
     app._key_handlers["`"]()
     console = app._overlays[-1].widget
 
-    _type_into_console(console, "help")
+    _type_into_console(console, "help()")
 
     assert all(len(text) <= console.width - 2 for text, _is_error in console.lines)
     # The full spawn_fish usage text is long enough that it must have
@@ -7806,7 +8393,7 @@ def test_settings_bubbles_checkbox_toggles_state():
     app = App(full=False, size="400x200")
     state = {"bubbles_enabled": True}
     box = aq._build_settings(
-        app, state, None, lambda: None, lambda: None, lambda: None, lambda: None
+        app, state, None, lambda: None, lambda: None, lambda: None, lambda: None, lambda checked: None
     )
     bubbles_cb = next(
         c
@@ -7824,7 +8411,7 @@ def test_settings_auto_pause_checkbox_toggles_state():
     app = App(full=False, size="400x200")
     state = {"auto_pause": True}
     box = aq._build_settings(
-        app, state, None, lambda: None, lambda: None, lambda: None, lambda: None
+        app, state, None, lambda: None, lambda: None, lambda: None, lambda: None, lambda checked: None
     )
     auto_pause_cb = next(
         c
@@ -12633,3 +13220,254 @@ def test_loading_a_save_with_a_partial_dream_does_not_crash(tmp_path, monkeypatc
 
     reloaded = next(f for f in app.widgets if isinstance(f, aq.Fish))
     assert reloaded.dream is None
+
+
+# ── Sound (termquarium/sound.py): real call sites ───────────────────────────
+# _headless_app() forces aq.sound.init() to report unavailable (see its own
+# comment) so the rest of this suite never touches real audio -- these tests
+# patch aq.sound.play_sfx/play_ambience directly afterward instead, so they
+# exercise the actual call sites in aquarium.py without needing a device.
+
+
+def test_achievement_unlock_plays_its_sound(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    played = []
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+
+    for _ in range(7):  # one_week_in achievement
+        daily_timer.callback()
+
+    assert "achievement" in played
+
+
+def test_shop_purchase_plays_the_buy_sound(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    played = []
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+
+    _buy_treat_via_shop(app, "Shrimp Donut")
+
+    assert "buy" in played
+
+
+def test_saving_plays_the_save_sound(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    played = []
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+
+    app._key_handlers["p"]()
+    prompt = app._overlays[-1].widget
+    prompt.text = "Sound Test Save"
+    prompt.on_key(aq.Key.ENTER)
+
+    assert "save" in played
+
+
+def test_a_new_fish_plays_the_fish_spawn_sound(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    played = []
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'spawn_fish(species="Goldfish", name="Newcomer")')
+
+    assert "fish_spawn" in played
+
+
+def test_night_and_morning_transitions_sync_ambience(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    tracks = []
+    monkeypatch.setattr(aq.sound, "play_ambience", lambda name: tracks.append(name))
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'set_time("night")')
+    app.close_overlay(console)
+
+    assert tracks[-1] == "night"
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'set_time("morning")')
+    app.close_overlay(console)
+
+    assert tracks[-1] == "day"
+
+
+def test_entering_and_leaving_the_forest_syncs_ambience(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    tracks = []
+    monkeypatch.setattr(aq.sound, "play_ambience", lambda name: tracks.append(name))
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, "toggle_forest(unlocked=True)")
+    app.close_overlay(console)
+
+    enter_btn = next(
+        w
+        for w in app.widgets
+        if w.__class__.__name__ == "Button" and "Enter Forest" in w.text
+    )
+    enter_btn.on_mouse_click()
+    assert tracks[-1] == "forest"
+
+    leave_btn = next(
+        c
+        for c in app.current_screen.widgets
+        if c.__class__.__name__ == "Button" and "Leave Forest" in c.text
+    )
+    leave_btn.on_mouse_click()
+    assert tracks[-1] in ("day", "night")
+
+
+def test_settings_sound_checkbox_mutes_immediately(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    stopped = []
+    monkeypatch.setattr(aq.sound, "stop_all", lambda: stopped.append(True))
+
+    app._key_handlers[aq.Key.ESC]()  # opens the Pause menu
+    pause_box = app._overlays[-1].widget
+    settings_btn = next(
+        c
+        for c in pause_box.children
+        if c.__class__.__name__ == "Button" and c.text.strip() == "Settings"
+    )
+    settings_btn.on_mouse_click()
+
+    settings_box = app._overlays[-1].widget
+    sound_cb = next(
+        c
+        for c in settings_box.children
+        if c.__class__.__name__ == "Checkbox" and "Sound" in c.text
+    )
+    sound_cb.on_mouse_click()  # was checked=True, so this unchecks it
+
+    assert stopped == [True]
+
+
+def test_lucky_find_plays_the_coin_sound(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    played = []
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+    _force_random_event(monkeypatch, "lucky_find")
+
+    _fire_daily_tick(app)
+
+    assert "coin" in played
+
+
+def test_a_dream_being_assigned_plays_the_dream_sound(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    fish.hunger = 100.0  # clears SLEEP_HUNGER_THRESHOLD
+    played = []
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)  # always dreams
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'set_time("night")')
+    app.close_overlay(console)
+
+    assert "dream" in played
+
+
+def test_becoming_friends_plays_the_friend_sound(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    a, b = fishes[0], fishes[1]
+    played = []
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+
+    # RELATIONSHIP_MAX, not the bare threshold -- decay_relationships()
+    # runs earlier in the same daily tick and would otherwise pull a score
+    # set exactly at the threshold back under it first.
+    aq.set_relationship(a, b, aq.RELATIONSHIP_MAX)
+    _fire_daily_tick(app)
+
+    assert "friend" in played
+
+
+def test_becoming_rivals_plays_the_rival_sound(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fishes = [w for w in app.widgets if isinstance(w, aq.Fish)]
+    a, b = fishes[0], fishes[1]
+    played = []
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+
+    # RELATIONSHIP_MIN, not the bare threshold -- decay_relationships()
+    # pulls scores back toward 0 every daily tick, which for a negative
+    # rival score means back *up* past the threshold first.
+    aq.set_relationship(a, b, aq.RELATIONSHIP_MIN)
+    _fire_daily_tick(app)
+
+    assert "rival" in played
+
+
+def test_a_shark_scare_plays_the_shark_scare_and_hide_sounds(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    prey = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    prey.decorations = []
+    for other in [w for w in app.widgets if isinstance(w, aq.Fish) and w is not prey]:
+        other.fx, other.fy = -1000.0, -1000.0
+    played = []
+    monkeypatch.setattr(app, "toast", lambda *a, **k: None)
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+    monkeypatch.setattr(aq.random, "random", lambda: 0.0)
+    _add_real_fish(app, prey.fx + 1.0, prey.fy, is_predator=True, species_name="Shark")
+
+    second_timer = next(t for t in app._timers if t.interval == 1.0)
+    second_timer.callback()
+
+    assert "shark_scare" in played
+
+
+def test_lost_adventure_begin_and_return_play_their_sounds(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    steve = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    steve.display_name = "Steve"
+    played = []
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+
+    app._key_handlers["`"]()
+    console = app._overlays[-1].widget
+    _type_into_console(console, 'start_lost_adventure(fish_name="Steve", duration=1)')
+    app.close_overlay(console)
+    assert "adventure" in played
+
+    daily_timer = next(t for t in app._timers if t.interval == aq.AGE_SECONDS_PER_DAY)
+    daily_timer.callback()  # advances the adventure past its 1-day duration
+
+    assert "return" in played
+
+
+def test_opening_the_fish_inspector_plays_the_open_sound(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    fish = next(w for w in app.widgets if isinstance(w, aq.Fish))
+    played = []
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+
+    app._mouse_handler(aq.MouseClick(fish.x, fish.y, 0))
+
+    assert "open" in played
+
+
+def test_dropping_food_plays_the_feed_sound(tmp_path, monkeypatch):
+    app = _headless_app(tmp_path, monkeypatch)
+    played = []
+    monkeypatch.setattr(aq.sound, "play_sfx", lambda name: played.append(name))
+    for f in [w for w in app.widgets if isinstance(w, aq.Fish)]:
+        # Out of the way of the click below -- clicking a fish opens its
+        # Inspector instead of dropping food (a different sound entirely).
+        f.fx, f.fy = -1000.0, -1000.0
+        f.x, f.y = -1000, -1000
+
+    # Row 5 is inside the tank (tank_y=3, and row 0 is above it -- see e.g.
+    # this file's own decoration-placement tests); no starter decoration
+    # sits this close to the surface, they're all placed near the floor.
+    app._mouse_handler(aq.MouseClick(10, 5, 0))
+
+    assert "feed" in played

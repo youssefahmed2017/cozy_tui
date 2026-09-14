@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Mechanics — TermQuarium Docs</title>
 <meta name="description" content="The exact numbers behind TermQuarium's hunger, feeding, relationships, breeding, growth, happiness, relaxing, Forest exploration, economy, achievements, random events, and dreams." />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A0%3C/text%3E%3C/svg%3E" />
+<link rel="icon" type="image/x-icon" href="../favicon.ico" />
+<link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -15,7 +17,7 @@
 
   <nav class="nav">
     <div class="wrap">
-      <a class="logo" href="../index.html"><span class="glyph">&gt;&lt;&gt;</span>TermQuarium</a>
+      <a class="logo" href="../index.html"><img class="logo-mark" src="../assets/logo.png" alt="" width="44" height="22">TermQuarium</a>
       <div class="nav-right">
         <div class="nav-links" id="navLinks">
           <a class="link" href="../index.html">Home</a>
@@ -137,7 +139,7 @@
             <p><strong>Bubbles</strong> is a permanent resident of the Forest, not a random encounter — he's always relaxing in the Dense Plants Thicket by day. A lost fish that's gotten hungry enough (hunger under 60) will deterministically seek him out: with Driftwood in hand, he trades it for whichever food fits best (favorite food first, then a friend's favorite, from his stock of Brine Shrimp, Worms, and Plankton) — no Driftwood yet, and the fish is sent back to go find some first. Once night falls he heads out through the Hidden Cave, visible there just long enough to notice before he's gone — where he actually goes stays deliberately unexplained for now. He's back in the Thicket again every morning.</p>
 
             <h2>Day &amp; night</h2>
-            <p>Water temperature and light drift together on one continuous curve, warmest at noon and coldest at midnight. The status bar shows one of four phases as the day goes by — Morning, Afternoon, Evening, Night — purely a readout of that same underlying curve, not a separate schedule. Fish move measurably slower once the water turns cold, and non-hungry fish stop swimming and sleep once night falls — a hard stop, not just a slowdown.</p>
+            <p>Water temperature drifts on one continuous curve — warmest in the Morning (30°C), cooling steadily through Afternoon (27°C) and Evening (23°C) to its coldest at Night (21°C), then warming back up by the next dawn. The status bar shows one of four phases as the day goes by — Morning, Afternoon, Evening, Night — purely a readout of that same underlying curve, not a separate schedule. Fish move measurably slower once the water turns properly cold (🥶, below 22.5°C), and get visibly stressed (🥵) once it's genuinely hot (above 31.5°C) — hunger drains faster while stressed. Non-hungry fish stop swimming and sleep once night falls — a hard stop, not just a slowdown.</p>
             <p>As the water cools into Evening, an awake fish has a small and rising chance of heading somewhere to warm up — comfortable water means essentially no chance at all, and it climbs smoothly as the water actually gets colder, so it's never every fish at once the moment Evening begins. A Warm Lamp, if one's been placed, is always preferred: fish bask visibly nearby, any number at once, no capacity limit. Without one, it's the nearest Rock or Castle with room instead — and that one it actually goes inside, tucked away out of sight the same real "gone from view" mechanism a genuine overnight sleeper uses, sharing the same capacity, not a separate pool. A Rock already full for the night simply isn't picked as a target. Either way it shows 🥶 the whole way there, then a contented ☺️ once it's settled.</p>
 
             <h2>Achievements</h2>

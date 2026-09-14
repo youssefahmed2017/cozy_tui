@@ -3,7 +3,9 @@
 from cozy_tui import Style
 from cozy_tui.widgets import Box, Button, Label, ScrollView
 
+from . import sound
 from .constants import (
+    BIRTHDAY_DECORATION_KINDS,
     DECORATION_SHOP_ITEMS,
     FOOD_PACK_PRICE,
     FOOD_PACK_SIZE,
@@ -32,6 +34,8 @@ def build_shop(
             app.toast("Not enough money!", level="error")
             return
         state["money"] -= price
+        if state.get("sound_enabled", True):
+            sound.play_sfx("buy")
         callback()
         refresh()
 
@@ -96,6 +100,17 @@ def build_shop(
         srow += 2
     row += species_view_rows + 1
     for item in DECORATION_SHOP_ITEMS:
+        if item.price == 0:
+            # Gift-only (Bubbles' Toy Ball) -- never a Shop purchase, so it
+            # never gets a row at all, birthday or not.
+            continue
+        if item.kind in BIRTHDAY_DECORATION_KINDS and not state.get("birthday_today"):
+            # Birthday System (ROADMAP.md): only offered on a day someone's
+            # birthday actually happens (aquarium.py sets/clears
+            # state["birthday_today"] once per daily tick) -- same "row
+            # simply doesn't exist" shape as the Forest unlock row below,
+            # not a disabled button.
+            continue
         box.add(
             Label(
                 2,

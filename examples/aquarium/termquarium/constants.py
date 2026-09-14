@@ -7,7 +7,7 @@ from collections import namedtuple
 # compare against the published manifest -- see termquarium/updater.py.
 # Keep this in step with MyAppVersion in TermQuarium.iss and the "version"
 # field published in website/version.json.
-GAME_VERSION = "1.6.0"
+GAME_VERSION = "1.7.1"
 
 # Scale (updates.md): 0 = starving, 100 = full -- flipped from the
 # original 0=full/100=starving, which read backwards ("100% hungry" meaning
@@ -155,7 +155,23 @@ TREAT_SHOP_ITEMS = [
     FoodItem("Bloodworms", "🩸", 12, 5, "A little extra excitement at feeding time."),
     FoodItem("Plankton", "🦠", 9, 5, "Barely a mouthful, gone in a second."),
     FoodItem("Pizza", "🍕", 12, 1, "Nobody knows why fish love this so much."),
+    # Birthday System (ROADMAP.md): buyable year-round like everything else
+    # above (no birthday-only shop section to build) -- what makes them
+    # "birthday treats" is when a friend gives one as a gift (see
+    # aquarium.py's _check_birthday_gift()), not when they can be bought.
+    # Priced/packed like Pizza (single-serving, a bit special) rather than
+    # the 5-packs above.
+    FoodItem("Shrimp Donut", "🍩", 14, 1, "A little too fancy for a fish tank."),
+    FoodItem("Worm Cupcake", "🧁", 12, 1, "Frosting, somehow, works."),
+    FoodItem("Glowing Pizza", "🍕", 18, 1, "Regular pizza, but make it an occasion."),
 ]
+
+# _check_birthday_gift()'s pool -- which TREAT_SHOP_ITEMS kinds a friend can
+# spontaneously gift from the player's own stock, so the moment costs a real
+# inventory item ("only create memories for things that actually happened")
+# rather than conjuring free food.
+BIRTHDAY_TREAT_KINDS = ("Shrimp Donut", "Worm Cupcake", "Glowing Pizza")
+BIRTHDAY_GIFT_HAPPINESS_BONUS = 6.0  # on top of _consume_food()'s HAPPINESS_FED_GAIN
 
 # Worms/Bloodworms: held at the mouth (see fish.py's _glyph()) rather than
 # eaten the instant a fish arrives -- the one visible "wait for it" moment
@@ -313,10 +329,39 @@ BABY_RIGHT, BABY_LEFT = "o>", "<o"
 
 # An Elder fish is measurably slower (stacks with Lazy/cold exactly like
 # every other _effective_speed() multiplier). NATURAL_DEATH_CHANCE_PER_DAY
-# is checked once per day, per Elder fish -- same rarity as a nightmare
-# (constants.DREAM_NIGHTMARE_CHANCE), "notice-worthy, not routine".
+# is checked once per day, per Elder fish -- once "notice-worthy, not
+# routine" nightmare-rarity parity with DREAM_NIGHTMARE_CHANCE; lowered
+# from that 0.04 to 0.02 so an Elder's expected remaining lifespan (a
+# geometric distribution, mean 1/p elder-days) roughly doubles, from ~25 to
+# ~50 elder-days -- an average total lifespan (55 deterministic days to
+# reach Elder, plus that) of ~105 age_days instead of ~80, median ~89
+# instead of ~72. Losing a fish should be rarer than a bad dream, not the
+# same rarity -- the two no longer need to match.
 ELDER_SPEED_MULT = 0.7
-NATURAL_DEATH_CHANCE_PER_DAY = 0.04
+NATURAL_DEATH_CHANCE_PER_DAY = 0.02
+
+# Calendar (ROADMAP.md's Birthday System): a lightweight season/year layer on
+# top of the aquarium's own day_count (aquarium.py, already persisted as
+# "day" in every save). Deliberately doesn't touch age_days/GROWTH_STAGES/
+# NATURAL_DEATH_CHANCE_PER_DAY above -- those stay the only things that
+# govern a fish's actual gameplay maturity. This is purely a second, shared
+# "what day/season is it" clock, so Birthdays, ChristFishMas ("Winter"), and
+# updates.md's far-future Fishing Seasons can all read the same four names
+# instead of each inventing their own.
+#
+# 10-day seasons (a 40-day year) were sized against NATURAL_DEATH_CHANCE_PER_DAY
+# above, not picked arbitrarily: a fish's first birthday (age 40) lands
+# before Elder's death roll even starts (day 55) -- guaranteed, not a coin
+# flip -- while a second (age 80, ~60% survival odds at the current 0.02
+# death chance) and beyond get meaningfully rarer. Same "notice-worthy, not
+# routine" shape REFLECTION_MEMORY_LINES already aims for, just tied to a
+# real recurring calendar date per fish instead of a raw accumulated-age
+# threshold. Re-derive these odds if NATURAL_DEATH_CHANCE_PER_DAY moves
+# again: survival to age_days D (D >= 55) is (1 - NATURAL_DEATH_CHANCE_PER_DAY)
+# ** (D - 55).
+SEASON_LENGTH_DAYS = 10
+SEASONS = ("Spring", "Summer", "Autumn", "Winter")
+CALENDAR_YEAR_DAYS = SEASON_LENGTH_DAYS * len(SEASONS)
 
 MIN_SPEED = 2.5  # cells/second
 MAX_SPEED = 6.0
@@ -667,6 +712,31 @@ DecorationItem = namedtuple(
     "kind art colors price capacity heat_source",
     defaults=(False,),
 )
+# ASCII, not emoji, like every other decoration above -- an emoji glyph
+# ignores Style's fg color entirely (it renders in its own fixed color), so
+# row_styles below would have been silently inert on it. Balloon: the knot
+# and body in one color, the string in a contrasting one, same "shade the
+# parts differently" idea WARM_LAMP_ART already uses for its pole.
+BALLOONS_ART = [
+    " .-. ",
+    "(   )",
+    " `-' ",
+    "  |  ",
+]
+BALLOONS_COLORS = ["bright_red", "bright_red", "bright_red", "bright_black"]
+CONFETTI_ART = [
+    "* .",
+    " . ",
+    ". *",
+]
+CONFETTI_COLORS = ["bright_yellow", "bright_magenta", "bright_cyan"]
+# Emoji, unlike Balloons/Confetti above -- a deliberate exception (kept as
+# 🔵 on request) rather than an oversight; row_styles/TOY_BALL_COLORS is
+# still set for consistency with every other DecorationItem, even though an
+# emoji glyph ignores it.
+TOY_BALL_ART = ["🔵"]
+TOY_BALL_COLORS = "blue"
+
 DECORATION_SHOP_ITEMS = [
     DecorationItem("Plant", PLANT_ART, PLANT_COLORS, 10, 0),
     DecorationItem("Driftwood", DRIFTWOOD_ART, DRIFTWOOD_COLORS, 15, 0),
@@ -675,9 +745,37 @@ DECORATION_SHOP_ITEMS = [
     DecorationItem(
         "Warm Lamp", WARM_LAMP_ART, WARM_LAMP_COLORS, 40, 0, heat_source=True
     ),
+    # Birthday System (ROADMAP.md): only ever offered in the Shop on a day
+    # someone's birthday actually happens (see shop.py's own
+    # state.get("birthday_today") gate, same shape as the existing
+    # "Unlock Forest" row below it) -- unlike the birthday treats above,
+    # which are buyable any day. Placed like any other decoration, but
+    # tagged with an expiry (Decoration.expires_on_day) at the moment
+    # they're bought/placed, and swept by aquarium.py's
+    # _expire_birthday_decorations() the next day.
+    DecorationItem("Balloons", BALLOONS_ART, BALLOONS_COLORS, 8, 0),
+    DecorationItem("Confetti", CONFETTI_ART, CONFETTI_COLORS, 6, 0),
+    # Bubbles' Toy Ball (ROADMAP.md's Birthday System): price=0 -- never a
+    # Shop purchase, only ever a gift (aquarium.py's
+    # _check_birthday_bubbles_visit()). shop.py skips every price=0 item
+    # unconditionally, so this needs no birthday-only gating of its own;
+    # it's only in this catalog at all so a saved one survives a reload
+    # (DECORATION_CATALOG.get(saved kind) below). Unlike Balloons/Confetti,
+    # it never gets expires_on_day set -- "isn't destroyed when the
+    # birthday ends" is the whole point of it, per the source doc.
+    DecorationItem("Toy Ball", TOY_BALL_ART, TOY_BALL_COLORS, 0, 0),
 ]
 DECORATION_CATALOG = {item.kind: item for item in DECORATION_SHOP_ITEMS}
+BIRTHDAY_DECORATION_KINDS = ("Balloons", "Confetti")
 DECORATION_SELL_MULT = 0.5  # e.g. a $100 Castle sells back for $50
+
+# A daily chance a Friend pair plays with Bubbles' Toy Ball together
+# (aquarium.py's _check_toy_ball_play()) once it exists -- what turns the
+# gift into "future memories," not just a one-time birthday flourish.
+# Deliberately not rare like a Legendary find or a reflection memory: a
+# recurring, ordinary bit of play, expected roughly every 1/p = ~3.3 days
+# for a given Friend pair, not a once-in-a-blue-moon event.
+TOY_BALL_PLAY_CHANCE_PER_DAY = 0.3
 
 # Fish +5 attractiveness each (rare species +15 instead), decorations by
 # kind, and a clean tank (no food left uneaten) -- feeds the Shop's Visitor
@@ -830,13 +928,8 @@ RELATIONSHIP_NEARBY_RADIUS = 6.0
 # by and the daily tick fires on. Morning/Afternoon/Evening/Night are
 # discrete, threshold-based (for behavior gating and the status readout);
 # water temperature and the background tint are both continuous functions of
-# the same fraction (see world.day_night_curve()), so all these mechanics
-# stay in sync with each other for free instead of needing separately-tuned
-# schedules. Only the *names*/bands split four ways here -- the temperature
-# curve itself is untouched, so Evening isn't yet reliably colder than
-# Afternoon on its own (it's close to BASE_WATER_TEMP, well above
-# COLD_TEMP_THRESHOLD); a real "Evening feels cold" gameplay effect is later
-# work, not this phase-naming split.
+# the same fraction, so all these mechanics stay in sync with each other for
+# free instead of needing separately-tuned schedules.
 NIGHT_START = 0.75  # fraction of the day at which Night begins
 NIGHT_END = 0.15  # fraction of the (next) day at which Night ends
 MORNING_END = 0.30  # fraction of the day at which Morning gives way to Afternoon
@@ -844,10 +937,24 @@ AFTERNOON_END = 0.60  # fraction of the day at which Afternoon gives way to Even
 
 NIGHT_HUNGER_MULT = 0.4  # sleeping fish get hungry slower
 
-BASE_WATER_TEMP = 23.0  # degrees C, the comfortable midpoint (midday/midnight avg)
-WATER_TEMP_SWING = 3.0  # +/- degrees across the day/night cycle
-COLD_TEMP_THRESHOLD = 20.5  # below this, fish get sluggish (cold-blooded)
-HOT_TEMP_THRESHOLD = 25.5  # above this, fish get stressed (hunger drains faster)
+# Water temperature (world.compute_water_temperature()): piecewise-linear
+# between each phase's own representative midpoint, warmest in the Morning
+# and coldest at Night's -- not a single sinusoid peaking at midday, since
+# these four values aren't symmetric around one peak. Wraps smoothly from
+# Night's value back to Morning's across the 0/1 boundary (no jump at
+# midnight). This is also what makes Evening genuinely, reliably colder
+# than Afternoon -- see fish.py's Evening warming-up behavior.
+MORNING_WATER_TEMP = 30.0
+AFTERNOON_WATER_TEMP = 27.0
+EVENING_WATER_TEMP = 23.0
+NIGHT_WATER_TEMP = 21.0
+# Just below the Morning peak / just above the Night trough, same
+# "narrowly, only near the extreme" relationship each threshold already had
+# to the old curve's own peak/trough -- hot stress stays a Morning-only
+# edge case (Afternoon's 27.0 doesn't cross it), and cold sluggishness
+# stays a Night-only one.
+COLD_TEMP_THRESHOLD = 22.5  # below this, fish get sluggish (cold-blooded)
+HOT_TEMP_THRESHOLD = 31.5  # above this, fish get stressed (hunger drains faster)
 COLD_SPEED_MULT = 0.6
 HOT_HUNGER_MULT = 1.5
 

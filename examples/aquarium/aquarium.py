@@ -188,7 +188,7 @@ from cozy_tui.events import Key, MouseClick, MouseMove
 from cozy_tui.motion import lerp_color
 from cozy_tui.widgets import Button, Dropdown, Label, ListItem
 
-from examples.aquarium.termquarium import adventure
+from examples.aquarium.termquarium import adventure, sound
 from examples.aquarium.termquarium.bubbles import BubbleField, _Bubble, rise_bubble
 from examples.aquarium.termquarium.console import (
     CheatConsole,
@@ -482,7 +482,15 @@ def main() -> None:
         _bubbles_dense_plants.fx + 2, _bubbles_dense_plants.fy + 1
     )
     deep_forest_widgets.append(bubbles_npc)
-    bubbles_state = {"cave_visit_until": None}
+    bubbles_state = {
+        "cave_visit_until": None,
+        # Birthday System (ROADMAP.md): True while Bubbles is out of the
+        # Forest visiting the tank for a birthday. Not persisted across
+        # save/load (see _load_snapshot()'s unconditional _bring_bubbles_home()
+        # call) -- same "meaningless across a process restart" category as
+        # cave_visit_until above.
+        "birthday_visit_active": False,
+    }
     state = {
         "money": 120,
         "food": 15,
@@ -499,6 +507,15 @@ def main() -> None:
         # same as `treats`, so this needs no special save/load plumbing:
         # "state" is persisted/restored wholesale.
         "visitors": [],
+        # Birthday System (ROADMAP.md): whether *today* is any fish's
+        # birthday -- reset False at the top of every _daily_tick(), set
+        # True by _check_birthday() the moment one actually fires. Gates the
+        # Shop's Balloons/Confetti rows (shop.py). Deliberately not meant to
+        # survive a reload mid-birthday-day exactly -- see
+        # _expire_birthday_decorations()'s own comment on what is worth
+        # persisting here.
+        "birthday_today": False,
+        "sound_enabled": True,
     }
     hungry_warning_active = {"value": False}
     # Accumulates real seconds between hunger applications -- see
@@ -622,12 +639,48 @@ def main() -> None:
     session_start = time.monotonic() - AGE_SECONDS_PER_DAY * 0.5
     environment = {
         "phase": "Afternoon",
-        "temperature": BASE_WATER_TEMP,
+        # Placeholder only -- overwritten by the very first
+        # _update_environment() call, same as "phase" above.
+        "temperature": AFTERNOON_WATER_TEMP,
         # A live storm in progress -- see _maybe_trigger_random_event()'s
         # "storm" branch/_end_storm() below and fish.py's draw(), which
         # steers every awake fish toward the nearest container while True.
         "storm": False,
     }  # shared with every Fish -- see world.py
+
+    # Sound (termquarium/sound.py): optional (miniaudio) and lazily
+    # imported there -- init() itself never raises, just reports whether
+    # playback actually ended up usable, so nothing here needs to branch on
+    # that. Every play_*/sync call below is likewise always safe to make.
+    sound.init()
+
+    def _current_ambience_track() -> str:
+        # Forest and a live storm both override the plain day/night split --
+        # see sound.AMBIENCE_FILES for the four tracks that actually exist.
+        if current_forest_room["value"] is not None:
+            return "forest"
+        if environment.get("storm"):
+            return "storm"
+        return "night" if environment.get("phase") == "Night" else "day"
+
+    def _sync_ambience() -> None:
+        # The one place that decides what should currently be playing --
+        # called after anything that could change the answer (a phase
+        # transition, entering/leaving the Forest, a storm starting/ending,
+        # the Settings Sound checkbox), rather than each of those trying to
+        # compute it themselves. play_ambience() itself no-ops if the target
+        # track is already the one playing, so calling this unconditionally
+        # is always cheap.
+        if not state.get("sound_enabled", True):
+            sound.stop_ambience()
+            return
+        sound.play_ambience(_current_ambience_track())
+
+    def _play_sfx(name: str) -> None:
+        if state.get("sound_enabled", True):
+            sound.play_sfx(name)
+
+    _sync_ambience()
 
     # Decorations sit on the tank floor and are added before any fish, so
     # (plain add-order z-layering, see the module docstring) fish always
@@ -694,6 +747,7 @@ def main() -> None:
         unlocked_achievements.add(achievement_id)
         store_unlocked_achievements(unlocked_achievements)
         achievement = next(a for a in ACHIEVEMENTS if a.id == achievement_id)
+        _play_sfx("achievement")
         app.toast(
             f"Achievement unlocked: {achievement.name}",
             level="success",
@@ -794,6 +848,7 @@ def main() -> None:
             # crash on a None dream (the fish is awake now anyway).
             _open_inspector(f)
             return
+        _play_sfx("open")
         app.open_overlay(
             build_dream_view(app, f, _open_inspector), close_on_click_outside=True
         )
@@ -859,6 +914,7 @@ def main() -> None:
         app.open_overlay(_build_fish_history(app, f), close_on_click_outside=True)
 
     def _open_inspector(f: Fish) -> None:
+        _play_sfx("open")
         app.open_overlay(
             _build_inspector(
                 app,
@@ -887,6 +943,7 @@ def main() -> None:
         app.toast(f"Sold the {d.kind} for ${d.sell_value}.", level="success")
 
     def _open_decoration_inspector(d: Decoration) -> None:
+        _play_sfx("open")
         app.open_overlay(
             _build_decoration_inspector(
                 app, d, fish, _sell_decoration, _enter_decoration
@@ -898,6 +955,7 @@ def main() -> None:
         # Same panel Castle/Rock use, minus Sell -- a Forest shelter isn't
         # in `decorations`, was never bought, and can't be (see
         # _build_decoration_inspector's on_sell=None docs).
+        _play_sfx("open")
         app.open_overlay(
             _build_decoration_inspector(app, d, fish, None, _enter_decoration),
             close_on_click_outside=True,
@@ -1002,8 +1060,10 @@ def main() -> None:
             paused,
             bubbles=bubble_field,
         )
+        f.birth_day_of_year = day_count["n"] % CALENDAR_YEAR_DAYS
         fish.append(f)
         app.add(f)
+        _play_sfx("fish_spawn")
         _wire_tooltip(f)
         _check_new_fish_achievements(f)
         return f
@@ -1133,6 +1193,7 @@ def main() -> None:
 
     def _feed_treat(f: Fish, kind: str) -> None:
         state["treats"][kind] -= 1
+        _play_sfx("feed")
         if kind == "Plankton":
             # "Barely a mouthful, gone in a second" -- a tiny relief instead
             # of the usual near-full-up bite (constants.PLANKTON_HUNGER_RELIEF).
@@ -1199,10 +1260,36 @@ def main() -> None:
             capacity=item.capacity,
             heat_source=item.heat_source,
         )
+        _tag_if_birthday_decoration(d)
         decorations.append(d)
         _insert_decoration_widget(d)
         _refresh_stats()
         app.toast(f"Bought a {item.kind}!", level="success")
+
+    def _tag_if_birthday_decoration(d: Decoration) -> None:
+        # Birthday System (ROADMAP.md): a Balloons/Confetti kind expires at
+        # the start of the *next* day, regardless of what time today it was
+        # actually bought/placed -- same day-granularity every other
+        # birthday check uses, swept by _expire_birthday_decorations().
+        if d.kind in BIRTHDAY_DECORATION_KINDS:
+            d.expires_on_day = day_count["n"] + 1
+
+    def _expire_birthday_decorations() -> None:
+        expired = [
+            d
+            for d in decorations
+            if d.expires_on_day is not None and day_count["n"] >= d.expires_on_day
+        ]
+        for d in expired:
+            decorations.remove(d)
+            app.widgets.remove(d)
+            for f in fish:
+                if f.favorite_decoration is d:
+                    f.favorite_decoration = (
+                        random.choice(decorations) if decorations else None
+                    )
+        if expired:
+            _refresh_stats()
 
     def _placement_x_bounds(width: float) -> tuple[float, float]:
         lo = tank_x + 1
@@ -1231,6 +1318,7 @@ def main() -> None:
             capacity=item.capacity,
             heat_source=item.heat_source,
         )
+        _tag_if_birthday_decoration(d)
         _insert_decoration_widget(d)
         pending_placement["item"] = item
         pending_placement["widget"] = d
@@ -1307,7 +1395,13 @@ def main() -> None:
             ),
             "foods": [{"x": food.fx, "y": food.fy} for food in foods],
             "decorations": [
-                {"kind": d.kind, "x": d.fx, "y": d.fy, "price": d.price}
+                {
+                    "kind": d.kind,
+                    "x": d.fx,
+                    "y": d.fy,
+                    "price": d.price,
+                    "expires_on_day": d.expires_on_day,
+                }
                 for d in decorations
             ],
             "fish": [
@@ -1329,6 +1423,8 @@ def main() -> None:
                     "full_memory_log": list(f.full_memory_log),
                     "pinned_memories": list(f.pinned_memories),
                     "reflections_logged": sorted(f.reflections_logged),
+                    "birth_day_of_year": f.birth_day_of_year,
+                    "birthdays_logged": sorted(f.birthdays_logged),
                     "parent_names": list(f.parent_names) if f.parent_names else None,
                     "age_seconds": max(0.0, time.monotonic() - f.birth_time),
                     "favorite": decoration_index.get(id(f.favorite_decoration)),
@@ -1423,6 +1519,8 @@ def main() -> None:
                 "forest_unlocked": False,
                 "shop_out_of_stock": [],
                 "visitors": [],
+                "birthday_today": False,
+                "sound_enabled": True,
             }
         )
         forest_unlocked_at["t"] = None
@@ -1502,8 +1600,20 @@ def main() -> None:
                 capacity=item.capacity,
                 heat_source=item.heat_source,
             )
+            # A save from before the Birthday System existed has no
+            # "expires_on_day" key -- restores as None, same as any
+            # ordinary (non-Balloons/Confetti) decoration.
+            d.expires_on_day = saved.get("expires_on_day")
             decorations.append(d)
             app.add(d)
+        # Birthday System (ROADMAP.md): Bubbles' birthday visit is
+        # deliberately not part of the snapshot (see bubbles_state's own
+        # "meaningless across a process restart" reasoning above) -- a load
+        # unconditionally sends him home instead, the same safe reset any
+        # ordinary morning already does, so a save/load mid-visit can't
+        # strand him in the tank's widget list with nothing left to bring
+        # him back.
+        _bring_bubbles_home()
         for saved in snapshot.get("fish", []):
             # Legendary species live outside SHOP_ITEMS (see
             # LEGENDARY_SPECIES's own comment in constants.py) -- checked
@@ -1601,6 +1711,17 @@ def main() -> None:
                 # genuinely gone; nothing to do about that retroactively.
                 f.full_memory_log = list(f.memory_log)
             f.birth_time = time.monotonic() - max(0.0, saved.get("age_seconds", 0.0))
+            f.birth_day_of_year = saved.get("birth_day_of_year")
+            if f.birth_day_of_year is None:
+                # A save from before the Birthday System existed -- back-fill
+                # from the fish's own age (same "reconstruct it" category as
+                # shop_out_of_stock's migration): the calendar day this fish
+                # would have been born on, given how old it already is and
+                # what day_count is now.
+                f.birth_day_of_year = int(day_count["n"] - f.age_days) % CALENDAR_YEAR_DAYS
+            f.birthdays_logged = frozenset(
+                int(y) for y in saved.get("birthdays_logged", [])
+            )
             saved_adventure = saved.get("lost_adventure")
             f.lost_adventure = dict(saved_adventure) if saved_adventure else None
             if f.lost_adventure is not None:
@@ -1647,6 +1768,7 @@ def main() -> None:
             foods.append(food)
             app.add(food)
         _refresh_stats()
+        _sync_ambience()
 
     def _save_game() -> None:
         # Once attached to a save (loaded, or saved manually once already
@@ -1666,6 +1788,7 @@ def main() -> None:
     def _write_named_save(name: str) -> None:
         payload_path = write_save(name, _snapshot())
         current_save["name"] = name
+        _play_sfx("save")
         app.toast(f"Saved {payload_path.stem}.", level="success")
         if cloud["key"] is not None:
             # Fire-and-forget: the local save above already succeeded and
@@ -1810,12 +1933,14 @@ def main() -> None:
             f"Money: ${state['money']}   Wood in the forest: {len(forest_wood)}"
         )
         app.show("forest_clearing")
+        _sync_ambience()
 
     def _leave_forest() -> None:
         if current_forest_room["value"] != "clearing":
             return
         current_forest_room["value"] = None
         app.show("tank")
+        _sync_ambience()
 
     def _enter_deep_forest() -> None:
         # Reached only from the Clearing's own "Go Deeper..." button (see
@@ -1928,6 +2053,12 @@ def main() -> None:
                 ),
             )
 
+        def _on_sound_toggle(sound_on: bool) -> None:
+            if sound_on:
+                _sync_ambience()
+            else:
+                sound.stop_all()
+
         app.open_overlay(
             _build_settings(
                 app,
@@ -1937,6 +2068,7 @@ def main() -> None:
                 _change_key,
                 _forget_key,
                 _restore,
+                _on_sound_toggle,
             ),
             close_on_click_outside=True,
             on_close=lambda _w: _exit_auto_pause(caused_pause),
@@ -2061,6 +2193,20 @@ def main() -> None:
         # when those matter.
         day_count["n"] = max(0, int(amount))
 
+    def _console_trigger_birthday(f: Fish) -> None:
+        # Sets up exactly the conditions _check_birthday() itself looks for
+        # (today's day-of-year, an age_years boundary not yet logged), then
+        # calls it directly -- the real birthday code path (friend wish/
+        # gift, Bubbles' visit), just without waiting for day_count to
+        # actually land on it.
+        year = int(f.age_days // CALENDAR_YEAR_DAYS) + 1
+        f.birth_day_of_year = day_count["n"] % CALENDAR_YEAR_DAYS
+        f.birth_time = time.monotonic() - AGE_SECONDS_PER_DAY * (
+            CALENDAR_YEAR_DAYS * year
+        )
+        f.birthdays_logged = f.birthdays_logged - {year}
+        _check_birthday(f)
+
     def _console_toggle_forest(unlocked: bool) -> None:
         if unlocked:
             if not state.get("forest_unlocked"):
@@ -2108,32 +2254,37 @@ def main() -> None:
         commands = build_console_commands(
             state=state,
             fish=fish,
-            add_fish=_add_fish,
-            spawn_fish=_spawn_fish,
-            buy_food=_buy_food,
-            buy_treat=_buy_treat,
-            add_decoration=_add_decoration,
-            refresh_stats=_refresh_stats,
-            set_day_phase=_set_day_phase,
-            spawn_food=_console_spawn_food,
-            give_nightmare=_give_nightmare,
-            give_dream=_give_dream,
-            grant_trait=_console_grant_trait,
-            advance_day=_daily_tick,
-            start_lost_adventure=lambda f, duration=None: _begin_lost_adventure(
+            add_fish_cb=_add_fish,
+            spawn_fish_cb=_spawn_fish,
+            buy_food_cb=_buy_food,
+            buy_treat_cb=_buy_treat,
+            add_decoration_cb=_add_decoration,
+            refresh_stats_cb=_refresh_stats,
+            set_day_phase_cb=_set_day_phase,
+            spawn_food_cb=_console_spawn_food,
+            give_nightmare_cb=_give_nightmare,
+            give_dream_cb=_give_dream,
+            grant_trait_cb=_console_grant_trait,
+            advance_day_cb=_daily_tick,
+            start_lost_adventure_cb=lambda f, duration=None: _begin_lost_adventure(
                 f, duration
             ),
-            advance_adventure_day=_advance_lost_adventure,
-            set_happiness=_console_set_happiness,
-            set_speed=_console_set_speed,
-            set_personality=_console_set_personality,
-            force_relationship=_console_force_relationship,
-            set_day=_console_set_day,
-            toggle_forest=_console_toggle_forest,
-            spawn_decoration=_console_spawn_decoration,
-            remove_fish=_console_remove_fish,
-            find_legendary=_grant_legendary_fish,
-            force_random_event=_fire_random_event,
+            advance_adventure_day_cb=_advance_lost_adventure,
+            set_happiness_cb=_console_set_happiness,
+            set_speed_cb=_console_set_speed,
+            set_personality_cb=_console_set_personality,
+            force_relationship_cb=_console_force_relationship,
+            set_day_cb=_console_set_day,
+            toggle_forest_cb=_console_toggle_forest,
+            spawn_decoration_cb=_console_spawn_decoration,
+            remove_fish_cb=_console_remove_fish,
+            find_legendary_cb=_grant_legendary_fish,
+            force_random_event_cb=_fire_random_event,
+            trigger_birthday_cb=_console_trigger_birthday,
+            bubbles_visit_cb=_check_birthday_bubbles_visit,
+            end_storm_cb=_end_storm,
+            unlock_achievement_cb=_unlock_achievement,
+            sync_ambience_cb=_sync_ambience,
         )
         console = CheatConsole(
             lambda text: run_console_command(commands, text), style=app.style
@@ -2369,6 +2520,7 @@ def main() -> None:
                 foods.append(food)
                 app.add(food)
                 _refresh_stats()
+                _play_sfx("feed")
                 return True
         return False
 
@@ -2382,6 +2534,7 @@ def main() -> None:
     def _end_storm() -> None:
         environment["storm"] = False
         app.toast("The storm has ended. Clear skies again.", level="info", icon="🌤️")
+        _sync_ambience()
 
     def _grant_legendary_fish(species_name: str | None = None) -> Fish:
         # More Fish (updates.md): "found, not bought" -- the only way a
@@ -2456,6 +2609,7 @@ def main() -> None:
             # onward they steer for the nearest container and huddle there
             # (see fish.py's draw()) until _end_storm() clears it.
             environment["storm"] = True
+            _sync_ambience()
             app.after(STORM_DURATION_SECONDS, _end_storm)
             for f in fish:
                 f.hunger = max(0.0, f.hunger - STORM_HUNGER_BUMP)
@@ -2485,6 +2639,7 @@ def main() -> None:
             amount = random.randint(*LUCKY_FIND_RANGE)
             state["money"] += amount
             _refresh_stats()
+            _play_sfx("coin")
             app.toast(
                 f"Found some loose change in the gravel: +${amount}.",
                 level="success",
@@ -3226,6 +3381,7 @@ def main() -> None:
         for other_fish in fish:
             if other_fish != f:
                 _log_memory(other_fish, f"{f.display_name} went missing in the forest. I hope he's ok")
+        _play_sfx("adventure")
         app.toast(
             f"{f.display_name} has gone missing in the forest!",
             level="warning",
@@ -3453,6 +3609,12 @@ def main() -> None:
         # night() above -- he heads through the Hidden Cave, visible there
         # just long enough to notice, then vanishes (deliberately
         # unexplained -- see BUBBLES_NIGHT_SHELTER's own comment).
+        if bubbles_state.get("birthday_visit_active"):
+            # Birthday System (ROADMAP.md): out visiting the tank -- a
+            # birthday doesn't get interrupted by his usual nightly
+            # disappearing act. _bring_bubbles_home() (next Morning) brings
+            # him back from wherever he actually is.
+            return
         cave = forest_shelters.get(BUBBLES_NIGHT_SHELTER)
         if cave is None:
             return
@@ -3471,6 +3633,17 @@ def main() -> None:
         # The Morning counterpart -- back at BUBBLES_HOME_SHELTER, visible
         # again, every day without fail.
         bubbles_state["cave_visit_until"] = None
+        if bubbles_state.get("birthday_visit_active"):
+            # Birthday System (ROADMAP.md): the morning after a birthday
+            # visit, same reset _load_snapshot() also relies on -- pull him
+            # back into the Forest's own widget list before repositioning
+            # him at home below, exactly reversing
+            # _check_birthday_bubbles_visit()'s screen crossing.
+            bubbles_state["birthday_visit_active"] = False
+            if bubbles_npc in aquarium_widgets:
+                aquarium_widgets.remove(bubbles_npc)
+            if bubbles_npc not in deep_forest_widgets:
+                deep_forest_widgets.append(bubbles_npc)
         home = forest_shelters.get(BUBBLES_HOME_SHELTER)
         if home is not None:
             bubbles_npc.fx, bubbles_npc.fy = home.fx + 2, home.fy + 1
@@ -3571,6 +3744,7 @@ def main() -> None:
         f.happiness = adjust_happiness(
             f.happiness, LOST_ADVENTURE_RETURN_HAPPINESS_GAIN
         )
+        _play_sfx("return")
         app.toast(
             f"{f.display_name} made it back home safe!",
             level="success",
@@ -3857,6 +4031,7 @@ def main() -> None:
             if f._shark_scare_active:
                 continue
             f._shark_scare_active = True
+            _play_sfx("shark_scare")
             _maybe_grant_trait(f, TRAIT_FAST_SWIMMER, FAST_SWIMMER_TRAIT_CHANCE)
             serious_event_at["t"] = time.monotonic()
             # Cut short any in-progress Happiness flourish for this specific
@@ -3884,6 +4059,7 @@ def main() -> None:
                 # and safe once it arrives, same as sleeping in a
                 # container). No same-tick rescuer race to worry about.
                 f._hiding_in = shelter
+                _play_sfx("hide")
                 _log_memory(f, f"I hid in the {shelter.kind} until the shark passed.")
                 continue
             rescuer = next(
@@ -4330,6 +4506,7 @@ def main() -> None:
                 and random.random() < dream_chance
             ):
                 f.dream = choose_dream(f)
+                _play_sfx("dream")
                 _log_memory(
                     f, f"I dreamed about {f.dream.title}. {f.dream.description}"
                 )
@@ -4375,10 +4552,14 @@ def main() -> None:
             _start_sleepy_holds()
             _wake_lost_adventure_fish()
             _bring_bubbles_home()
+            _sync_ambience()
+            _play_sfx("wake")
         elif previous_phase != "Night" and environment["phase"] == "Night":
             _assign_dreams()
             _settle_lost_adventure_fish_for_night()
             _send_bubbles_to_the_cave()
+            _sync_ambience()
+            _play_sfx("sleep")
 
     def _hunger_step() -> float:
         # Night: sleeping fish get hungry slower. Heat: a stressed fish
@@ -4521,6 +4702,7 @@ def main() -> None:
                 bubbles=bubble_field,
             )
             baby.parent_names = (parent_a.display_name, parent_b.display_name)
+            baby.birth_day_of_year = day_count["n"] % CALENDAR_YEAR_DAYS
             fish.append(baby)
             app.add(baby)
             _wire_tooltip(baby)
@@ -4592,6 +4774,149 @@ def main() -> None:
         if crossed:
             f.reflections_logged = f.reflections_logged | crossed
 
+    def _check_birthday(f: Fish) -> None:
+        # Birthday System (ROADMAP.md): fires once a day, alongside this
+        # scan's other per-fish checks -- same "a day late is fine for
+        # flavor" tolerance _check_reflection_memories already relies on.
+        # day_of_year matching (rather than a raw age_days threshold, like
+        # reflections above) is what makes this a real recurring calendar
+        # date for the fish, not just a renamed age counter -- see
+        # calendar.py's module docstring.
+        if f.birth_day_of_year is None:
+            return
+        if day_count["n"] % CALENDAR_YEAR_DAYS != f.birth_day_of_year:
+            return
+        age_years = int(f.age_days // CALENDAR_YEAR_DAYS)
+        if age_years < 1 or age_years in f.birthdays_logged:
+            return
+        f.birthdays_logged = f.birthdays_logged | {age_years}
+        state["birthday_today"] = True
+        _log_memory(f, "Today is my birthday. I feel a little older.", lifelong=True)
+        app.toast(f"🎂 Today is {f.display_name}'s birthday!", icon="🎂", level="success")
+        _check_birthday_friend_wish(f)
+        _check_birthday_bubbles_visit(f)
+
+    def _check_birthday_friend_wish(f: Fish) -> None:
+        # Birthday System (ROADMAP.md): a Friend-tier bond (Fish.friend,
+        # relationships.best_bond()) noticing and wishing happy birthday.
+        # Deterministic once the tier/awake/in-tank conditions hold, unlike
+        # e.g. _check_baby_parent_swim's extra roll -- that roll exists
+        # specifically to stop a *recurring* opportunity from firing "almost
+        # as soon as possible," and a birthday only ever gets one shot at
+        # this per year, so there's nothing to suppress. Quiet (no memory at
+        # all) if the fish has no Friend yet, or the friend is asleep or
+        # away -- matches "only create memories for things that actually
+        # happened."
+        friend = f.friend
+        if friend is None or f.is_asleep or friend.is_asleep:
+            return
+        if not _in_tank(f) or not _in_tank(friend):
+            return
+        _log_memory(f, f"{friend.display_name} wished me a happy birthday.")
+        _log_memory(friend, f"I wished {f.display_name} a happy birthday.")
+        _check_birthday_gift(f, friend)
+
+    def _check_birthday_gift(f: Fish, friend: Fish) -> None:
+        # Birthday System (ROADMAP.md): only reached once a friend is
+        # actually there to wish happy birthday (see the call site above) --
+        # a gift without the wish would read as it appearing from thin air.
+        # Reuses fish.py's existing Worms/Bloodworms "held at the mouth"
+        # mechanism (_holding_food/_holding_until, already drawn by
+        # Fish._glyph()) instead of building a new visual: setting those two
+        # fields directly is exactly what the natural swim-to-food catch
+        # path already does, just without the swim, since a friend hands
+        # this straight over. _consume_food() (fish.py's per-frame check,
+        # once _holding_until elapses) applies the ordinary feed()/
+        # HAPPINESS_FED_GAIN, then this gift's own on_eaten adds the rest.
+        if f._holding_food is not None:
+            return  # already mid-bite on something else -- try again next year
+        available = [k for k in BIRTHDAY_TREAT_KINDS if state["treats"].get(k, 0) > 0]
+        if not available:
+            return
+        kind = random.choice(available)
+        state["treats"][kind] -= 1
+        item = next(i for i in TREAT_SHOP_ITEMS if i.kind == kind)
+        gift = Food(f.fx, f.fy, glyph=item.emoji, kind=kind)
+
+        def _eaten(eater: Fish) -> None:
+            eater.happiness = adjust_happiness(
+                eater.happiness, BIRTHDAY_GIFT_HAPPINESS_BONUS
+            )
+            _log_memory(eater, f"{friend.display_name} gave me a {kind} for my birthday.")
+
+        gift.on_eaten = _eaten
+        f._holding_food = gift
+        f._holding_until = time.monotonic() + HOLD_BEFORE_EAT_SECONDS
+        _log_memory(friend, f"I gave {f.display_name} a birthday gift.")
+        _refresh_stats()
+
+    def _check_birthday_bubbles_visit(f: Fish) -> None:
+        # Birthday System (ROADMAP.md): Bubbles leaves the Forest for the
+        # day to bring the birthday fish a Toy Ball -- independent of the
+        # friend-wish/gift chain above (he shows up whether or not this fish
+        # has a Friend yet). Reuses the exact screen-crossing mechanic Lost
+        # Adventure already established for a Fish (remove from one
+        # screen's widget list, append to the other's), just applied to the
+        # BubblesNPC widget instead of a Fish. _bring_bubbles_home() (the
+        # next Morning, or an intervening save/load) is what sends him back
+        # -- see that function and _send_bubbles_to_the_cave()'s own guards.
+        if (
+            bubbles_state.get("birthday_visit_active")
+            or bubbles_state.get("cave_visit_until") is not None
+        ):
+            # Already out for some other reason -- a Lost Adventure fish's
+            # cave meeting, or (per "Bubbles only needs to make one birthday
+            # visit for that day") an earlier birthday today already brought
+            # him out. Don't interrupt either with a second visit.
+            return
+        if bubbles_npc in deep_forest_widgets:
+            deep_forest_widgets.remove(bubbles_npc)
+        bubbles_npc.fx, bubbles_npc.fy = f.fx + 2, f.fy
+        bubbles_npc.x, bubbles_npc.y = round(bubbles_npc.fx), round(bubbles_npc.fy)
+        bubbles_npc.visible = True
+        if bubbles_npc not in aquarium_widgets:
+            aquarium_widgets.append(bubbles_npc)
+        bubbles_state["birthday_visit_active"] = True
+
+        ball = Decoration(
+            f.fx + 3,
+            floor_y,
+            TOY_BALL_ART,
+            TOY_BALL_COLORS,
+            kind="Toy Ball",
+            price=0,
+            capacity=0,
+        )
+        decorations.append(ball)
+        app.add(ball)
+
+        _log_memory(f, "Bubbles gave me a toy ball for my birthday.", lifelong=True)
+        app.toast(
+            f"🐠🧢 Bubbles came to wish {f.display_name} a happy birthday!",
+            icon="🔵",
+            level="success",
+        )
+
+    def _check_toy_ball_play(f: Fish) -> None:
+        # Birthday System (ROADMAP.md): the Toy Ball outlives the birthday
+        # it arrived on -- a small daily chance a Friend pair plays with it
+        # together, producing new memories long after the fact ("future
+        # memories," not just a one-time birthday flourish). id(f) < id(friend)
+        # is an arbitrary but consistent tie-break so this fires once per
+        # pair per day, not twice (both fish's own scan would otherwise roll
+        # it independently).
+        friend = f.friend
+        if friend is None or id(f) >= id(friend):
+            return
+        if f.is_asleep or friend.is_asleep or not _in_tank(f) or not _in_tank(friend):
+            return
+        if not any(d.kind == "Toy Ball" for d in decorations):
+            return
+        if random.random() >= TOY_BALL_PLAY_CHANCE_PER_DAY:
+            return
+        _log_memory(f, f"{friend.display_name} and I played with the ball Bubbles gave us.")
+        _log_memory(friend, f"{f.display_name} and I played with the ball Bubbles gave us.")
+
     def _check_baby_parent_swim(f: Fish) -> None:
         # Daytime counterpart to the baby/parent sleep line (see
         # _check_night_events()'s record_slept_together() call site) --
@@ -4662,6 +4987,8 @@ def main() -> None:
                     f, "I'm getting older now, but I still feel young at heart."
                 )
             _check_reflection_memories(f)
+            _check_birthday(f)
+            _check_toy_ball_play(f)
             _check_baby_parent_swim(f)
             if f.growth_stage.startswith("Baby"):
                 # Fresh roll every day (see constants.py's
@@ -4696,9 +5023,11 @@ def main() -> None:
             tier = _relationship_tier(rel.score, previous)
             if tier != previous:
                 if tier == "friend":
+                    _play_sfx("friend")
                     _log_memory(a, f"I became friends with {b.display_name}.")
                     _log_memory(b, f"I became friends with {a.display_name}.")
                 elif tier == "rival":
+                    _play_sfx("rival")
                     _log_memory(a, f"I became rivals with {b.display_name}.")
                     _log_memory(b, f"I became rivals with {a.display_name}.")
                 relationship_tier_seen[key] = tier
@@ -4811,6 +5140,8 @@ def main() -> None:
         if paused["value"]:
             return
         day_count["n"] += 1
+        state["birthday_today"] = False
+        _expire_birthday_decorations()
         decay_relationships(fish)
         _refresh_shop_stock()
         _check_milestone_achievements()
@@ -4912,7 +5243,15 @@ def main() -> None:
     )
     app.on_key(Key.CTRL_C, _return_to_main_menu)
     _open_start_menu()
-    app.run()
+    try:
+        app.run()
+    finally:
+        # sound.py's PlaybackDevice keeps its own background thread alive
+        # for as long as it's open -- without this, the process hangs on
+        # exit even after the terminal's own cleanup (App.run()'s own
+        # finally) is done. Safe whether or not sound ever actually
+        # initialized.
+        sound.shutdown()
 
 
 if __name__ == "__main__":

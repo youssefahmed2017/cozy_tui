@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Changelog — TermQuarium</title>
 <meta name="description" content="What shipped in TermQuarium, version by version." />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A0%3C/text%3E%3C/svg%3E" />
+<link rel="icon" type="image/x-icon" href="favicon.ico" />
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -15,7 +17,7 @@
 
   <nav class="nav">
     <div class="wrap">
-      <a class="logo" href="index.html"><span class="glyph">&gt;&lt;&gt;</span>TermQuarium</a>
+      <a class="logo" href="index.html"><img class="logo-mark" src="assets/logo.png" alt="" width="44" height="22">TermQuarium</a>
       <div class="nav-right">
         <div class="nav-links" id="navLinks">
           <a class="link" href="index.html">Home</a>
@@ -48,8 +50,45 @@
 
         <div class="changelog-entry">
           <div class="changelog-head">
-            <span class="changelog-version mono">v1.6.0</span>
+            <span class="changelog-version mono">v1.7.1</span>
             <span class="changelog-date">Latest release</span>
+            <a class="changelog-download" href="https://github.com/youssefahmed2017/TermQuarium/releases/download/v1.7.1/TermQuarium-Setup.exe">↓ Download v1.7.1</a>
+          </div>
+          <div class="changelog-group">
+            <span class="kind">Added</span>
+            <ul>
+              <li>TermQuarium finally has a logo — a plain blue fish, used as the website's favicon/nav mark and the Windows installer and app icon</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-head">
+            <span class="changelog-version mono">v1.7.0</span>
+            <a class="changelog-download" href="https://github.com/youssefahmed2017/TermQuarium/releases/download/v1.7.0/TermQuarium-Setup.exe">↓ Download v1.7.0</a>
+          </div>
+          <div class="changelog-group">
+            <span class="kind">Added</span>
+            <ul>
+              <li>The day/night cycle split into four real phases — Morning, Afternoon, Evening, Night — each with its own water temperature (warmest at 30°C in the Morning, coldest at 21°C by Night) instead of one sinusoid peaking at midday</li>
+              <li>Genuinely cold water now does something: as Evening's water cools, an awake fish has a small, rising chance of heading somewhere to warm up — the chance itself scales with how cold it's actually gotten, never a flat per-fish roll the moment Evening begins. It heads for a placed Warm Lamp first (basking visibly nearby, any number at once, no capacity limit) or, without one, the nearest Rock or Castle with room — and that one it actually goes inside, tucked away out of sight the same way a real overnight sleeper disappears, sharing the same capacity pool rather than a separate one. 🥶 on the way, ☺️ once settled</li>
+              <li>Warm Lamp — a new $40 decoration, purely a heat source (no capacity, nobody sleeps in it) that cold fish now prefer over ducking into a Rock or Castle</li>
+              <li>Decorations are now player-placed: buying one from the Shop hands you a ghost that follows your mouse along the tank floor until you click to commit it, instead of dropping it at a random spot. Esc cancels and refunds mid-placement</li>
+              <li>A stressed 🥵 indicator for genuinely hot water, mirroring the cold 🥶 one — hunger drains faster while stressed</li>
+            </ul>
+          </div>
+          <div class="changelog-group">
+            <span class="kind">Fixed</span>
+            <ul>
+              <li>Fish were registering as chilly during an ordinary Morning or Afternoon, nowhere near the real cold threshold — chill is now measured against how cold the water has actually gotten this Evening, not distance from the day's warmest point</li>
+              <li>Buying a decoration didn't refresh the tank's own money readout until the next unrelated redraw</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="changelog-entry">
+          <div class="changelog-head">
+            <span class="changelog-version mono">v1.6.0</span>
             <a class="changelog-download" href="https://github.com/youssefahmed2017/TermQuarium/releases/download/v1.6.0/TermQuarium-Setup.exe">↓ Download v1.6.0</a>
           </div>
           <div class="changelog-group">

@@ -177,6 +177,11 @@ class Decoration(Widget):
         w = max(text_width(line) for line in art)
         h = len(art)
         self.radius = max(w, h) / 2
+        # Birthday System (ROADMAP.md): None for every ordinary decoration --
+        # only a Balloons/Confetti kind ever gets this set (aquarium.py's
+        # _add_decoration()/_start_placing_decoration()), to the day_count
+        # value _expire_birthday_decorations() should remove it on.
+        self.expires_on_day: int | None = None
 
     @property
     def is_container(self) -> bool:

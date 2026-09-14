@@ -53,6 +53,7 @@ from .constants import (
     HIDE_DURATION_SECONDS,
     HOME_ARRIVE_MARGIN,
     HOME_STEER_RATE,
+    HOT_TEMP_THRESHOLD,
     IDLE_DAMPING,
     LAZY_HOME_RADIUS,
     LAZY_SPEED_MULT,
@@ -382,6 +383,17 @@ class Fish(Widget):
         # a frozenset, same immutable-set convention as `traits`, so each
         # milestone line fires exactly once per fish even across save/load.
         self.reflections_logged: frozenset[int] = frozenset()
+        # Birthday System (ROADMAP.md): this fish's calendar.py day-of-year,
+        # set once at birth (aquarium.py's _add_fish/_try_breeding) from the
+        # aquarium's own day_count -- None until then, and for any fish
+        # loaded from a save that predates this system (backfilled on load
+        # instead, see _load_snapshot()). birthdays_logged mirrors
+        # reflections_logged's shape exactly, just keyed by "which birthday"
+        # (int(age_days // CALENDAR_YEAR_DAYS)) instead of a raw age
+        # threshold, so a birthday fires exactly once per fish per year even
+        # across save/load.
+        self.birth_day_of_year: int | None = None
+        self.birthdays_logged: frozenset[int] = frozenset()
         # Set once at birth (aquarium.py's _try_breeding) to the two parents'
         # display_names at that moment, and never touched again -- a "blood
         # bond" that must outlive either parent (sold, starved, eaten) or a
@@ -1933,6 +1945,18 @@ class Fish(Widget):
             # long as the approach does. ☺️ (_pizza_eat_flash_until, above)
             # takes over the instant it's actually eaten.
             canvas.write(self.abs_x, max(0, self.abs_y - 1), "😋", MUTED)
+        elif (
+            self.environment is not None
+            and self.environment.get("temperature") is not None
+            and self.environment["temperature"] > HOT_TEMP_THRESHOLD
+        ):
+            # A plain, passive status readout for HOT_HUNGER_MULT -- the
+            # heat-stress effect on hunger already existed with no visual
+            # cue at all. Lowest priority of every indicator in this whole
+            # chain: it's ambient and continuous (true for as long as the
+            # water is genuinely hot), so anything more specific above it
+            # -- a real flourish, a momentary mood -- always wins instead.
+            canvas.write(self.abs_x, max(0, self.abs_y - 1), "🥵", MUTED)
 
 
 def _make_fish(

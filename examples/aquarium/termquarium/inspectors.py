@@ -490,18 +490,22 @@ def _build_settings(
     on_change_key,
     on_forget_key,
     on_restore,
+    on_sound_toggle,
 ) -> Box:
     """Gameplay (Emergency Aquarium Welfare, Auto-Pause), Display (ambient
-    bubbles), and Cloud Saves. Checked state lives directly in `state`, the
-    same dict everything else in this economy reads/writes -- Auto-Pause is
-    read live by aquarium.py's _enter_auto_pause(), so toggling it here
-    takes effect the next time Pause/Shop/Settings/the Cheat Console opens,
-    not retroactively on whichever of them is already open. `cloud_key` is a
-    snapshot at open-time (None if cloud saves has never been set up on
-    this machine); the four callbacks are aquarium.py's actual network/
-    storage actions -- this function only builds the box and closes itself
-    before handing off, so it doesn't need to know how any of them work."""
-    box = Box(0, 0, "440x400", title="Settings", border="rounded", style=app.style)
+    bubbles, sound), and Cloud Saves. Checked state lives directly in
+    `state`, the same dict everything else in this economy reads/writes --
+    Auto-Pause is read live by aquarium.py's _enter_auto_pause(), so
+    toggling it here takes effect the next time Pause/Shop/Settings/the
+    Cheat Console opens, not retroactively on whichever of them is already
+    open. `cloud_key` is a snapshot at open-time (None if cloud saves has
+    never been set up on this machine); the callbacks are aquarium.py's
+    actual actions (network/storage, or -- on_sound_toggle -- muting sound
+    immediately rather than "next time something opens," since a mute is
+    meant to take effect now) -- this function only builds the box and
+    closes itself before handing off, so it doesn't need to know how any of
+    them work."""
+    box = Box(0, 0, "440x430", title="Settings", border="rounded", style=app.style)
     box.add(Label(2, 1, "Gameplay", Style(styles=["bold"])))
 
     welfare_cb = Checkbox(
@@ -532,7 +536,19 @@ def _build_settings(
     box.add(Label(2, 18, "Purely cosmetic rising bubbles. Turn off if you", MUTED))
     box.add(Label(2, 19, "find them distracting.", MUTED))
 
-    box.add(Label(2, 21, "Cloud Saves", Style(styles=["bold"])))
+    sound_cb = Checkbox(2, 21, "Sound", checked=state.get("sound_enabled", True))
+
+    def _on_sound_change(checked: bool) -> None:
+        state.update(sound_enabled=checked)
+        on_sound_toggle(checked)
+
+    sound_cb.on_change(_on_sound_change)
+    box.add(sound_cb)
+
+    box.add(Label(2, 23, "Ambience and sound effects. Off mutes both", MUTED))
+    box.add(Label(2, 24, "immediately, not just for anything new.", MUTED))
+
+    box.add(Label(2, 26, "Cloud Saves", Style(styles=["bold"])))
 
     def _run_and_close(callback):
         # Every cloud action needs this Settings box gone before it runs --
@@ -546,25 +562,25 @@ def _build_settings(
         return _handler
 
     if cloud_key:
-        box.add(Label(2, 23, f"Key: {cloud_key}", MUTED))
+        box.add(Label(2, 28, f"Key: {cloud_key}", MUTED))
 
         def _copy(_w=None):
             clipboard.copy(cloud_key)
             app.toast("Cloud Key copied.", level="success")
 
-        box.add(Button(2, 25, "Copy Key").on_click(_copy))
+        box.add(Button(2, 30, "Copy Key").on_click(_copy))
         box.add(
-            Button(16, 25, "Use a Different Key").on_click(
+            Button(16, 30, "Use a Different Key").on_click(
                 _run_and_close(on_change_key)
             )
         )
-        box.add(Button(2, 27, "Restore My Saves").on_click(_run_and_close(on_restore)))
-        box.add(Button(22, 27, "Forget Key").on_click(_run_and_close(on_forget_key)))
+        box.add(Button(2, 32, "Restore My Saves").on_click(_run_and_close(on_restore)))
+        box.add(Button(22, 32, "Forget Key").on_click(_run_and_close(on_forget_key)))
     else:
-        box.add(Label(2, 23, "Not set up yet -- saves stay local only.", MUTED))
+        box.add(Label(2, 28, "Not set up yet -- saves stay local only.", MUTED))
         box.add(
-            Button(2, 25, "Set Up Cloud Saves").on_click(_run_and_close(on_setup_cloud))
+            Button(2, 30, "Set Up Cloud Saves").on_click(_run_and_close(on_setup_cloud))
         )
 
-    box.add(Button(2, 29, "Close").on_click(lambda _w: app.close_overlay(box)))
+    box.add(Button(2, 34, "Close").on_click(lambda _w: app.close_overlay(box)))
     return box

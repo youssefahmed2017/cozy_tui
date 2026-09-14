@@ -22,11 +22,20 @@ python -m pytest tests/test_aquarium.py tests/test_termquarium_*.py -q   # this 
 ```
 
 No extra dependency beyond `cozy_tui` itself — everything below is stdlib,
-with one exception: the Cheat Console's `run()` command (arbitrary-ish
-scripted commands, sandboxed by RestrictedPython — see
-`termquarium/console.py`) needs `pip install RestrictedPython`, lazily
-imported only inside that one command. Every other console command, and
-the rest of the game, works with nothing installed beyond `cozy_tui`.
+with two exceptions: the Cheat Console (`termquarium/console.py`) *is*
+RestrictedPython now (every typed line is compiled and run through it
+directly, not a hand-rolled parser with a `run()` escape hatch bolted on --
+see that module's own docstring), so `pip install RestrictedPython` is a
+hard requirement to open the console at all, not a lazy one for a single
+command. Sound (ambience loops + SFX from `sounds/`, see
+`termquarium/sound.py`) is still genuinely optional and lazily imported --
+needs `pip install miniaudio` and an actual audio device, missing either
+just plays the game silently. `sounds/gen_ambience.py` (needs `numpy`,
+generation-time only — never imported by the shipped game) synthesizes the
+four `sounds/ambience/*.wav` loops from scratch (evolving chord pads +
+filtered-noise water/wind/rain texture); the original
+`sounds/ogg/termquarium_*.ogg` tracks are unused now but left on disk.
+Everything else works with nothing installed beyond `cozy_tui`.
 
 Packaging (Windows `.exe`, from inside `examples/aquarium/`; `*.spec`/`*.iss` are
 git-ignored — they exist locally when you're building, not in the checked-out tree):
@@ -90,11 +99,17 @@ the top of the file if you rename something they depend on.
   tuned schedules.
 - **`shop.py`** / **`console.py`** — two different "typed command" surfaces.
   `shop.py` is the Shop overlay's plain Button wiring. `console.py` is the
-  backtick Cheat Console for jumping straight to a test scenario; its
-  `parse_command()` is structural (`ast.parse(mode="eval")` + per-argument
-  `ast.literal_eval()`) — **never** `eval`/`exec`. Keep any new command
-  literal-only; it must call the same real code the Shop/Inspector use, not a
-  cheat-only shortcut.
+  backtick Cheat Console for jumping straight to a test scenario, and *is*
+  RestrictedPython (a real sandboxing compiler, used by Zope/Plone, that
+  rejects dunder/attribute-gadget escapes at compile time) — every typed
+  line is compiled and run through it directly (a single expression via
+  `eval`, showing its return value; anything else -- a loop, an assignment,
+  several statements -- via a real `exec`, with `print()` captured). Every
+  command is a plain Python function with a real signature and its own
+  docstring (`help()` reads straight from `__doc__`). Keep any new command
+  calling the same real code the Shop/Inspector use, not a cheat-only
+  shortcut -- RestrictedPython's own sandboxing is what keeps a typed
+  command safe now, not a hand-rolled literal-only argument parser.
 - **`inspectors.py`** / **`ui.py`** / **`styles.py`** — Box-building panel
   functions (Fish/Decoration Inspector, Daily Summary, Settings), small
   reusable UI pieces, and shared `Style` constants. No state lives here.
