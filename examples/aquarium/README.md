@@ -107,24 +107,5 @@ The game's pure logic (steering, hunger, economy, relationships, save format) is
 python -m pytest tests/test_aquarium.py tests/test_termquarium_save.py tests/test_termquarium_world.py tests/test_termquarium_cloud.py tests/test_termquarium_cloud_api.py tests/test_termquarium_console.py tests/test_termquarium_updater.py -q
 ```
 
-## Project layout
-
-```
-aquarium.py              # main() only -- wires everything into one running App
-update.py                # the updating launcher the installed shortcut runs
-termquarium/
-  constants.py           # every tuning constant, species/decoration catalogs
-  steering.py            # pure movement math (steer, avoid, school, ...)
-  economy.py             # hunger, feeding, attractiveness, visitor income
-  relationships.py       # personality, Sleepy, the relationship-score system
-  fish.py                # the Fish widget + its steering/sleep/home logic
-  tank_objects.py        # Food, Decoration
-  bubbles.py             # ambient bubble particles
-  vignettes.py           # the morning "*boop*" in-tank caption
-  world.py               # day/night cycle, water temperature
-  save.py                # versioned JSON save/load
-  dreams.py              # the Dream System: categories, memory-linking, the animation widget
-  console.py             # the Cheat Console: command parser, registry, the widget
-  updater.py             # self-update logic for update.exe (version compare, staging, applying)
-  shop.py, ui.py, inspectors.py   # Shop, menus, and Inspector panel builders
-```
+## License
+[MIT-NC](LICENSE) — Free to use, modify and distribute. Commercial use requires permission.

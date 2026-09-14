@@ -22,6 +22,7 @@ since the callback fires on miniaudio's own audio thread, not the main one.
 from __future__ import annotations
 
 import array
+import sys
 import threading
 from pathlib import Path
 
@@ -30,7 +31,19 @@ try:
 except ImportError:  # pragma: no cover -- exercised via available() instead
     miniaudio = None
 
-SOUNDS_DIR = Path(__file__).resolve().parent.parent / "sounds"
+# A PyInstaller-frozen build has no real termquarium/sound.py file on disk to
+# navigate up from -- pure-Python modules live inside a bundled archive, and
+# __file__ doesn't point at a resolvable path the way it does from source.
+# sys._MEIPASS is PyInstaller's own answer: the directory it actually
+# extracted/mounted bundled data files into at runtime (see TermQuarium.spec's
+# `datas=[('sounds', 'sounds')]`, which puts sounds/ at that same top level).
+# Only frozen builds set sys.frozen at all, so the plain source-tree path
+# below is completely unaffected running any other way (dev, tests, `pip
+# install -e`).
+if getattr(sys, "frozen", False):
+    SOUNDS_DIR = Path(getattr(sys, "_MEIPASS", ".")) / "sounds"
+else:
+    SOUNDS_DIR = Path(__file__).resolve().parent.parent / "sounds"
 SAMPLE_RATE = 44100
 CHANNELS = 2
 

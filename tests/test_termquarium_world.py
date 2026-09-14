@@ -4,11 +4,14 @@ import math
 
 from examples.aquarium.termquarium.constants import (
     AFTERNOON_END,
-    BASE_WATER_TEMP,
+    AFTERNOON_WATER_TEMP,
+    COLD_TEMP_THRESHOLD,
+    EVENING_WATER_TEMP,
     MORNING_END,
+    MORNING_WATER_TEMP,
     NIGHT_END,
     NIGHT_START,
-    WATER_TEMP_SWING,
+    NIGHT_WATER_TEMP,
 )
 from examples.aquarium.termquarium.world import (
     compute_time_of_day,
@@ -63,56 +66,59 @@ def test_day_night_curve_peaks_at_midday_and_troughs_at_midnight():
     assert math.isclose(day_night_curve(1.0), -1.0, abs_tol=1e-9)
 
 
-def test_compute_water_temperature_warmest_at_midday():
-    assert compute_water_temperature(0.5) == BASE_WATER_TEMP + WATER_TEMP_SWING
+def test_compute_water_temperature_matches_each_phase_anchor():
+    # 0.225/0.45/0.675/0.95 are each phase band's own representative
+    # midpoint (see world._TEMPERATURE_ANCHORS) -- warmest in the Morning,
+    # coldest at Night's, not a single sinusoid peaking at midday.
+    assert compute_water_temperature(0.225) == MORNING_WATER_TEMP
+    assert compute_water_temperature(0.45) == AFTERNOON_WATER_TEMP
+    assert compute_water_temperature(0.675) == EVENING_WATER_TEMP
+    assert compute_water_temperature(0.95) == NIGHT_WATER_TEMP
 
 
-def test_compute_water_temperature_coolest_at_midnight():
-    assert math.isclose(
-        compute_water_temperature(0.0), BASE_WATER_TEMP - WATER_TEMP_SWING
-    )
+def test_compute_water_temperature_wraps_smoothly_across_midnight():
+    # Just before fraction=0 (Night, still cooled toward NIGHT_WATER_TEMP)
+    # and just after (still Night, warming back toward Morning) must be
+    # close to each other -- no jump at the midnight boundary.
+    just_before = compute_water_temperature(0.999)
+    just_after = compute_water_temperature(0.001)
+    assert math.isclose(just_before, just_after, abs_tol=0.1)
 
 
-def test_compute_water_temperature_stays_within_the_swing():
+def test_compute_water_temperature_stays_within_range():
     for i in range(21):
         fraction = i / 20
         temp = compute_water_temperature(fraction)
-        assert (
-            BASE_WATER_TEMP - WATER_TEMP_SWING
-            <= temp
-            <= BASE_WATER_TEMP + WATER_TEMP_SWING
-        )
+        assert NIGHT_WATER_TEMP <= temp <= MORNING_WATER_TEMP
 
 
-def test_temperature_chill_is_zero_at_the_daily_peak():
-    peak = BASE_WATER_TEMP + WATER_TEMP_SWING
-    assert temperature_chill(peak) == 0.0
+def test_temperature_chill_is_zero_during_morning_and_afternoon():
+    # The regression this covers: chill used to be measured against the
+    # day's peak warmth, so an ordinary Afternoon (nowhere near
+    # COLD_TEMP_THRESHOLD) already produced a real, if small, chance to
+    # seek warmth. Anchored to the real cold threshold instead, neither
+    # should ever register as chilly at all.
+    assert temperature_chill(MORNING_WATER_TEMP) == 0.0
+    assert temperature_chill(AFTERNOON_WATER_TEMP) == 0.0
 
 
-def test_temperature_chill_is_one_at_the_daily_trough():
-    trough = BASE_WATER_TEMP - WATER_TEMP_SWING
-    assert temperature_chill(trough) == 1.0
+def test_temperature_chill_is_zero_at_evenings_own_temperature_and_above():
+    assert temperature_chill(EVENING_WATER_TEMP) == 0.0
+    assert temperature_chill(EVENING_WATER_TEMP + 5.0) == 0.0
 
 
-def test_temperature_chill_clamps_beyond_the_normal_range():
-    peak = BASE_WATER_TEMP + WATER_TEMP_SWING
-    trough = BASE_WATER_TEMP - WATER_TEMP_SWING
-    assert temperature_chill(peak + 10.0) == 0.0
-    assert temperature_chill(trough - 10.0) == 1.0
+def test_temperature_chill_is_one_at_and_below_the_cold_threshold():
+    assert temperature_chill(COLD_TEMP_THRESHOLD) == 1.0
+    assert temperature_chill(COLD_TEMP_THRESHOLD - 5.0) == 1.0
+    assert temperature_chill(NIGHT_WATER_TEMP) == 1.0
 
 
-def test_temperature_chill_is_already_meaningfully_above_zero_by_evening():
-    # The whole point: Evening should feel a bit cold well before the water
-    # actually crosses COLD_TEMP_THRESHOLD (which only happens near
-    # midnight) -- see world.temperature_chill()'s own docstring.
-    evening_temp = compute_water_temperature(AFTERNOON_END)
-    assert 0.0 < temperature_chill(evening_temp) < 0.5
-
-
-def test_temperature_chill_rises_monotonically_from_peak_to_trough():
-    fractions = [i / 20 for i in range(11)]  # 0.5 (peak) to 1.0 (trough)
-    chills = [temperature_chill(compute_water_temperature(0.5 + f)) for f in fractions]
+def test_temperature_chill_rises_across_evening_into_night():
+    fractions = [i / 40 for i in range(11)]  # 0.675 (Evening) to 0.95 (Night)
+    chills = [temperature_chill(compute_water_temperature(0.675 + f)) for f in fractions]
     assert chills == sorted(chills)
+    assert chills[0] == 0.0  # right at Evening's own midpoint -- still comfortable
+    assert chills[-1] == 1.0  # right at Night's own midpoint -- properly cold
 
 
 def test_night_blend_zero_at_midday_one_at_midnight():
